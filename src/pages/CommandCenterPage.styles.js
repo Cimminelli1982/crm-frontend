@@ -362,6 +362,18 @@ const ActionsPanelHeader = styled.div`
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
 `;
 
+// Vertical navigation sidebar for right panel
+const RightPanelVerticalNav = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#0F172A'};
+  border-right: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#1E293B'};
+  min-width: 44px;
+  align-items: center;
+`;
+
 const ActionCard = styled.div`
   margin: 12px;
   padding: 16px;
@@ -1012,6 +1024,7 @@ export {
   ActionsPanelTabs,
   ActionTabIcon,
   ActionsPanelHeader,
+  RightPanelVerticalNav,
   ActionCard,
   ActionCardHeader,
   ActionCardContent,

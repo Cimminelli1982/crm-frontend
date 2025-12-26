@@ -37,6 +37,7 @@ import {
   ActionsPanelTabs,
   ActionTabIcon,
   ActionsPanelHeader,
+  RightPanelVerticalNav,
   ActionCard,
   ActionCardHeader,
   ActionCardContent,
@@ -133,6 +134,11 @@ import NotesFullTab from '../components/command-center/NotesFullTab';
 import ListsTab from '../components/command-center/ListsTab';
 import ComposeEmailModal from '../components/command-center/ComposeEmailModal';
 import WhatsAppTab, { WhatsAppChatList } from '../components/command-center/WhatsAppTab';
+import ContactSelector from '../components/command-center/ContactSelector';
+import DataIntegrityWarningBar from '../components/command-center/DataIntegrityWarningBar';
+import ContactDetailsTab from '../components/command-center/ContactDetailsTab';
+import CompanyDetailsTab from '../components/command-center/CompanyDetailsTab';
+import useContactDetails from '../hooks/useContactDetails';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -319,6 +325,15 @@ const CommandCenterPage = ({ theme }) => {
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
   const [activeActionTab, setActiveActionTab] = useState('crm');
   const [crmSubTab, setCrmSubTab] = useState('contacts'); // 'contacts' or 'companies' - sub-menu inside CRM tab
+
+  // Right panel contact selector state
+  const [selectedRightPanelContactId, setSelectedRightPanelContactId] = useState(null);
+  const [selectedListMember, setSelectedListMember] = useState(null); // From ListsTab
+
+  // Right panel company selector state (for CompanyDetailsTab)
+  const [selectedRightPanelCompanyId, setSelectedRightPanelCompanyId] = useState(null);
+  const [rightPanelCompanyDetails, setRightPanelCompanyDetails] = useState(null);
+  const [loadingRightPanelCompany, setLoadingRightPanelCompany] = useState(false);
 
   // When switching to deals tab, if dataIntegrity is selected, switch to chat
   useEffect(() => {
@@ -510,6 +525,208 @@ const CommandCenterPage = ({ theme }) => {
     sendDuplicateMCPInstruction,
     addChatMessage,
   } = chatHook;
+
+  // Right panel contact details hook - fetches all details for selected contact
+  const rightPanelContactDetails = useContactDetails(selectedRightPanelContactId);
+
+  // Auto-select primary company when contact's companies change
+  useEffect(() => {
+    const companies = rightPanelContactDetails?.companies || [];
+    if (companies.length > 0) {
+      // Find primary company or default to first
+      const primaryCompany = companies.find(c => c.is_primary) || companies[0];
+      setSelectedRightPanelCompanyId(primaryCompany?.company_id || null);
+    } else {
+      setSelectedRightPanelCompanyId(null);
+      setRightPanelCompanyDetails(null);
+    }
+  }, [rightPanelContactDetails?.companies]);
+
+  // Fetch company details when selected company changes
+  useEffect(() => {
+    const fetchCompanyDetails = async () => {
+      if (!selectedRightPanelCompanyId) {
+        setRightPanelCompanyDetails(null);
+        return;
+      }
+
+      setLoadingRightPanelCompany(true);
+      try {
+        // Fetch company base data
+        const { data: company, error: companyError } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('company_id', selectedRightPanelCompanyId)
+          .single();
+
+        if (companyError) throw companyError;
+
+        // Fetch company domains
+        const { data: domains } = await supabase
+          .from('company_domains')
+          .select('id, domain, is_primary')
+          .eq('company_id', selectedRightPanelCompanyId);
+
+        // Fetch company logo from company_attachments -> attachments
+        let logoUrl = null;
+        const { data: logoData } = await supabase
+          .from('company_attachments')
+          .select('attachment_id, attachments(permanent_url, file_url)')
+          .eq('company_id', selectedRightPanelCompanyId)
+          .eq('is_logo', true)
+          .limit(1)
+          .single();
+
+        if (logoData?.attachments) {
+          logoUrl = logoData.attachments.permanent_url || logoData.attachments.file_url;
+        }
+
+        // Fetch company tags - use table name for FK join (Supabase auto-detects via FK)
+        const { data: tagsData } = await supabase
+          .from('company_tags')
+          .select('entry_id, tag_id, tags(tag_id, name)')
+          .eq('company_id', selectedRightPanelCompanyId);
+
+        // Fetch company cities
+        let citiesData = [];
+        try {
+          const { data: citiesResult } = await supabase
+            .from('company_cities')
+            .select('entry_id, city_id, cities(city_id, name, country)')
+            .eq('company_id', selectedRightPanelCompanyId);
+          citiesData = citiesResult || [];
+        } catch (e) {
+          console.log('company_cities not available');
+        }
+
+        // Fetch contacts at this company - use table name for FK join
+        const { data: contactsData } = await supabase
+          .from('contact_companies')
+          .select('contact_id, is_primary, relationship, contacts(contact_id, first_name, last_name, job_role, profile_image_url)')
+          .eq('company_id', selectedRightPanelCompanyId);
+
+        // Transform tags - nested object is under 'tags' key
+        const transformedTags = (tagsData || []).map(t => ({
+          tag_id: t.tags?.tag_id || t.tag_id,
+          name: t.tags?.name || 'Unknown'
+        }));
+
+        // Transform cities - nested object is under 'cities' key
+        const transformedCities = (citiesData || []).map(c => ({
+          city_id: c.cities?.city_id || c.city_id,
+          name: c.cities?.name,
+          country: c.cities?.country
+        })).filter(c => c.name);
+
+        // Transform contacts - nested object is under 'contacts' key
+        const transformedContacts = (contactsData || []).map(c => ({
+          contact_id: c.contacts?.contact_id || c.contact_id,
+          is_primary: c.is_primary,
+          relationship: c.relationship,
+          first_name: c.contacts?.first_name,
+          last_name: c.contacts?.last_name,
+          job_role: c.contacts?.job_role,
+          profile_image_url: c.contacts?.profile_image_url
+        })).filter(c => c.first_name || c.last_name);
+
+        setRightPanelCompanyDetails({
+          company,
+          logoUrl,
+          domains: domains || [],
+          tags: transformedTags,
+          cities: transformedCities,
+          contacts: transformedContacts
+        });
+      } catch (err) {
+        console.error('Error fetching company details:', err);
+        setRightPanelCompanyDetails(null);
+      } finally {
+        setLoadingRightPanelCompany(false);
+      }
+    };
+
+    fetchCompanyDetails();
+  }, [selectedRightPanelCompanyId]);
+
+  // Compute available contacts for ContactSelector based on active tab
+  const availableRightPanelContacts = useMemo(() => {
+    // For email, whatsapp, calendar, deals - use emailContacts from contextContactsHook
+    if (['email', 'whatsapp', 'calendar', 'deals'].includes(activeTab)) {
+      return (emailContacts || [])
+        .filter(c => c.contact?.contact_id)
+        .map(c => ({
+          contact_id: c.contact.contact_id,
+          first_name: c.contact.first_name,
+          last_name: c.contact.last_name,
+          email: c.email || c.contact.email,
+          role: c.roles?.[0] || 'Contact',
+          completeness_score: c.contact.completeness_score || 0,
+          show_missing: c.contact.show_missing,
+          profile_image_url: c.contact.profile_image_url,
+        }));
+    }
+
+    // For introductions - use contacts from selected introduction (introducer + introducee)
+    if (activeTab === 'introductions' && selectedIntroductionItem?.contacts) {
+      return selectedIntroductionItem.contacts
+        .filter(c => c.contact_id)
+        .map(c => ({
+          contact_id: c.contact_id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email: null,
+          role: c.role || 'Contact', // 'introducer' or 'introducee'
+          completeness_score: c.completeness_score || 0,
+          show_missing: c.show_missing,
+          profile_image_url: c.profile_image_url,
+        }));
+    }
+
+    // For keepintouch - use selected contact from list
+    if (activeTab === 'keepintouch' && selectedKeepInTouchContact) {
+      return [{
+        contact_id: selectedKeepInTouchContact.contact_id,
+        first_name: selectedKeepInTouchContact.full_name?.split(' ')[0] || '',
+        last_name: selectedKeepInTouchContact.full_name?.split(' ').slice(1).join(' ') || '',
+        email: null,
+        role: 'Contact',
+        completeness_score: keepInTouchContactDetails?.completeness_score || 0,
+        show_missing: keepInTouchContactDetails?.show_missing,
+        profile_image_url: keepInTouchContactDetails?.profile_image_url,
+      }];
+    }
+
+    // For lists - use selected member from ListsTab
+    if (activeTab === 'lists' && selectedListMember) {
+      return [{
+        contact_id: selectedListMember.contact_id,
+        first_name: selectedListMember.first_name || '',
+        last_name: selectedListMember.last_name || '',
+        email: selectedListMember.email || null,
+        role: 'Contact',
+        completeness_score: selectedListMember.completeness_score || 0,
+        show_missing: selectedListMember.show_missing,
+        profile_image_url: selectedListMember.profile_image_url,
+      }];
+    }
+
+    // For notes - handled by its own component
+    return [];
+  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember]);
+
+  // Auto-select contact when available contacts change
+  // If only 1 contact, always select it; otherwise select first when none selected
+  useEffect(() => {
+    if (availableRightPanelContacts.length === 1) {
+      // Always auto-select if only one contact
+      setSelectedRightPanelContactId(availableRightPanelContacts[0].contact_id);
+    } else if (availableRightPanelContacts.length > 1 && !selectedRightPanelContactId) {
+      // Select first if multiple and none selected
+      setSelectedRightPanelContactId(availableRightPanelContacts[0].contact_id);
+    } else if (availableRightPanelContacts.length === 0) {
+      setSelectedRightPanelContactId(null);
+    }
+  }, [availableRightPanelContacts]);
 
   // Notes state
   const [contactNotes, setContactNotes] = useState([]);
@@ -1994,16 +2211,38 @@ internet businesses.`;
               .from('introduction_contacts')
               .select(`
                 role,
-                contact:contacts(contact_id, first_name, last_name, description, profile_image_url)
+                contact:contacts(contact_id, first_name, last_name, description, profile_image_url, show_missing)
               `)
               .eq('introduction_id', intro.introduction_id);
+
+            // Get contact IDs to fetch completeness scores
+            const contactIds = (introContacts || [])
+              .map(ic => ic.contact?.contact_id)
+              .filter(Boolean);
+
+            // Fetch completeness scores for all contacts
+            let completenessMap = {};
+            if (contactIds.length > 0) {
+              const { data: completenessData } = await supabase
+                .from('contact_completeness')
+                .select('contact_id, completeness_score')
+                .in('contact_id', contactIds);
+
+              if (completenessData) {
+                completenessData.forEach(c => {
+                  completenessMap[c.contact_id] = c.completeness_score;
+                });
+              }
+            }
 
             const contacts = (introContacts || []).map(ic => ({
               ...ic.contact,
               role: ic.role,
               name: `${ic.contact?.first_name || ''} ${ic.contact?.last_name || ''}`.trim(),
               description: ic.contact?.description || '',
-              profile_image_url: ic.contact?.profile_image_url || null
+              profile_image_url: ic.contact?.profile_image_url || null,
+              completeness_score: completenessMap[ic.contact?.contact_id] || 0,
+              show_missing: ic.contact?.show_missing
             }));
 
             return { ...intro, contacts };
@@ -3814,12 +4053,13 @@ internet businesses.`;
     setLoadingDataIntegrity(false);
   };
 
-  // Reload data integrity when tab becomes active or selection changes
+  // Reload data integrity when selection changes (for warning bar and data integrity tab)
+  // Fetch for email, whatsapp, calendar tabs since they can have data integrity issues
   useEffect(() => {
-    if (activeActionTab === 'dataIntegrity') {
+    if (['email', 'whatsapp', 'calendar'].includes(activeTab)) {
       fetchDataIntegrity();
     }
-  }, [activeActionTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent]);
+  }, [activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent]);
 
 
   // Handler for Add button on company - opens LinkToExisting modal first
@@ -11602,7 +11842,7 @@ internet businesses.`;
           ) : activeTab === 'notes' ? (
             <NotesFullTab theme={theme} />
           ) : activeTab === 'lists' ? (
-            <ListsTab theme={theme} profileImageModal={profileImageModal} />
+            <ListsTab theme={theme} profileImageModal={profileImageModal} onMemberSelect={setSelectedListMember} />
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
@@ -12166,81 +12406,89 @@ internet businesses.`;
         {/* Right: Actions Panel - Hidden for Notes and Lists tabs */}
         {activeTab !== 'notes' && activeTab !== 'lists' && (
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
-          <ActionsPanelTabs theme={theme} style={{ justifyContent: rightPanelCollapsed ? 'center' : 'center' }}>
-            <CollapseButton theme={theme} onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)} style={{ marginRight: rightPanelCollapsed ? 0 : '8px' }}>
-              {rightPanelCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
-            </CollapseButton>
-            {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && (
-              <>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details" style={{ position: 'relative' }}>
-                  <FaUser />
-                  {keepInTouchContactDetails?.completeness_score < 100 && (
-                    <span style={{
-                      position: 'absolute',
-                      top: '2px',
-                      right: '2px',
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      background: '#3B82F6',
-                      border: `2px solid ${theme === 'dark' ? '#1F2937' : '#FFFFFF'}`
-                    }} />
-                  )}
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitCompany'} onClick={() => setActiveActionTab('kitCompany')} title="Company Details" style={activeActionTab === 'kitCompany' ? { background: '#8B5CF6', color: 'white' } : {}}>
-                  <FaBuilding />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitWhatsapp'} onClick={() => setActiveActionTab('kitWhatsapp')} title="WhatsApp Chat" style={activeActionTab === 'kitWhatsapp' ? { background: '#22C55E', color: 'white' } : {}}>
-                  <FaWhatsapp />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitEmail'} onClick={() => setActiveActionTab('kitEmail')} title="Send Email" style={activeActionTab === 'kitEmail' ? { background: '#3B82F6', color: 'white' } : {}}>
-                  <FaEnvelope />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitChat'} onClick={() => setActiveActionTab('kitChat')} title="Chat with Claude" style={activeActionTab === 'kitChat' ? { background: '#8B5CF6', color: 'white' } : {}}>
-                  <FaRobot />
-                </ActionTabIcon>
-              </>
-            )}
-            {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && (
-              <>
-                <ActionTabIcon theme={theme} $active={introductionsActionTab === 'email'} onClick={() => setIntroductionsActionTab('email')} title="Email" style={introductionsActionTab === 'email' ? { background: '#3B82F6', color: 'white' } : {}}>
-                  <FaEnvelope />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={introductionsActionTab === 'whatsapp'} onClick={() => setIntroductionsActionTab('whatsapp')} title="WhatsApp" style={introductionsActionTab === 'whatsapp' ? { background: '#22C55E', color: 'white' } : {}}>
-                  <FaWhatsapp />
-                </ActionTabIcon>
-              </>
-            )}
-            {!rightPanelCollapsed && activeTab !== 'keepintouch' && activeTab !== 'introductions' && (
-              <>
-                {activeTab !== 'calendar' && (
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
-                    <FaRobot />
+          {/* Data Integrity Warning Bar - show only for email/whatsapp/calendar when not collapsed */}
+          {!rightPanelCollapsed && ['email', 'whatsapp', 'calendar'].includes(activeTab) && (
+            <DataIntegrityWarningBar
+              theme={theme}
+              navigate={navigate}
+              loadingDataIntegrity={loadingDataIntegrity}
+              notInCrmEmails={notInCrmEmails}
+              notInCrmDomains={notInCrmDomains}
+              notInCrmTab={notInCrmTab}
+              setNotInCrmTab={setNotInCrmTab}
+              holdContacts={holdContacts}
+              holdCompanies={holdCompanies}
+              holdTab={holdTab}
+              setHoldTab={setHoldTab}
+              incompleteContacts={incompleteContacts}
+              incompleteCompanies={incompleteCompanies}
+              completenessTab={completenessTab}
+              setCompletenessTab={setCompletenessTab}
+              duplicateContacts={duplicateContacts}
+              duplicateCompanies={duplicateCompanies}
+              duplicatesTab={duplicatesTab}
+              setDuplicatesTab={setDuplicatesTab}
+              missingCompanyLinks={missingCompanyLinks}
+              contactsMissingCompany={contactsMissingCompany}
+              expandedDataIntegrity={expandedDataIntegrity}
+              setExpandedDataIntegrity={setExpandedDataIntegrity}
+              handleOpenCreateContact={handleOpenCreateContact}
+              handleAddContactFromNotInCrm={handleAddContactFromNotInCrm}
+              handlePutOnHold={handlePutOnHold}
+              handleAddToSpam={handleAddToSpam}
+              handleAddCompanyFromDomain={handleAddCompanyFromDomain}
+              handleDomainAction={handleDomainAction}
+              handleAddFromHold={handleAddFromHold}
+              handleSpamFromHold={handleSpamFromHold}
+              handleAddCompanyFromHold={handleAddCompanyFromHold}
+              handleDeleteCompanyFromHold={handleDeleteCompanyFromHold}
+              handleConfirmMergeDuplicate={handleConfirmMergeDuplicate}
+              handleDismissDuplicate={handleDismissDuplicate}
+              handleLinkContactToCompany={handleLinkContactToCompany}
+              potentialCompanyMatches={potentialCompanyMatches}
+              handleLinkDomainToCompany={handleLinkDomainToCompany}
+              handleDismissPotentialMatch={handleDismissPotentialMatch}
+              handleLinkContactToCompanyByDomain={handleLinkContactToCompanyByDomain}
+              setDataIntegrityContactId={setDataIntegrityContactId}
+              setDataIntegrityModalOpen={setDataIntegrityModalOpen}
+              setCompanyDataIntegrityCompanyId={setCompanyDataIntegrityCompanyId}
+              setCompanyDataIntegrityModalOpen={setCompanyDataIntegrityModalOpen}
+              suggestionsFromMessage={suggestionsFromMessage}
+            />
+          )}
+          {/* Contact Selector Dropdown - show only when not collapsed and has contacts */}
+          {!rightPanelCollapsed && availableRightPanelContacts.length > 0 && (
+            <div style={{ padding: '8px 12px 0 12px' }}>
+              <ContactSelector
+                contacts={availableRightPanelContacts}
+                selectedContactId={selectedRightPanelContactId}
+                onSelect={setSelectedRightPanelContactId}
+                onAddNew={() => setCreateContactModalOpen(true)}
+                theme={theme}
+              />
+            </div>
+          )}
+          {/* Right Panel Content with Vertical Navigation */}
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            {/* Vertical Navigation Sidebar */}
+            <RightPanelVerticalNav theme={theme}>
+              <CollapseButton theme={theme} onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}>
+                {rightPanelCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
+              </CollapseButton>
+              {!rightPanelCollapsed && activeTab !== 'notes' && (
+                <>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details">
+                    <FaUser />
                   </ActionTabIcon>
-                )}
-                {activeTab !== 'deals' && activeTab !== 'calendar' && (
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
-                    <FaDatabase />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'company'} onClick={() => setActiveActionTab('company')} title="Company Details">
+                    <FaBuilding />
                   </ActionTabIcon>
-                )}
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="CRM">
-                  <FaUser />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals">
-                  <FaDollarSign />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions">
-                  <FaHandshake />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks">
-                  <FaTasks />
-                </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes">
-                  <FaStickyNote />
-                </ActionTabIcon>
-              </>
-            )}
-          </ActionsPanelTabs>
+                </>
+              )}
+            </RightPanelVerticalNav>
+
+            {/* Content Area */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
           {/* Keep in Touch - Contact Details Panel */}
           {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && keepInTouchContactDetails && activeActionTab === 'crm' && (
@@ -13838,30 +14086,49 @@ internet businesses.`;
                 />
               )}
 
-              {activeActionTab === 'crm' && (
-                <CRMTab
+              {activeActionTab === 'crm' && selectedRightPanelContactId && (
+                <ContactDetailsTab
                   theme={theme}
-                  navigate={navigate}
-                  activeTab={activeTab}
-                  crmSubTab={crmSubTab}
-                  setCrmSubTab={setCrmSubTab}
-                  emailContacts={emailContacts}
-                  emailCompanies={emailCompanies}
-                  holdContacts={holdContacts}
-                  profileImageModal={profileImageModal}
-                  setDataIntegrityContactId={setDataIntegrityContactId}
-                  setDataIntegrityModalOpen={setDataIntegrityModalOpen}
-                  handleOpenCreateContact={handleOpenCreateContact}
-                  handleAddContactFromNotInCrm={handleAddContactFromNotInCrm}
-                  handlePutOnHold={handlePutOnHold}
-                  handleAddToSpam={handleAddToSpam}
-                  setCompanyDataIntegrityCompanyId={setCompanyDataIntegrityCompanyId}
-                  setCompanyDataIntegrityModalOpen={setCompanyDataIntegrityModalOpen}
-                  onAddNewContact={() => {
-                    setCreateContactEmail({ email: '', name: '', subject: '', body_text: '' });
-                    setCreateContactModalOpen(true);
+                  contact={rightPanelContactDetails?.contact}
+                  emails={rightPanelContactDetails?.emails || []}
+                  mobiles={rightPanelContactDetails?.mobiles || []}
+                  companies={rightPanelContactDetails?.companies || []}
+                  tags={rightPanelContactDetails?.tags || []}
+                  cities={rightPanelContactDetails?.cities || []}
+                  completenessScore={rightPanelContactDetails?.completenessScore}
+                  loading={rightPanelContactDetails?.loading}
+                  editable={false}
+                  onCompanyClick={(companyId) => navigate(`/companies/${companyId}`)}
+                  onEdit={() => {
+                    if (rightPanelContactDetails?.contact?.contact_id) {
+                      setDataIntegrityContactId(rightPanelContactDetails.contact.contact_id);
+                      setDataIntegrityModalOpen(true);
+                    }
                   }}
-                  onAddNewCompany={() => setSearchOrCreateCompanyModalOpen(true)}
+                  onEnrich={() => {
+                    if (rightPanelContactDetails?.contact) {
+                      setSelectedKeepInTouchContact(rightPanelContactDetails.contact);
+                      setKitEnrichmentModalOpen(true);
+                    }
+                  }}
+                />
+              )}
+              {activeActionTab === 'company' && selectedRightPanelContactId && (
+                <CompanyDetailsTab
+                  theme={theme}
+                  companies={rightPanelContactDetails?.companies || []}
+                  selectedCompanyId={selectedRightPanelCompanyId}
+                  onSelectCompany={setSelectedRightPanelCompanyId}
+                  companyDetails={rightPanelCompanyDetails?.company}
+                  companyLogo={rightPanelCompanyDetails?.logoUrl}
+                  companyDomains={rightPanelCompanyDetails?.domains || []}
+                  companyTags={rightPanelCompanyDetails?.tags || []}
+                  companyCities={rightPanelCompanyDetails?.cities || []}
+                  companyContacts={rightPanelCompanyDetails?.contacts || []}
+                  editable={false}
+                  loading={loadingRightPanelCompany || rightPanelContactDetails?.loading}
+                  onCompanyNavigate={(companyId) => navigate(`/companies/${companyId}`)}
+                  onContactClick={(contactId) => navigate(`/contacts/${contactId}`)}
                 />
               )}
               {activeActionTab === 'deals' && (
@@ -13920,6 +14187,8 @@ internet businesses.`;
 
             </>
           )}
+            </div>
+          </div>
         </ActionsPanel>
         )}
       </MainContent>

@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   FaRocket, FaEnvelope, FaWhatsapp, FaBuilding, FaTag,
-  FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt
+  FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt, FaChevronDown, FaChevronUp
 } from 'react-icons/fa';
 
 // Contact category options
@@ -52,8 +52,11 @@ const ContactDetailsTab = ({
   onManageCities,
   onCompanyClick,
   loading = false,
-  completenessScore
+  completenessScore,
+  onEdit
 }) => {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+
   if (loading) {
     return (
       <div style={{
@@ -186,20 +189,52 @@ const ContactDetailsTab = ({
         </button>
       )}
 
-      {/* Read-only mode: Category & Score badges */}
+      {/* Read-only mode: Action buttons on the left */}
       {!editable && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-          <span style={badgeStyle}>
-            {contact.category || 'No category'}
-          </span>
-          {contact.score && (
-            <span style={{
-              ...badgeStyle,
-              background: theme === 'dark' ? '#7C3AED' : '#EDE9FE',
-              color: theme === 'dark' ? '#F3E8FF' : '#6D28D9'
-            }}>
-              ⭐ {contact.score}
-            </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+          {onEnrich && (
+            <button
+              onClick={onEnrich}
+              title="Enrich with Apollo"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                color: '#FFFFFF',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaRocket size={9} />
+              Enrich
+            </button>
+          )}
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              title="Edit contact"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaEdit size={9} />
+              Edit
+            </button>
           )}
         </div>
       )}
@@ -314,37 +349,134 @@ const ContactDetailsTab = ({
           </>
         ) : (
           <>
-            {/* Read-only: Job Role */}
-            {contact.job_role && (
-              <div style={{ marginBottom: '8px' }}>
-                <div style={labelStyle}>Role</div>
-                <div style={{ fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                  {contact.job_role}
-                </div>
-              </div>
-            )}
-
-            {/* Read-only: LinkedIn */}
-            {contact.linkedin && (
-              <div>
-                <div style={labelStyle}>LinkedIn</div>
-                <a
-                  href={contact.linkedin.startsWith('http') ? contact.linkedin : `https://${contact.linkedin}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    fontSize: '12px',
-                    color: '#3B82F6',
+            {/* Read-only: 2-column layout with image and info */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+              {/* Left column: Profile Image */}
+              <div style={{ flexShrink: 0 }}>
+                {contact.profile_image_url ? (
+                  <img
+                    src={contact.profile_image_url}
+                    alt={`${contact.first_name || ''} ${contact.last_name || ''}`}
+                    style={{
+                      width: '64px',
+                      height: '64px',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: `2px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '50%',
+                    background: theme === 'dark' ? '#374151' : '#E5E7EB',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <FaLinkedin size={12} />
-                  View Profile
-                </a>
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
+                  }}>
+                    {(contact.first_name?.[0] || '').toUpperCase()}{(contact.last_name?.[0] || '').toUpperCase()}
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Right column: Role, Company & LinkedIn */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {(contact.job_role || companies.length > 0) && (
+                  <div style={{ marginBottom: '6px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 500, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                      {contact.job_role}
+                      {contact.job_role && companies.length > 0 && ' @ '}
+                      {companies.length > 0 && (
+                        <span style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                          {(companies.find(c => c.is_primary) || companies[0])?.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {contact.linkedin && (
+                  <a
+                    href={contact.linkedin.startsWith('http') ? contact.linkedin : `https://${contact.linkedin}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: '12px',
+                      color: '#3B82F6',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <FaLinkedin size={12} />
+                    LinkedIn
+                  </a>
+                )}
+                {!contact.job_role && !contact.linkedin && !contact.description && (
+                  <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
+                    No additional info
+                  </div>
+                )}
+                {/* About (Description) - Expandable */}
+                {contact.description && (
+                  <div style={{ marginTop: '6px' }}>
+                    <div
+                      onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                        marginBottom: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      About
+                      {descriptionExpanded ? <FaChevronUp size={8} /> : <FaChevronDown size={8} />}
+                    </div>
+                    <div
+                      onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                      style={{
+                        fontSize: '12px',
+                        color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                        lineHeight: '1.4',
+                        cursor: 'pointer',
+                        ...(!descriptionExpanded && {
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        })
+                      }}
+                    >
+                      {contact.description}
+                    </div>
+                  </div>
+                )}
+                {/* Category & Score badges below LinkedIn */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                  <span style={badgeStyle}>
+                    {contact.category || 'No category'}
+                  </span>
+                  {contact.score && (
+                    <span style={{
+                      ...badgeStyle,
+                      background: theme === 'dark' ? '#7C3AED' : '#EDE9FE',
+                      color: theme === 'dark' ? '#F3E8FF' : '#6D28D9'
+                    }}>
+                      ⭐ {contact.score}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+            </div>
           </>
         )}
       </div>
@@ -443,12 +575,12 @@ const ContactDetailsTab = ({
                 key={cc.contact_companies_id || idx}
                 style={{
                   ...itemRowStyle,
-                  cursor: onCompanyClick && cc.company?.company_id ? 'pointer' : 'default'
+                  cursor: onCompanyClick && cc.company_id ? 'pointer' : 'default'
                 }}
-                onClick={() => onCompanyClick && cc.company?.company_id && onCompanyClick(cc.company.company_id)}
+                onClick={() => onCompanyClick && cc.company_id && onCompanyClick(cc.company_id)}
               >
                 <span style={{ flex: 1, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                  {cc.company?.name || cc.companies?.name || 'Unknown'}
+                  {cc.name || cc.company?.name || cc.companies?.name || 'Unknown'}
                 </span>
                 {cc.is_primary && (
                   <span style={{ fontSize: '10px', padding: '1px 4px', background: '#8B5CF6', color: 'white', borderRadius: '3px' }}>
@@ -503,7 +635,7 @@ const ContactDetailsTab = ({
                     color: theme === 'dark' ? '#F9FAFB' : '#111827'
                   }}
                 >
-                  {t.tags?.name || 'Unknown'}
+                  {t.name || t.tags?.name || 'Unknown'}
                 </span>
               ))}
             </div>
@@ -543,7 +675,7 @@ const ContactDetailsTab = ({
                     color: theme === 'dark' ? '#F9FAFB' : '#111827'
                   }}
                 >
-                  {c.cities?.name}{c.cities?.country ? `, ${c.cities.country}` : ''}
+                  {c.name || c.cities?.name}{(c.country || c.cities?.country) ? `, ${c.country || c.cities?.country}` : ''}
                 </span>
               ))}
             </div>
@@ -572,52 +704,6 @@ const ContactDetailsTab = ({
         )}
       </div>
 
-      {/* Description Section */}
-      <div style={{
-        ...sectionStyle,
-        marginBottom: 0,
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
-        <div style={sectionTitleStyle}>Description</div>
-        {editable ? (
-          <textarea
-            value={contact.description || ''}
-            onChange={(e) => onUpdateField?.('description', e.target.value)}
-            placeholder="Add notes about this contact..."
-            style={{
-              flex: 1,
-              minHeight: '120px',
-              padding: '10px',
-              fontSize: '13px',
-              border: `1px solid ${theme === 'dark' ? '#374151' : '#D1D5DB'}`,
-              borderRadius: '6px',
-              background: theme === 'dark' ? '#111827' : '#FFFFFF',
-              color: theme === 'dark' ? '#F9FAFB' : '#111827',
-              resize: 'none',
-              outline: 'none',
-              fontFamily: 'inherit',
-              lineHeight: '1.5'
-            }}
-          />
-        ) : (
-          contact.description ? (
-            <div style={{
-              fontSize: '12px',
-              color: theme === 'dark' ? '#D1D5DB' : '#374151',
-              lineHeight: 1.5,
-              whiteSpace: 'pre-wrap'
-            }}>
-              {contact.description}
-            </div>
-          ) : (
-            <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
-              No description
-            </div>
-          )
-        )}
-      </div>
     </div>
   );
 };

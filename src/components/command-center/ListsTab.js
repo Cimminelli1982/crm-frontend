@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import WhatsAppChatTab from './WhatsAppChatTab';
 import SendEmailTab from './SendEmailTab';
 
-const ListsTab = ({ theme, profileImageModal }) => {
+const ListsTab = ({ theme, profileImageModal, onMemberSelect }) => {
   // Lists state
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +25,25 @@ const ListsTab = ({ theme, profileImageModal }) => {
   // Selected member state (for right panel)
   const [selectedMember, setSelectedMember] = useState(null);
   const [activeRightTab, setActiveRightTab] = useState('contact'); // contact, company, whatsapp, email, chat
+
+  // Notify parent when member selection changes (flatten structure for ContactSelector)
+  useEffect(() => {
+    if (onMemberSelect) {
+      if (selectedMember) {
+        onMemberSelect({
+          contact_id: selectedMember.contact_id,
+          first_name: selectedMember.contacts?.first_name || '',
+          last_name: selectedMember.contacts?.last_name || '',
+          email: selectedMember.contact_emails?.email || null,
+          profile_image_url: selectedMember.contacts?.profile_image_url || null,
+          show_missing: selectedMember.contacts?.show_missing,
+          completeness_score: selectedMember.completeness_score || 0,
+        });
+      } else {
+        onMemberSelect(null);
+      }
+    }
+  }, [selectedMember, onMemberSelect]);
   const [memberDetails, setMemberDetails] = useState(null);
   const [memberEmails, setMemberEmails] = useState([]);
   const [memberMobiles, setMemberMobiles] = useState([]);
@@ -103,7 +122,8 @@ const ListsTab = ({ theme, profileImageModal }) => {
             contact_id,
             first_name,
             last_name,
-            profile_image_url
+            profile_image_url,
+            show_missing
           ),
           email_id,
           contact_emails (
@@ -115,7 +135,30 @@ const ListsTab = ({ theme, profileImageModal }) => {
         .order('added_at', { ascending: false });
 
       if (error) throw error;
-      setMembers(data || []);
+
+      // Fetch completeness scores for all contacts
+      const contactIds = (data || []).map(m => m.contact_id).filter(Boolean);
+      let completenessMap = {};
+      if (contactIds.length > 0) {
+        const { data: completenessData } = await supabase
+          .from('contact_completeness')
+          .select('contact_id, completeness_score')
+          .in('contact_id', contactIds);
+
+        if (completenessData) {
+          completenessData.forEach(c => {
+            completenessMap[c.contact_id] = c.completeness_score;
+          });
+        }
+      }
+
+      // Merge completeness scores into members
+      const membersWithCompleteness = (data || []).map(m => ({
+        ...m,
+        completeness_score: completenessMap[m.contact_id] || 0
+      }));
+
+      setMembers(membersWithCompleteness);
     } catch (error) {
       console.error('Error fetching members:', error);
       toast.error('Failed to load members');

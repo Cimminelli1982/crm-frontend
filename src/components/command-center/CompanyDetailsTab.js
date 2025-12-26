@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   FaRocket, FaBuilding, FaLinkedin, FaGlobe, FaTag,
-  FaMapMarkerAlt, FaUsers
+  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp
 } from 'react-icons/fa';
 
 // Company category options
@@ -49,6 +49,8 @@ const CompanyDetailsTab = ({
   onCompanyNavigate,
   loading = false
 }) => {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+
   // Styles
   const sectionStyle = {
     background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
@@ -141,13 +143,16 @@ const CompanyDetailsTab = ({
     return (
       <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
         {companies.map((cc, idx) => {
-          const company = cc.company || cc.companies;
-          if (!company) return null;
+          // Handle both flattened and nested data structures
+          const companyName = cc.name || cc.company?.name || cc.companies?.name;
+          const companyId = cc.company_id || cc.company?.company_id || cc.companies?.company_id;
+          const companyCategory = cc.category || cc.company?.category || cc.companies?.category;
+          if (!companyName && !companyId) return null;
 
           return (
             <div
               key={cc.contact_companies_id || idx}
-              onClick={() => onCompanyNavigate && onCompanyNavigate(company.company_id)}
+              onClick={() => onCompanyNavigate && companyId && onCompanyNavigate(companyId)}
               style={{
                 padding: '12px',
                 background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
@@ -175,14 +180,14 @@ const CompanyDetailsTab = ({
                     fontWeight: 600,
                     color: theme === 'dark' ? '#F9FAFB' : '#111827'
                   }}>
-                    {company.name}
+                    {companyName}
                   </div>
-                  {company.category && company.category !== 'Not Set' && (
+                  {companyCategory && companyCategory !== 'Not Set' && (
                     <div style={{
                       fontSize: '12px',
                       color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
                     }}>
-                      {company.category}
+                      {companyCategory}
                     </div>
                   )}
                 </div>
@@ -236,10 +241,12 @@ const CompanyDetailsTab = ({
             }}
           >
             {companies.map(cc => {
-              const company = cc.company || cc.companies;
+              // Handle both flattened (from useContactDetails) and nested data structures
+              const companyName = cc.name || cc.company?.name || cc.companies?.name || 'Unknown Company';
+              const companyId = cc.company_id || cc.company?.company_id || cc.companies?.company_id;
               return (
-                <option key={cc.company_id || company?.company_id} value={cc.company_id || company?.company_id}>
-                  {company?.name || 'Unknown Company'} {cc.is_primary ? '(Primary)' : ''}
+                <option key={companyId} value={companyId}>
+                  {companyName} {cc.is_primary ? '(Primary)' : ''}
                 </option>
               );
             })}
@@ -440,9 +447,24 @@ const CompanyDetailsTab = ({
             )}
           </div>
 
-          {/* Description */}
+          {/* Description - Expandable */}
           <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>Description</div>
+            <div
+              onClick={() => !editable && setDescriptionExpanded(!descriptionExpanded)}
+              style={{
+                ...sectionTitleStyle,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: editable ? 'default' : 'pointer',
+                marginBottom: '8px'
+              }}
+            >
+              Description
+              {!editable && companyDetails?.description && (
+                descriptionExpanded ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />
+              )}
+            </div>
             {editable ? (
               <textarea
                 value={companyDetails.description || ''}
@@ -463,12 +485,22 @@ const CompanyDetailsTab = ({
               />
             ) : (
               companyDetails.description ? (
-                <div style={{
-                  fontSize: '12px',
-                  color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap'
-                }}>
+                <div
+                  onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                  style={{
+                    fontSize: '12px',
+                    color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                    lineHeight: 1.5,
+                    cursor: 'pointer',
+                    ...(!descriptionExpanded && {
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    })
+                  }}
+                >
                   {companyDetails.description}
                 </div>
               ) : (
@@ -521,16 +553,16 @@ const CompanyDetailsTab = ({
                   No tags
                 </span>
               ) : (
-                companyTags.map(t => (
+                companyTags.map((t, idx) => (
                   <span
-                    key={t.entry_id}
+                    key={t.tag_id || idx}
                     style={{
                       ...tagStyle,
                       background: theme === 'dark' ? '#4B5563' : '#DBEAFE',
                       color: theme === 'dark' ? '#93C5FD' : '#1D4ED8'
                     }}
                   >
-                    {t.tags?.name || 'Unknown'}
+                    {t.name || t.tags?.name || 'Unknown'}
                   </span>
                 ))
               )}
@@ -549,16 +581,16 @@ const CompanyDetailsTab = ({
                   No cities
                 </span>
               ) : (
-                companyCities.map(c => (
+                companyCities.map((c, idx) => (
                   <span
-                    key={c.entry_id}
+                    key={c.city_id || idx}
                     style={{
                       ...tagStyle,
                       background: theme === 'dark' ? '#374151' : '#FEF3C7',
                       color: theme === 'dark' ? '#FCD34D' : '#92400E'
                     }}
                   >
-                    {c.cities?.name || 'Unknown'}{c.cities?.country ? `, ${c.cities.country}` : ''}
+                    {c.name || c.cities?.name || 'Unknown'}{(c.country || c.cities?.country) ? `, ${c.country || c.cities?.country}` : ''}
                   </span>
                 ))
               )}
@@ -577,12 +609,18 @@ const CompanyDetailsTab = ({
                   No contacts linked
                 </span>
               ) : (
-                companyContacts.map(cc => {
-                  const contact = cc.contact || cc.contacts;
+                companyContacts.map((cc, idx) => {
+                  // Handle both flattened (from transformation) and nested (cc.contacts) data
+                  const firstName = cc.first_name || cc.contacts?.first_name;
+                  const lastName = cc.last_name || cc.contacts?.last_name;
+                  const jobRole = cc.job_role || cc.contacts?.job_role;
+                  const profileImage = cc.profile_image_url || cc.contacts?.profile_image_url;
+                  const contactId = cc.contact_id || cc.contacts?.contact_id;
+
                   return (
                     <div
-                      key={cc.contact_id || contact?.contact_id}
-                      onClick={() => onContactClick && onContactClick(cc.contact_id || contact?.contact_id)}
+                      key={contactId || idx}
+                      onClick={() => onContactClick && onContactClick(contactId)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -595,9 +633,9 @@ const CompanyDetailsTab = ({
                         border: `1px solid ${theme === 'dark' ? '#4B5563' : '#E5E7EB'}`
                       }}
                     >
-                      {contact?.profile_image_url ? (
+                      {profileImage ? (
                         <img
-                          src={contact.profile_image_url}
+                          src={profileImage}
                           alt=""
                           style={{
                             width: '32px',
@@ -619,7 +657,7 @@ const CompanyDetailsTab = ({
                           fontWeight: 600,
                           color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
                         }}>
-                          {(contact?.first_name?.[0] || '') + (contact?.last_name?.[0] || '')}
+                          {(firstName?.[0] || '') + (lastName?.[0] || '')}
                         </div>
                       )}
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -631,9 +669,9 @@ const CompanyDetailsTab = ({
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap'
                         }}>
-                          {contact?.first_name} {contact?.last_name}
+                          {firstName} {lastName}
                         </div>
-                        {contact?.job_role && (
+                        {jobRole && (
                           <div style={{
                             fontSize: '11px',
                             color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
@@ -641,7 +679,7 @@ const CompanyDetailsTab = ({
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap'
                           }}>
-                            {contact.job_role}
+                            {jobRole}
                           </div>
                         )}
                       </div>
