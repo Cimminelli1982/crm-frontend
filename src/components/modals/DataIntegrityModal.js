@@ -1379,17 +1379,23 @@ const DataIntegrityModal = ({
     if (isOpen && contactId) {
       loadContactData();
     }
-    // Reset initial missing fields when modal closes
+    // Reset state when modal closes
     if (!isOpen) {
       setInitialMissingFieldKeys(new Set());
+      setShowAllFields(false);
     }
   }, [isOpen, contactId, loadContactData]);
 
   // Capture initially missing fields after data loads (so fields don't disappear when typing)
+  // Also set showAllFields to true when contact is 100% complete
   useEffect(() => {
     if (isOpen && completenessData && !loading && initialMissingFieldKeys.size === 0) {
       const missing = getMissingFields();
       setInitialMissingFieldKeys(new Set(missing.map(f => f.key)));
+      // If no missing fields (100% complete), show all fields by default
+      if (missing.length === 0) {
+        setShowAllFields(true);
+      }
     }
   }, [isOpen, completenessData, loading]);
 
@@ -2345,22 +2351,21 @@ const DataIntegrityModal = ({
                 )}
               </Section>
 
-              {/* Edit Fields */}
-              {(initialMissingFieldKeys.size > 0 || showAllFields) && (
-                <Section>
-                  <SectionTitle theme={theme}>
-                    <FaEdit />
-                    {showAllFields ? 'Edit All Fields' : 'Fill Missing Fields'}
-                  </SectionTitle>
+              {/* Edit Fields - Always show this section */}
+              <Section>
+                <SectionTitle theme={theme}>
+                  <FaEdit />
+                  {showAllFields ? 'Edit All Fields' : (initialMissingFieldKeys.size > 0 ? 'Fill Missing Fields' : 'Edit Fields')}
+                </SectionTitle>
 
-                  <ToggleContainer>
-                    <ToggleSwitch
-                      theme={theme}
-                      isOn={showAllFields}
-                      onClick={() => setShowAllFields(!showAllFields)}
-                    />
-                    <ToggleLabel theme={theme}>Show all fields</ToggleLabel>
-                  </ToggleContainer>
+                <ToggleContainer>
+                  <ToggleSwitch
+                    theme={theme}
+                    isOn={showAllFields}
+                    onClick={() => setShowAllFields(!showAllFields)}
+                  />
+                  <ToggleLabel theme={theme}>Show all fields</ToggleLabel>
+                </ToggleContainer>
 
                   {/* First Name */}
                   {(showAllFields || initialMissingFieldKeys.has('firstName')) && (
@@ -2595,7 +2600,6 @@ const DataIntegrityModal = ({
                     </FormGroup>
                   )}
                 </Section>
-              )}
 
               {/* Duplicates Section */}
               {duplicates.length > 0 && (

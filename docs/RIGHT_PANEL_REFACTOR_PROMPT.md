@@ -253,6 +253,69 @@ Creare `/src/components/command-center/UniversalRightPanel.js`:
 
 ---
 
+### 2b. Dropdown Secondario Contestuale
+
+Sotto le icone tabs, appare un **dropdown secondario** contestuale quando:
+
+```
+┌─────────────────────────────────────────┐
+│ [Dropdown Contatto]                      │  ← ContactSelector
+├─────────────────────────────────────────┤
+│ 👤 🏢 🤖 📊 ➕ 💬 📧 🔔 📝 📋           │  ← TabBar
+├─────────────────────────────────────────┤
+│ [Dropdown Secondario]                    │  ← SecondarySelector (contestuale)
+├─────────────────────────────────────────┤
+│  Tab Content                             │
+└─────────────────────────────────────────┘
+```
+
+**Quando appare il dropdown secondario:**
+
+| Tab Attiva | Dropdown Secondario | Condizione |
+|------------|---------------------|------------|
+| 🏢 Company | Lista companies | contatto ha 2+ companies |
+| 💬 WhatsApp | Lista chat | contatto ha 2+ chat WhatsApp |
+| 🤝 Intro (se aggiunta) | Lista introductions | contatto in 2+ intro |
+| 📝 Notes | Lista notes | contatto ha 2+ notes linkate |
+| 💰 Deals | Lista deals | contatto in 2+ deals |
+| 📋 Lists | Lista email lists | contatto in 2+ liste |
+
+**Query aggiuntive per secondary dropdown:**
+```sql
+-- WhatsApp chats per contatto
+SELECT c.id, c.chat_name, c.is_group
+FROM chats c
+JOIN contact_chats cc ON c.id = cc.chat_id
+WHERE cc.contact_id = $1
+
+-- Introductions per contatto
+SELECT i.introduction_id, i.introduction_date, i.status,
+       ic.role
+FROM introductions i
+JOIN introduction_contacts ic ON i.introduction_id = ic.introduction_id
+WHERE ic.contact_id = $1
+
+-- Notes per contatto
+SELECT n.note_id, n.title, n.created_at
+FROM notes n
+JOIN notes_contacts nc ON n.note_id = nc.note_id
+WHERE nc.contact_id = $1
+
+-- Deals per contatto
+SELECT d.deal_id, d.opportunity, d.stage
+FROM deals d
+JOIN deals_contacts dc ON d.deal_id = dc.deal_id
+WHERE dc.contact_id = $1
+
+-- Lists per contatto
+SELECT l.list_id, l.name
+FROM lists l
+JOIN list_members lm ON l.list_id = lm.list_id
+WHERE lm.contact_id = $1
+```
+
+---
+
 ### 3. Nuovo Componente: `ContactSelector` (Dropdown)
 
 Creare `/src/components/command-center/ContactSelector.js`:

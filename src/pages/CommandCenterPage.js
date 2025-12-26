@@ -138,6 +138,7 @@ import ContactSelector from '../components/command-center/ContactSelector';
 import DataIntegrityWarningBar from '../components/command-center/DataIntegrityWarningBar';
 import ContactDetailsTab from '../components/command-center/ContactDetailsTab';
 import CompanyDetailsTab from '../components/command-center/CompanyDetailsTab';
+import RightPanelWhatsAppTab from '../components/command-center/RightPanelWhatsAppTab';
 import useContactDetails from '../hooks/useContactDetails';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
@@ -12483,6 +12484,9 @@ internet businesses.`;
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'company'} onClick={() => setActiveActionTab('company')} title="Company Details">
                     <FaBuilding />
                   </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'whatsapp'} onClick={() => setActiveActionTab('whatsapp')} title="WhatsApp Chat" style={{ color: activeActionTab === 'whatsapp' ? '#22C55E' : undefined }}>
+                    <FaWhatsapp />
+                  </ActionTabIcon>
                 </>
               )}
             </RightPanelVerticalNav>
@@ -14129,6 +14133,19 @@ internet businesses.`;
                   loading={loadingRightPanelCompany || rightPanelContactDetails?.loading}
                   onCompanyNavigate={(companyId) => navigate(`/companies/${companyId}`)}
                   onContactClick={(contactId) => navigate(`/contacts/${contactId}`)}
+                />
+              )}
+              {activeActionTab === 'whatsapp' && (
+                <RightPanelWhatsAppTab
+                  theme={theme}
+                  contactId={selectedRightPanelContactId}
+                  mobiles={rightPanelContactDetails?.mobiles || []}
+                  onMessageSent={(contactId) => {
+                    // Refresh contact details after message sent
+                    if (contactId) {
+                      toast.success('Message sent!');
+                    }
+                  }}
                 />
               )}
               {activeActionTab === 'deals' && (
