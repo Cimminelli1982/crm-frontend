@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
-import { FaBuilding, FaPlus } from 'react-icons/fa';
 
 // Styled Components
 const ModalHeader = styled.div`
@@ -60,80 +59,70 @@ const SectionTitle = styled.h4`
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const ListTypeLabel = styled.span`
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: ${props => props.listType === 'static'
+    ? (props.theme === 'light' ? '#DBEAFE' : '#1E3A8A')
+    : (props.theme === 'light' ? '#FEF3C7' : '#78350F')};
+  color: ${props => props.listType === 'static'
+    ? (props.theme === 'light' ? '#1D4ED8' : '#93C5FD')
+    : (props.theme === 'light' ? '#92400E' : '#FDE68A')};
 `;
 
 const ItemsList = styled.div`
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
   min-height: 32px;
 `;
 
-const CompanyItem = styled.div`
-  display: flex;
+const ItemTag = styled.div`
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
-  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  border-radius: 8px;
-`;
+  padding: 6px 12px;
+  background: ${props => props.theme === 'light' ? '#DBEAFE' : '#1E3A8A'};
+  color: ${props => props.theme === 'light' ? '#1D4ED8' : '#93C5FD'};
+  border: 1px solid ${props => props.theme === 'light' ? '#93C5FD' : '#3B82F6'};
+  border-radius: 20px;
+  font-size: 0.875rem;
+  gap: 8px;
+  max-width: 250px;
 
-const CompanyInfo = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-`;
-
-const CompanyIcon = styled.div`
-  color: #3B82F6;
-  display: flex;
-  align-items: center;
-`;
-
-const CompanyName = styled.span`
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const CompanyCategory = styled.span`
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  font-size: 0.75rem;
-  margin-left: 8px;
-`;
-
-const PrimaryBadge = styled.span`
-  background: #10B981;
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  margin-left: 8px;
+  span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
 `;
 
 const RemoveButton = styled.button`
   background: none;
   border: none;
-  padding: 6px;
+  padding: 2px;
   cursor: pointer;
   color: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   font-size: 14px;
   transition: all 0.2s ease;
 
   &:hover {
     background: ${props => props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+    transform: scale(1.1);
   }
 
   &:disabled {
@@ -175,7 +164,7 @@ const SearchInput = styled.input`
 const SuggestionsContainer = styled.div`
   border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
   border-radius: 8px;
-  max-height: 200px;
+  max-height: 250px;
   overflow-y: auto;
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -191,6 +180,9 @@ const SuggestionItem = styled.button`
   font-size: 0.875rem;
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 
   &:hover {
     background: ${props => props.theme === 'light' ? '#F3F4F6' : '#4B5563'};
@@ -206,6 +198,21 @@ const SuggestionItem = styled.button`
   }
 `;
 
+const SuggestionInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`;
+
+const SuggestionName = styled.span`
+  font-weight: 500;
+`;
+
+const SuggestionDescription = styled.span`
+  font-size: 0.75rem;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
 const NoResults = styled.div`
   padding: 12px;
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
@@ -218,7 +225,7 @@ const CreateButton = styled.button`
   text-align: left;
   padding: 12px;
   border: none;
-  background: ${props => props.theme === 'light' ? '#F0FDF4' : '#064E3B'};
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#4B5563'};
   cursor: pointer;
   font-size: 0.875rem;
   color: ${props => props.theme === 'light' ? '#059669' : '#10B981'};
@@ -229,7 +236,7 @@ const CreateButton = styled.button`
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
 
   &:hover {
-    background: ${props => props.theme === 'light' ? '#DCFCE7' : '#065F46'};
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#6B7280'};
   }
 
   &:disabled {
@@ -288,202 +295,192 @@ const DoneButton = styled.button`
   }
 `;
 
-const ManageContactCompaniesModal = ({
+const InfoText = styled.p`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 0.75rem;
+  margin: 0 0 12px 0;
+  font-style: italic;
+`;
+
+const ManageContactListsModal = ({
   isOpen,
   onClose,
   contact,
   theme = 'dark',
-  onCompaniesUpdated
+  onListsUpdated
 }) => {
-  const [contactCompanies, setContactCompanies] = useState([]);
+  const [contactLists, setContactLists] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Fetch contact's companies
-  const fetchContactCompanies = async () => {
+  // Fetch contact's lists (only static lists - can be manually added)
+  const fetchContactLists = async () => {
     if (!contact?.contact_id) return;
 
     try {
       const { data, error } = await supabase
-        .from('contact_companies')
-        .select('contact_companies_id, company_id, is_primary, relationship')
+        .from('email_list_members')
+        .select(`
+          list_member_id,
+          list_id,
+          email_lists (
+            list_id,
+            name,
+            description,
+            list_type
+          )
+        `)
         .eq('contact_id', contact.contact_id)
-        .order('is_primary', { ascending: false });
+        .eq('is_active', true);
 
       if (error) throw error;
-
-      if (data && data.length > 0) {
-        const companyIds = data.map(c => c.company_id);
-        const { data: companyDetails } = await supabase
-          .from('companies')
-          .select('company_id, name, category')
-          .in('company_id', companyIds);
-
-        const companiesWithDetails = data.map(cc => ({
-          ...cc,
-          company: companyDetails?.find(c => c.company_id === cc.company_id)
-        }));
-        setContactCompanies(companiesWithDetails);
-      } else {
-        setContactCompanies([]);
-      }
+      setContactLists(data || []);
     } catch (error) {
-      console.error('Error fetching contact companies:', error);
+      console.error('Error fetching contact lists:', error);
     }
   };
 
   useEffect(() => {
     if (isOpen && contact?.contact_id) {
-      fetchContactCompanies();
+      fetchContactLists();
+      setSearchTerm('');
+      setShowSuggestions(false);
+      setMessage({ type: '', text: '' });
     }
   }, [isOpen, contact?.contact_id]);
 
-  // Fetch company suggestions
-  const fetchCompanySuggestions = async (search) => {
+  // Fetch list suggestions (only static lists can be manually added)
+  const fetchListSuggestions = async (search) => {
     try {
-      if (search.length < 2) {
-        setSuggestions([]);
-        return;
+      let query = supabase
+        .from('email_lists')
+        .select('*')
+        .eq('is_active', true)
+        .eq('list_type', 'static') // Only static lists can be manually managed
+        .order('name');
+
+      if (search.length >= 2) {
+        query = query.ilike('name', `%${search}%`);
       }
 
-      const { data, error } = await supabase
-        .from('companies')
-        .select('company_id, name, category')
-        .ilike('name', `%${search}%`)
-        .limit(10);
+      const { data, error } = await query.limit(15);
 
       if (error) throw error;
 
-      // Filter out companies already connected
-      const filteredSuggestions = data.filter(company =>
-        !contactCompanies.some(cc => cc.company_id === company.company_id)
-      );
+      // Filter out lists already connected
+      const filteredSuggestions = data.filter(list => {
+        return !contactLists.some(membership => membership.list_id === list.list_id);
+      });
 
       setSuggestions(filteredSuggestions);
     } catch (error) {
-      console.error('Error fetching company suggestions:', error);
+      console.error('Error fetching list suggestions:', error);
     }
   };
 
   useEffect(() => {
-    if (searchTerm.length >= 2) {
-      const timeoutId = setTimeout(() => {
-        fetchCompanySuggestions(searchTerm);
-        setShowSuggestions(true);
-      }, 300);
-      return () => clearTimeout(timeoutId);
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
+    if (isOpen) {
+      fetchListSuggestions(searchTerm);
+      setShowSuggestions(true);
     }
-  }, [searchTerm, contactCompanies]);
+  }, [searchTerm, contactLists, isOpen]);
 
-  const handleAddCompany = async (companyToAdd) => {
+  const handleAddToList = async (listToAdd) => {
     try {
       setLoading(true);
 
       const { error } = await supabase
-        .from('contact_companies')
+        .from('email_list_members')
         .insert({
+          list_id: listToAdd.list_id,
           contact_id: contact.contact_id,
-          company_id: companyToAdd.company_id,
-          is_primary: contactCompanies.length === 0
+          added_by: 'User',
+          is_active: true
         });
 
       if (error) throw error;
 
-      await fetchContactCompanies();
-      if (onCompaniesUpdated) onCompaniesUpdated();
+      await fetchContactLists();
+      if (onListsUpdated) onListsUpdated();
       setSearchTerm('');
-      setShowSuggestions(false);
-      setMessage({ type: 'success', text: `Linked to ${companyToAdd.name}` });
+      setMessage({ type: 'success', text: `Added to "${listToAdd.name}"` });
     } catch (error) {
-      console.error('Error linking company:', error);
-      setMessage({ type: 'error', text: `Failed to link company: ${error.message}` });
+      console.error('Error adding to list:', error);
+      setMessage({ type: 'error', text: `Failed to add to list: ${error.message}` });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRemoveCompany = async (companyRelation) => {
+  const handleRemoveFromList = async (membership) => {
     try {
       setLoading(true);
 
+      // Check if this is a dynamic list - cannot remove from dynamic lists
+      if (membership.email_lists?.list_type === 'dynamic') {
+        setMessage({ type: 'error', text: 'Cannot remove from dynamic lists. Update the contact to change dynamic list membership.' });
+        setLoading(false);
+        return;
+      }
+
       const { error } = await supabase
-        .from('contact_companies')
-        .delete()
-        .eq('contact_companies_id', companyRelation.contact_companies_id);
+        .from('email_list_members')
+        .update({ is_active: false })
+        .eq('list_member_id', membership.list_member_id);
 
       if (error) throw error;
 
-      await fetchContactCompanies();
-      if (onCompaniesUpdated) onCompaniesUpdated();
-      setMessage({ type: 'success', text: 'Company unlinked successfully' });
+      await fetchContactLists();
+      if (onListsUpdated) onListsUpdated();
+      setMessage({ type: 'success', text: 'Removed from list' });
     } catch (error) {
-      console.error('Error unlinking company:', error);
-      setMessage({ type: 'error', text: 'Failed to unlink company' });
+      console.error('Error removing from list:', error);
+      setMessage({ type: 'error', text: 'Failed to remove from list' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateCompany = async () => {
+  const handleCreateList = async () => {
     try {
       setLoading(true);
 
-      // Create the new company
-      const { data: newCompany, error: createError } = await supabase
-        .from('companies')
-        .insert({
-          name: searchTerm.trim(),
-          category: 'Inbox'
-        })
-        .select()
-        .single();
+      // Check if list already exists
+      const { data: existingLists } = await supabase
+        .from('email_lists')
+        .select('*')
+        .ilike('name', searchTerm.trim())
+        .limit(1);
 
-      if (createError) throw createError;
+      let listToUse;
 
-      // Link it to the contact
-      if (newCompany) {
-        await handleAddCompany(newCompany);
-        setMessage({ type: 'success', text: `Created and linked "${searchTerm.trim()}"` });
+      if (existingLists && existingLists.length > 0) {
+        listToUse = existingLists[0];
+      } else {
+        const { data, error } = await supabase
+          .from('email_lists')
+          .insert({
+            name: searchTerm.trim(),
+            list_type: 'static',
+            created_by: 'User',
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        listToUse = data;
+      }
+
+      if (listToUse) {
+        await handleAddToList(listToUse);
       }
     } catch (error) {
-      console.error('Error creating company:', error);
-      setMessage({ type: 'error', text: 'Failed to create company' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSetPrimary = async (companyRelation) => {
-    try {
-      setLoading(true);
-
-      // First, set all to non-primary
-      await supabase
-        .from('contact_companies')
-        .update({ is_primary: false })
-        .eq('contact_id', contact.contact_id);
-
-      // Then set the selected one as primary
-      const { error } = await supabase
-        .from('contact_companies')
-        .update({ is_primary: true })
-        .eq('contact_companies_id', companyRelation.contact_companies_id);
-
-      if (error) throw error;
-
-      await fetchContactCompanies();
-      if (onCompaniesUpdated) onCompaniesUpdated();
-      setMessage({ type: 'success', text: 'Primary company updated' });
-    } catch (error) {
-      console.error('Error setting primary company:', error);
-      setMessage({ type: 'error', text: 'Failed to update primary company' });
-    } finally {
+      console.error('Error creating list:', error);
+      setMessage({ type: 'error', text: 'Failed to create list' });
       setLoading(false);
     }
   };
@@ -494,6 +491,10 @@ const ManageContactCompaniesModal = ({
       return () => clearTimeout(timer);
     }
   }, [message]);
+
+  // Separate static and dynamic lists
+  const staticLists = contactLists.filter(m => m.email_lists?.list_type === 'static');
+  const dynamicLists = contactLists.filter(m => m.email_lists?.list_type === 'dynamic');
 
   return (
     <Modal
@@ -525,73 +526,70 @@ const ManageContactCompaniesModal = ({
       }}
     >
       <ModalHeader theme={theme}>
-        <ModalTitle theme={theme}>Manage Companies</ModalTitle>
+        <ModalTitle theme={theme}>Manage Lists</ModalTitle>
         <CloseButton theme={theme} onClick={onClose}>×</CloseButton>
       </ModalHeader>
 
       <ModalBody theme={theme}>
+        {/* Static Lists Section */}
         <Section>
-          <SectionTitle theme={theme}>Linked Companies</SectionTitle>
+          <SectionTitle theme={theme}>
+            Static Lists
+            <ListTypeLabel theme={theme} listType="static">Manual</ListTypeLabel>
+          </SectionTitle>
+          <InfoText theme={theme}>Lists where you manually add or remove contacts</InfoText>
           <ItemsList>
-            {contactCompanies.map((companyRelation) => (
-              <CompanyItem key={companyRelation.contact_companies_id} theme={theme}>
-                <CompanyInfo>
-                  <CompanyIcon>
-                    <FaBuilding size={14} />
-                  </CompanyIcon>
-                  <CompanyName theme={theme}>
-                    {companyRelation.company?.name || 'Unknown Company'}
-                  </CompanyName>
-                  {companyRelation.company?.category && (
-                    <CompanyCategory theme={theme}>
-                      {companyRelation.company.category}
-                    </CompanyCategory>
-                  )}
-                  {companyRelation.is_primary && <PrimaryBadge>PRIMARY</PrimaryBadge>}
-                </CompanyInfo>
-                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  {!companyRelation.is_primary && (
-                    <button
-                      onClick={() => handleSetPrimary(companyRelation)}
-                      disabled={loading}
-                      style={{
-                        padding: '4px 8px',
-                        fontSize: '11px',
-                        background: theme === 'light' ? '#F3F4F6' : '#374151',
-                        color: theme === 'light' ? '#374151' : '#D1D5DB',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Set Primary
-                    </button>
-                  )}
-                  <RemoveButton
-                    theme={theme}
-                    onClick={() => handleRemoveCompany(companyRelation)}
-                    disabled={loading}
-                  >
-                    ×
-                  </RemoveButton>
-                </div>
-              </CompanyItem>
+            {staticLists.map((membership, index) => (
+              <ItemTag key={index} theme={theme}>
+                <span>{membership.email_lists?.name || 'Unknown List'}</span>
+                <RemoveButton
+                  theme={theme}
+                  onClick={() => handleRemoveFromList(membership)}
+                  disabled={loading}
+                  title="Remove from list"
+                >
+                  ×
+                </RemoveButton>
+              </ItemTag>
             ))}
-            {contactCompanies.length === 0 && (
-              <EmptyMessage theme={theme}>No companies linked</EmptyMessage>
+            {staticLists.length === 0 && (
+              <EmptyMessage theme={theme}>Not in any static lists</EmptyMessage>
             )}
           </ItemsList>
         </Section>
 
+        {/* Dynamic Lists Section */}
+        {dynamicLists.length > 0 && (
+          <Section>
+            <SectionTitle theme={theme}>
+              Dynamic Lists
+              <ListTypeLabel theme={theme} listType="dynamic">Auto</ListTypeLabel>
+            </SectionTitle>
+            <InfoText theme={theme}>Lists based on contact attributes (cannot be manually changed)</InfoText>
+            <ItemsList>
+              {dynamicLists.map((membership, index) => (
+                <ItemTag key={index} theme={theme} style={{
+                  background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                  color: theme === 'light' ? '#92400E' : '#FDE68A',
+                  border: `1px solid ${theme === 'light' ? '#FDE68A' : '#F59E0B'}`
+                }}>
+                  <span>{membership.email_lists?.name || 'Unknown List'}</span>
+                </ItemTag>
+              ))}
+            </ItemsList>
+          </Section>
+        )}
+
+        {/* Add to List Section */}
         <Section>
-          <SectionTitle theme={theme}>Add Company</SectionTitle>
+          <SectionTitle theme={theme}>Add to Static List</SectionTitle>
           <SearchContainer>
             <SearchInput
               theme={theme}
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search for a company..."
+              placeholder="Search or create a list..."
             />
           </SearchContainer>
 
@@ -599,30 +597,35 @@ const ManageContactCompaniesModal = ({
             <SuggestionsContainer theme={theme}>
               {suggestions.map(suggestion => (
                 <SuggestionItem
-                  key={suggestion.company_id}
+                  key={suggestion.list_id}
                   theme={theme}
-                  onClick={() => handleAddCompany(suggestion)}
+                  onClick={() => handleAddToList(suggestion)}
                   disabled={loading}
                 >
-                  <div style={{ fontWeight: 500 }}>{suggestion.name}</div>
-                  {suggestion.category && (
-                    <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '2px' }}>
-                      {suggestion.category}
-                    </div>
-                  )}
+                  <SuggestionInfo>
+                    <SuggestionName>{suggestion.name}</SuggestionName>
+                    {suggestion.description && (
+                      <SuggestionDescription theme={theme}>
+                        {suggestion.description}
+                      </SuggestionDescription>
+                    )}
+                  </SuggestionInfo>
+                  <ListTypeLabel theme={theme} listType="static">Static</ListTypeLabel>
                 </SuggestionItem>
               ))}
               {suggestions.length === 0 && searchTerm.length >= 2 && (
-                <NoResults theme={theme}>No companies found</NoResults>
+                <NoResults theme={theme}>No lists found</NoResults>
+              )}
+              {suggestions.length === 0 && searchTerm.length < 2 && (
+                <NoResults theme={theme}>No available static lists</NoResults>
               )}
               {searchTerm.length >= 2 && (
                 <CreateButton
                   theme={theme}
-                  onClick={handleCreateCompany}
+                  onClick={handleCreateList}
                   disabled={loading}
                 >
-                  <FaPlus size={12} />
-                  Create "{searchTerm}" as new company
+                  + Create "{searchTerm}" as new static list
                 </CreateButton>
               )}
             </SuggestionsContainer>
@@ -643,4 +646,4 @@ const ManageContactCompaniesModal = ({
   );
 };
 
-export default ManageContactCompaniesModal;
+export default ManageContactListsModal;

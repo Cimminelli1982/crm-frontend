@@ -3,15 +3,12 @@ import {
   FaStickyNote, FaPlus, FaSearch, FaFolder, FaSave, FaTrash,
   FaLink, FaUser, FaBuilding, FaHandshake, FaDollarSign,
   FaChevronRight, FaChevronDown, FaEdit, FaTimes, FaSync,
-  FaBold, FaItalic, FaListUl, FaListOl, FaQuoteRight, FaCode,
-  FaUndo, FaRedo
+  FaFolderOpen, FaFile, FaEye, FaPen
 } from 'react-icons/fa';
 import { SiObsidian } from 'react-icons/si';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
+import MDEditor from '@uiw/react-md-editor';
 
 // Note types for categorization
 const NOTE_TYPES = [
@@ -21,280 +18,36 @@ const NOTE_TYPES = [
   { id: 'project', label: 'Project', icon: FaFolder, color: '#10B981' },
 ];
 
-// TipTap Toolbar component
-const EditorToolbar = ({ editor, theme }) => {
-  if (!editor) return null;
-
-  const buttonStyle = {
-    padding: '6px 8px',
-    borderRadius: '4px',
-    border: 'none',
-    background: 'transparent',
-    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const activeStyle = {
-    ...buttonStyle,
-    background: theme === 'dark' ? '#374151' : '#E5E7EB',
-    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-  };
-
-  return (
-    <div style={{
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '2px',
-      padding: '8px',
-      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-      background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
-    }}>
-      <button
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        style={editor.isActive('bold') ? activeStyle : buttonStyle}
-        title="Bold (Cmd+B)"
-      >
-        <FaBold size={12} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        style={editor.isActive('italic') ? activeStyle : buttonStyle}
-        title="Italic (Cmd+I)"
-      >
-        <FaItalic size={12} />
-      </button>
-
-      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
-
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        style={editor.isActive('heading', { level: 1 }) ? activeStyle : buttonStyle}
-        title="Heading 1"
-      >
-        <span style={{ fontWeight: 700, fontSize: '12px' }}>H1</span>
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        style={editor.isActive('heading', { level: 2 }) ? activeStyle : buttonStyle}
-        title="Heading 2"
-      >
-        <span style={{ fontWeight: 700, fontSize: '12px' }}>H2</span>
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        style={editor.isActive('heading', { level: 3 }) ? activeStyle : buttonStyle}
-        title="Heading 3"
-      >
-        <span style={{ fontWeight: 700, fontSize: '12px' }}>H3</span>
-      </button>
-
-      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
-
-      <button
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        style={editor.isActive('bulletList') ? activeStyle : buttonStyle}
-        title="Bullet List"
-      >
-        <FaListUl size={12} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        style={editor.isActive('orderedList') ? activeStyle : buttonStyle}
-        title="Numbered List"
-      >
-        <FaListOl size={12} />
-      </button>
-
-      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
-
-      <button
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        style={editor.isActive('blockquote') ? activeStyle : buttonStyle}
-        title="Quote"
-      >
-        <FaQuoteRight size={12} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        style={editor.isActive('codeBlock') ? activeStyle : buttonStyle}
-        title="Code Block"
-      >
-        <FaCode size={12} />
-      </button>
-
-      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
-
-      <button
-        onClick={() => editor.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
-        style={{ ...buttonStyle, opacity: editor.can().undo() ? 1 : 0.4 }}
-        title="Undo (Cmd+Z)"
-      >
-        <FaUndo size={12} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
-        style={{ ...buttonStyle, opacity: editor.can().redo() ? 1 : 0.4 }}
-        title="Redo (Cmd+Shift+Z)"
-      >
-        <FaRedo size={12} />
-      </button>
-    </div>
-  );
-};
-
-// TipTap Rich Text Editor component
-const RichTextEditor = ({ content, onChange, theme, editable = true }) => {
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3],
-        },
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'editor-link',
-        },
-      }),
-    ],
-    content: content || '',
-    editable,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
-    },
-  });
-
-  // Update content when it changes externally
-  useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content || '');
-    }
-  }, [content, editor]);
-
-  // Update editable state
-  useEffect(() => {
-    if (editor) {
-      editor.setEditable(editable);
-    }
-  }, [editable, editor]);
-
-  const editorContainerStyle = {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    borderRadius: '8px',
-    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
-    overflow: 'hidden',
-  };
-
-  return (
-    <div style={editorContainerStyle}>
-      {editable && <EditorToolbar editor={editor} theme={theme} />}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <EditorContent
-          editor={editor}
-          style={{
-            height: '100%',
-            padding: '16px',
-            color: theme === 'dark' ? '#F9FAFB' : '#111827',
-            fontSize: '14px',
-            lineHeight: '1.6',
-          }}
-        />
-      </div>
-      <style>{`
-        .ProseMirror {
-          outline: none;
-          min-height: 200px;
-        }
-        .ProseMirror p {
-          margin: 0 0 0.75em 0;
-        }
-        .ProseMirror h1 {
-          font-size: 1.5em;
-          font-weight: 700;
-          margin: 1em 0 0.5em 0;
-        }
-        .ProseMirror h2 {
-          font-size: 1.25em;
-          font-weight: 600;
-          margin: 1em 0 0.5em 0;
-        }
-        .ProseMirror h3 {
-          font-size: 1.1em;
-          font-weight: 600;
-          margin: 1em 0 0.5em 0;
-        }
-        .ProseMirror ul, .ProseMirror ol {
-          padding-left: 1.5em;
-          margin: 0.5em 0;
-        }
-        .ProseMirror li {
-          margin: 0.25em 0;
-        }
-        .ProseMirror blockquote {
-          border-left: 3px solid ${theme === 'dark' ? '#6B7280' : '#D1D5DB'};
-          padding-left: 1em;
-          margin: 0.5em 0;
-          color: ${theme === 'dark' ? '#9CA3AF' : '#6B7280'};
-        }
-        .ProseMirror pre {
-          background: ${theme === 'dark' ? '#111827' : '#F3F4F6'};
-          border-radius: 6px;
-          padding: 0.75em 1em;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          font-size: 0.9em;
-          overflow-x: auto;
-        }
-        .ProseMirror code {
-          background: ${theme === 'dark' ? '#374151' : '#E5E7EB'};
-          padding: 0.2em 0.4em;
-          border-radius: 3px;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          font-size: 0.9em;
-        }
-        .ProseMirror pre code {
-          background: none;
-          padding: 0;
-        }
-        .editor-link {
-          color: #3B82F6;
-          text-decoration: underline;
-        }
-        .ProseMirror p.is-editor-empty:first-child::before {
-          color: ${theme === 'dark' ? '#6B7280' : '#9CA3AF'};
-          content: attr(data-placeholder);
-          float: left;
-          height: 0;
-          pointer-events: none;
-        }
-      `}</style>
-    </div>
-  );
-};
+// Folder structure
+const FOLDERS = [
+  { id: 'Inbox', label: 'Inbox', icon: FaFolder },
+  { id: 'CRM', label: 'CRM', icon: FaFolderOpen },
+  { id: 'CRM/Contacts', label: '↳ Contacts', icon: FaFile },
+  { id: 'CRM/Companies', label: '↳ Companies', icon: FaFile },
+  { id: 'CRM/Deals', label: '↳ Deals', icon: FaFile },
+  { id: 'Personal', label: 'Personal', icon: FaFolderOpen },
+  { id: 'Archive', label: 'Archive', icon: FaFolder },
+];
 
 const NotesFullTab = ({ theme }) => {
   // Notes list state
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedNoteType, setSelectedNoteType] = useState(null);
+  const [selectedFolder, setSelectedFolder] = useState(null);
   const [expandedTypes, setExpandedTypes] = useState({ general: true, meeting: true, idea: true, project: true });
 
   // Selected note state
   const [selectedNote, setSelectedNote] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
-  const [editText, setEditText] = useState('');
+  const [editContent, setEditContent] = useState('');
   const [editNoteType, setEditNoteType] = useState('general');
+  const [editFolderPath, setEditFolderPath] = useState('Inbox');
   const [saving, setSaving] = useState(false);
+
+  // Preview mode: 'edit' | 'preview' | 'split'
+  const [viewMode, setViewMode] = useState('split');
 
   // New note state
   const [isCreating, setIsCreating] = useState(false);
@@ -307,7 +60,7 @@ const NotesFullTab = ({ theme }) => {
 
   // Link modal state
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [linkType, setLinkType] = useState(null); // 'contact', 'company', 'deal', 'introduction'
+  const [linkType, setLinkType] = useState(null);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [linkSearchResults, setLinkSearchResults] = useState([]);
   const [linkSearching, setLinkSearching] = useState(false);
@@ -320,27 +73,28 @@ const NotesFullTab = ({ theme }) => {
   const handleObsidianSync = async () => {
     setSyncing(true);
     try {
-      // Fetch inbox content from local server
       const response = await fetch(`${OBSIDIAN_SYNC_URL}/inbox`);
       if (!response.ok) throw new Error('Failed to connect to Obsidian sync server');
 
       const { content } = await response.json();
-
-      // Check if there's content to sync
       const trimmedContent = content?.replace(/^#\s*Inbox\s*\n*/i, '').trim();
+
       if (!trimmedContent) {
         toast('Inbox is empty', { icon: '📭' });
         return;
       }
 
-      // Create new note in Supabase
+      // Create new note with markdown content
       const { data, error } = await supabase
         .from('notes')
         .insert({
           title: `Obsidian Inbox - ${new Date().toLocaleDateString()}`,
-          text: trimmedContent,
+          markdown_content: trimmedContent,
+          text: trimmedContent, // Keep for backward compat
           note_type: 'general',
+          folder_path: 'Inbox',
           obsidian_path: 'Inbox.md',
+          synced_at: new Date().toISOString(),
           created_by: 'User',
           last_modified_by: 'User',
         })
@@ -349,18 +103,18 @@ const NotesFullTab = ({ theme }) => {
 
       if (error) throw error;
 
-      // Archive and clear inbox on local server
+      // Archive inbox on local server
       const archiveResponse = await fetch(`${OBSIDIAN_SYNC_URL}/archive`, { method: 'POST' });
       if (!archiveResponse.ok) {
         toast.error('Note saved but failed to archive inbox');
       }
 
-      // Refresh notes list and select the new note
       setNotes(prev => [data, ...prev]);
       setSelectedNote(data);
       setEditTitle(data.title);
-      setEditText(data.text);
+      setEditContent(data.markdown_content || '');
       setEditNoteType(data.note_type);
+      setEditFolderPath(data.folder_path || 'Inbox');
       setIsEditing(false);
       setIsCreating(false);
 
@@ -368,7 +122,7 @@ const NotesFullTab = ({ theme }) => {
     } catch (error) {
       console.error('Obsidian sync error:', error);
       if (error.message.includes('Failed to fetch')) {
-        toast.error('Obsidian sync server not running. Start it with: cd obsidian-sync-server && npm start');
+        toast.error('Obsidian sync server not running. Start with: npm run obsidian-sync');
       } else {
         toast.error(error.message || 'Failed to sync');
       }
@@ -407,28 +161,24 @@ const NotesFullTab = ({ theme }) => {
     }
 
     try {
-      // Fetch linked contacts
       const { data: contactLinks } = await supabase
-        .from('note_contacts')
+        .from('notes_contacts')
         .select('contact_id, contacts(contact_id, first_name, last_name)')
         .eq('note_id', noteId);
       setLinkedContacts(contactLinks?.map(l => l.contacts).filter(Boolean) || []);
 
-      // Fetch linked companies
       const { data: companyLinks } = await supabase
         .from('note_companies')
         .select('company_id, companies(company_id, name)')
         .eq('note_id', noteId);
       setLinkedCompanies(companyLinks?.map(l => l.companies).filter(Boolean) || []);
 
-      // Fetch linked deals
       const { data: dealLinks } = await supabase
         .from('note_deals')
         .select('deal_id, deals(deal_id, opportunity)')
         .eq('note_id', noteId);
       setLinkedDeals(dealLinks?.map(l => l.deals).filter(Boolean) || []);
 
-      // Fetch linked introductions
       const { data: introLinks } = await supabase
         .from('note_introductions')
         .select('introduction_id, introductions(introduction_id, status, introduction_date)')
@@ -440,25 +190,24 @@ const NotesFullTab = ({ theme }) => {
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     fetchNotes();
   }, [fetchNotes]);
 
-  // Fetch linked entities when note is selected
   useEffect(() => {
     if (selectedNote) {
       fetchLinkedEntities(selectedNote.note_id);
     }
   }, [selectedNote, fetchLinkedEntities]);
 
-  // Filter notes by search and type
+  // Filter notes
   const filteredNotes = notes.filter(note => {
     const matchesSearch = !searchQuery ||
       note.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.markdown_content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       note.text?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = !selectedNoteType || note.note_type === selectedNoteType;
-    return matchesSearch && matchesType;
+    const matchesFolder = !selectedFolder || note.folder_path === selectedFolder;
+    return matchesSearch && matchesFolder;
   });
 
   // Group notes by type
@@ -467,22 +216,23 @@ const NotesFullTab = ({ theme }) => {
     return acc;
   }, {});
 
-  // Handle note selection
   const handleSelectNote = (note) => {
     setSelectedNote(note);
     setEditTitle(note.title);
-    setEditText(note.text || '');
+    // Prefer markdown_content, fallback to text
+    setEditContent(note.markdown_content || note.text || '');
     setEditNoteType(note.note_type || 'general');
+    setEditFolderPath(note.folder_path || 'Inbox');
     setIsEditing(false);
     setIsCreating(false);
   };
 
-  // Handle create new note
   const handleCreateNew = () => {
     setSelectedNote(null);
     setEditTitle('');
-    setEditText('');
+    setEditContent('');
     setEditNoteType('general');
+    setEditFolderPath('Inbox');
     setIsCreating(true);
     setIsEditing(true);
     setLinkedContacts([]);
@@ -491,7 +241,6 @@ const NotesFullTab = ({ theme }) => {
     setLinkedIntroductions([]);
   };
 
-  // Handle save note
   const handleSave = async () => {
     if (!editTitle.trim()) {
       toast.error('Title is required');
@@ -500,43 +249,41 @@ const NotesFullTab = ({ theme }) => {
 
     setSaving(true);
     try {
+      const noteData = {
+        title: editTitle.trim(),
+        markdown_content: editContent,
+        text: editContent, // Keep text field for backward compat
+        note_type: editNoteType,
+        folder_path: editFolderPath,
+        file_name: `${editTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`,
+        last_modified_by: 'User',
+        last_modified_at: new Date().toISOString(),
+      };
+
       if (isCreating) {
-        // Create new note
         const { data, error } = await supabase
           .from('notes')
           .insert({
-            title: editTitle.trim(),
-            text: editText,
-            note_type: editNoteType,
+            ...noteData,
             created_by: 'User',
-            last_modified_by: 'User',
           })
           .select()
           .single();
 
         if (error) throw error;
-
         setNotes(prev => [data, ...prev]);
         setSelectedNote(data);
         setIsCreating(false);
         toast.success('Note created!');
       } else {
-        // Update existing note
         const { data, error } = await supabase
           .from('notes')
-          .update({
-            title: editTitle.trim(),
-            text: editText,
-            note_type: editNoteType,
-            last_modified_by: 'User',
-            last_modified_at: new Date().toISOString(),
-          })
+          .update(noteData)
           .eq('note_id', selectedNote.note_id)
           .select()
           .single();
 
         if (error) throw error;
-
         setNotes(prev => prev.map(n => n.note_id === data.note_id ? data : n));
         setSelectedNote(data);
         toast.success('Note saved!');
@@ -550,7 +297,6 @@ const NotesFullTab = ({ theme }) => {
     }
   };
 
-  // Handle delete note
   const handleDelete = async () => {
     if (!selectedNote || !window.confirm('Delete this note?')) return;
 
@@ -618,12 +364,11 @@ const NotesFullTab = ({ theme }) => {
     }
   };
 
-  // Handle link entity
   const handleLinkEntity = async (entity) => {
     if (!selectedNote) return;
 
     try {
-      const tableName = `note_${linkType}s`;
+      const tableName = linkType === 'contact' ? 'notes_contacts' : `note_${linkType}s`;
       const idField = `${linkType}_id`;
 
       const { error } = await supabase
@@ -641,7 +386,6 @@ const NotesFullTab = ({ theme }) => {
         throw error;
       }
 
-      // Refresh linked entities
       fetchLinkedEntities(selectedNote.note_id);
       setShowLinkModal(false);
       setLinkSearchQuery('');
@@ -653,12 +397,11 @@ const NotesFullTab = ({ theme }) => {
     }
   };
 
-  // Handle unlink entity
   const handleUnlinkEntity = async (type, entityId) => {
     if (!selectedNote) return;
 
     try {
-      const tableName = `note_${type}s`;
+      const tableName = type === 'contact' ? 'notes_contacts' : `note_${type}s`;
       const idField = `${type}_id`;
 
       const { error } = await supabase
@@ -742,11 +485,23 @@ const NotesFullTab = ({ theme }) => {
     textTransform: 'uppercase',
   };
 
+  const viewModeButtonStyle = (active) => ({
+    padding: '6px 10px',
+    borderRadius: '6px',
+    border: 'none',
+    background: active ? (theme === 'dark' ? '#4B5563' : '#E5E7EB') : 'transparent',
+    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  });
+
   return (
-    <div style={{ display: 'flex', height: '100%', width: '100%' }}>
+    <div style={{ display: 'flex', height: '100%', width: '100%' }} data-color-mode={theme}>
       {/* LEFT PANEL - Notes List */}
       <div style={{ ...panelStyle, width: '20%', minWidth: '250px', flexShrink: 0 }}>
-        {/* Header with search and add button */}
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
             <FaSearch size={14} style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }} />
@@ -768,22 +523,60 @@ const NotesFullTab = ({ theme }) => {
             }}
             title="Sync from Obsidian Inbox"
           >
-            {syncing ? <FaSync size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <SiObsidian size={12} />}
+            {syncing ? <FaSync size={12} className="spin" /> : <SiObsidian size={12} />}
           </button>
           <button onClick={handleCreateNew} style={buttonStyle}>
             <FaPlus size={12} />
           </button>
         </div>
 
-        {/* CSS for spin animation */}
         <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
+          .spin { animation: spin 1s linear infinite; }
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         `}</style>
 
-        {/* Notes list grouped by type */}
+        {/* Folder filter */}
+        <div style={{
+          padding: '8px 12px',
+          borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+          display: 'flex',
+          gap: '4px',
+          flexWrap: 'wrap'
+        }}>
+          <button
+            onClick={() => setSelectedFolder(null)}
+            style={{
+              padding: '4px 8px',
+              borderRadius: '4px',
+              border: 'none',
+              background: !selectedFolder ? '#8B5CF6' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+              color: !selectedFolder ? 'white' : (theme === 'dark' ? '#D1D5DB' : '#374151'),
+              fontSize: '11px',
+              cursor: 'pointer',
+            }}
+          >
+            All
+          </button>
+          {FOLDERS.slice(0, 4).map(folder => (
+            <button
+              key={folder.id}
+              onClick={() => setSelectedFolder(folder.id)}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: 'none',
+                background: selectedFolder === folder.id ? '#8B5CF6' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                color: selectedFolder === folder.id ? 'white' : (theme === 'dark' ? '#D1D5DB' : '#374151'),
+                fontSize: '11px',
+                cursor: 'pointer',
+              }}
+            >
+              {folder.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Notes list */}
         <div style={{ flex: 1, overflow: 'auto' }}>
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
@@ -792,7 +585,6 @@ const NotesFullTab = ({ theme }) => {
           ) : (
             NOTE_TYPES.map(type => (
               <div key={type.id}>
-                {/* Type header */}
                 <div
                   style={sectionHeaderStyle}
                   onClick={() => setExpandedTypes(prev => ({ ...prev, [type.id]: !prev[type.id] }))}
@@ -805,7 +597,6 @@ const NotesFullTab = ({ theme }) => {
                   </span>
                 </div>
 
-                {/* Notes in this type */}
                 {expandedTypes[type.id] && notesByType[type.id]?.map(note => (
                   <div
                     key={note.note_id}
@@ -825,9 +616,12 @@ const NotesFullTab = ({ theme }) => {
                     </div>
                     <div style={{
                       fontSize: '11px',
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                      display: 'flex',
+                      justifyContent: 'space-between',
                     }}>
-                      {new Date(note.last_modified_at || note.created_at).toLocaleDateString()}
+                      <span>{note.folder_path || 'Inbox'}</span>
+                      <span>{new Date(note.last_modified_at || note.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
                 ))}
@@ -843,15 +637,12 @@ const NotesFullTab = ({ theme }) => {
             }}>
               <FaStickyNote size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
               <div>No notes yet</div>
-              <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                Click + to create one
-              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* CENTER PANEL - Note Editor */}
+      {/* CENTER PANEL - Markdown Editor */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: theme === 'dark' ? '#111827' : '#F9FAFB' }}>
         {(selectedNote || isCreating) ? (
           <>
@@ -894,6 +685,42 @@ const NotesFullTab = ({ theme }) => {
                 </h2>
               )}
 
+              {/* View mode toggle */}
+              {isEditing && (
+                <div style={{ display: 'flex', gap: '4px', background: theme === 'dark' ? '#374151' : '#E5E7EB', borderRadius: '8px', padding: '2px' }}>
+                  <button style={viewModeButtonStyle(viewMode === 'edit')} onClick={() => setViewMode('edit')}>
+                    <FaPen size={10} /> Edit
+                  </button>
+                  <button style={viewModeButtonStyle(viewMode === 'split')} onClick={() => setViewMode('split')}>
+                    Split
+                  </button>
+                  <button style={viewModeButtonStyle(viewMode === 'preview')} onClick={() => setViewMode('preview')}>
+                    <FaEye size={10} /> Preview
+                  </button>
+                </div>
+              )}
+
+              {/* Folder selector */}
+              {isEditing && (
+                <select
+                  value={editFolderPath}
+                  onChange={(e) => setEditFolderPath(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '12px',
+                    outline: 'none',
+                  }}
+                >
+                  {FOLDERS.map(f => (
+                    <option key={f.id} value={f.id}>{f.label}</option>
+                  ))}
+                </select>
+              )}
+
               {/* Note type selector */}
               {isEditing && (
                 <select
@@ -905,7 +732,7 @@ const NotesFullTab = ({ theme }) => {
                     border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
                     background: theme === 'dark' ? '#374151' : '#FFFFFF',
                     color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                    fontSize: '13px',
+                    fontSize: '12px',
                     outline: 'none',
                   }}
                 >
@@ -968,35 +795,33 @@ const NotesFullTab = ({ theme }) => {
               </div>
             </div>
 
-            {/* Editor content */}
+            {/* Markdown Editor Content */}
             <div style={{ flex: 1, padding: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               {isEditing ? (
-                <RichTextEditor
-                  content={editText}
-                  onChange={setEditText}
-                  theme={theme}
-                  editable={true}
+                <MDEditor
+                  value={editContent}
+                  onChange={(val) => setEditContent(val || '')}
+                  preview={viewMode === 'edit' ? 'edit' : viewMode === 'preview' ? 'preview' : 'live'}
+                  height="100%"
+                  style={{ flex: 1 }}
+                  visibleDragbar={false}
                 />
               ) : (
-                selectedNote?.text ? (
-                  <RichTextEditor
-                    content={selectedNote.text}
-                    onChange={() => {}}
-                    theme={theme}
-                    editable={false}
+                <div style={{
+                  flex: 1,
+                  overflow: 'auto',
+                  background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                  borderRadius: '8px',
+                  padding: '16px',
+                }}>
+                  <MDEditor.Markdown
+                    source={selectedNote?.markdown_content || selectedNote?.text || ''}
+                    style={{
+                      background: 'transparent',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    }}
                   />
-                ) : (
-                  <div style={{
-                    padding: '16px',
-                    borderRadius: '8px',
-                    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
-                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                    fontStyle: 'italic',
-                    minHeight: '200px',
-                  }}>
-                    No content yet. Click Edit to add content.
-                  </div>
-                )
+                </div>
               )}
             </div>
           </>
@@ -1019,15 +844,14 @@ const NotesFullTab = ({ theme }) => {
         )}
       </div>
 
-      {/* RIGHT PANEL - Actions & Links */}
-      <div style={{ ...panelStyle, width: '25%', minWidth: '280px', borderRight: 'none', borderLeft: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
+      {/* RIGHT PANEL - Links */}
+      <div style={{ ...panelStyle, width: '20%', minWidth: '240px', borderRight: 'none', borderLeft: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
         {selectedNote && !isCreating && (
           <>
-            {/* Linked Entities */}
             <div style={headerStyle}>
               <span style={{ fontWeight: 600, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
                 <FaLink size={12} style={{ marginRight: '8px' }} />
-                Linked Entities
+                Links
               </span>
             </div>
 
@@ -1084,13 +908,7 @@ const NotesFullTab = ({ theme }) => {
                     </span>
                     <button
                       onClick={() => handleUnlinkEntity('contact', c.contact_id)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#EF4444',
-                        cursor: 'pointer',
-                        padding: '2px',
-                      }}
+                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
                     >
                       <FaTimes size={10} />
                     </button>
@@ -1150,13 +968,7 @@ const NotesFullTab = ({ theme }) => {
                     </span>
                     <button
                       onClick={() => handleUnlinkEntity('company', c.company_id)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#EF4444',
-                        cursor: 'pointer',
-                        padding: '2px',
-                      }}
+                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
                     >
                       <FaTimes size={10} />
                     </button>
@@ -1216,13 +1028,7 @@ const NotesFullTab = ({ theme }) => {
                     </span>
                     <button
                       onClick={() => handleUnlinkEntity('deal', d.deal_id)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#EF4444',
-                        cursor: 'pointer',
-                        padding: '2px',
-                      }}
+                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
                     >
                       <FaTimes size={10} />
                     </button>
@@ -1282,13 +1088,7 @@ const NotesFullTab = ({ theme }) => {
                     </span>
                     <button
                       onClick={() => handleUnlinkEntity('introduction', i.introduction_id)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#EF4444',
-                        cursor: 'pointer',
-                        padding: '2px',
-                      }}
+                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
                     >
                       <FaTimes size={10} />
                     </button>
@@ -1297,15 +1097,19 @@ const NotesFullTab = ({ theme }) => {
               </div>
             </div>
 
-            {/* Note metadata */}
+            {/* Metadata footer */}
             <div style={{
               padding: '12px 16px',
               borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
               fontSize: '11px',
               color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
             }}>
+              <div>Folder: {selectedNote.folder_path || 'Inbox'}</div>
               <div>Created: {new Date(selectedNote.created_at).toLocaleString()}</div>
               <div>Modified: {new Date(selectedNote.last_modified_at || selectedNote.created_at).toLocaleString()}</div>
+              {selectedNote.synced_at && (
+                <div>Synced: {new Date(selectedNote.synced_at).toLocaleString()}</div>
+              )}
             </div>
           </>
         )}
@@ -1350,12 +1154,7 @@ const NotesFullTab = ({ theme }) => {
               </h3>
               <button
                 onClick={() => { setShowLinkModal(false); setLinkSearchQuery(''); setLinkSearchResults([]); }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                  cursor: 'pointer',
-                }}
+                style={{ background: 'none', border: 'none', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
               >
                 <FaTimes size={16} />
               </button>
@@ -1369,10 +1168,7 @@ const NotesFullTab = ({ theme }) => {
                 setLinkSearchQuery(e.target.value);
                 searchEntities(linkType, e.target.value);
               }}
-              style={{
-                ...searchInputStyle,
-                marginBottom: '12px',
-              }}
+              style={{ ...searchInputStyle, marginBottom: '12px' }}
             />
 
             <div style={{ flex: 1, overflow: 'auto' }}>

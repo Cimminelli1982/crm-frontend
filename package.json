@@ -23,6 +23,7 @@
     "@tiptap/pm": "^2.11.5",
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
+    "@uiw/react-md-editor": "^4.0.11",
     "ag-grid-community": "^29.3.5",
     "ag-grid-react": "^29.3.5",
     "airtable": "^0.12.2",

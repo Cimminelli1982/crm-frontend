@@ -757,9 +757,11 @@ export const WhatsAppChatList = ({
       {chats.map(chat => {
         const hasUnread = chat.messages?.some(m => m.is_read === false);
         const unreadCount = chat.messages?.filter(m => m.is_read === false).length || 0;
-        // Get CRM contact name if available
-        const crmName = getCrmContactName(chat.contact_number, contacts);
-        const displayName = crmName || chat.chat_name || chat.contact_number;
+        // Get CRM contact name if available (only for 1-to-1 chats, not groups)
+        const crmName = chat.is_group_chat ? null : getCrmContactName(chat.contact_number, contacts);
+        const displayName = chat.is_group_chat
+          ? (chat.chat_name || 'Group Chat')
+          : (crmName || chat.chat_name || chat.contact_number);
 
         return (
           <ChatListItem
@@ -769,10 +771,10 @@ export const WhatsAppChatList = ({
             onClick={() => onSelectChat(chat)}
           >
             <ChatListAvatar theme={theme} $isGroup={chat.is_group_chat}>
-              {chat.profile_image_url ? (
+              {chat.profile_image_url && !chat.is_group_chat ? (
                 <AvatarImage src={chat.profile_image_url} alt={displayName} />
               ) : (
-                getInitials(displayName, chat.contact_number)
+                getInitials(displayName, chat.is_group_chat ? null : chat.contact_number)
               )}
               {chat.is_group_chat && (
                 <GroupBadge theme={theme}>
@@ -790,7 +792,7 @@ export const WhatsAppChatList = ({
                 </ChatListTime>
               </ChatListHeader>
               <ChatListNumber theme={theme}>
-                {chat.contact_number}
+                {chat.is_group_chat ? 'Group' : chat.contact_number}
               </ChatListNumber>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <ChatListPreview theme={theme}>
@@ -1272,19 +1274,21 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
     messagesByDate[dateKey].push(msg);
   });
 
-  // Get CRM contact name if available
-  const crmName = getCrmContactName(selectedChat.contact_number, contacts);
-  const displayName = crmName || selectedChat.chat_name || selectedChat.contact_number;
+  // Get CRM contact name if available (only for 1-to-1 chats, not groups)
+  const crmName = selectedChat.is_group_chat ? null : getCrmContactName(selectedChat.contact_number, contacts);
+  const displayName = selectedChat.is_group_chat
+    ? (selectedChat.chat_name || 'Group Chat')
+    : (crmName || selectedChat.chat_name || selectedChat.contact_number);
 
   return (
     <WhatsAppContainer>
       <ChatHeader theme={theme}>
         <ChatHeaderInfo>
           <ChatAvatar theme={theme} $isGroup={selectedChat.is_group_chat}>
-            {selectedChat.profile_image_url ? (
+            {selectedChat.profile_image_url && !selectedChat.is_group_chat ? (
               <AvatarImage src={selectedChat.profile_image_url} alt={displayName} />
             ) : (
-              getInitials(displayName, selectedChat.contact_number)
+              getInitials(displayName, selectedChat.is_group_chat ? null : selectedChat.contact_number)
             )}
           </ChatAvatar>
           <div>
@@ -1297,7 +1301,9 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
                 />
               )}
             </ChatName>
-            <ChatNumber theme={theme}>{selectedChat.contact_number}</ChatNumber>
+            <ChatNumber theme={theme}>
+              {selectedChat.is_group_chat ? 'Group' : selectedChat.contact_number}
+            </ChatNumber>
           </div>
         </ChatHeaderInfo>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

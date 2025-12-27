@@ -118,6 +118,7 @@ import ManageContactMobilesModal from '../components/modals/ManageContactMobiles
 import ManageContactTagsModal from '../components/modals/ManageContactTagsModal';
 import ManageContactCitiesModal from '../components/modals/ManageContactCitiesModal';
 import ManageContactCompaniesModal from '../components/modals/ManageContactCompaniesModal';
+import ManageContactListsModal from '../components/modals/ManageContactListsModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
@@ -139,6 +140,9 @@ import DataIntegrityWarningBar from '../components/command-center/DataIntegrityW
 import ContactDetailsTab from '../components/command-center/ContactDetailsTab';
 import CompanyDetailsTab from '../components/command-center/CompanyDetailsTab';
 import RightPanelWhatsAppTab from '../components/command-center/RightPanelWhatsAppTab';
+import RightPanelEmailTab from '../components/command-center/RightPanelEmailTab';
+import RelatedTab from '../components/command-center/RelatedTab';
+import FilesTab from '../components/command-center/FilesTab';
 import useContactDetails from '../hooks/useContactDetails';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
@@ -336,6 +340,21 @@ const CommandCenterPage = ({ theme }) => {
   const [rightPanelCompanyDetails, setRightPanelCompanyDetails] = useState(null);
   const [loadingRightPanelCompany, setLoadingRightPanelCompany] = useState(false);
 
+  // Right panel company enrichment modal state (separate from KIT to avoid conflicts)
+  const [rightPanelCompanyEnrichModalOpen, setRightPanelCompanyEnrichModalOpen] = useState(false);
+
+  // Right panel associate company modal state
+  const [rightPanelAssociateCompanyModalOpen, setRightPanelAssociateCompanyModalOpen] = useState(false);
+
+  // Right panel email tab - pre-selected email
+  const [initialSelectedEmail, setInitialSelectedEmail] = useState(null);
+
+  // Right panel WhatsApp tab - pre-selected mobile
+  const [initialSelectedMobile, setInitialSelectedMobile] = useState(null);
+
+  // Right panel Related tab - pre-selected tag
+  const [initialSelectedTagId, setInitialSelectedTagId] = useState(null);
+
   // When switching to deals tab, if dataIntegrity is selected, switch to chat
   useEffect(() => {
     if (activeTab === 'deals' && activeActionTab === 'dataIntegrity') {
@@ -353,6 +372,7 @@ const CommandCenterPage = ({ theme }) => {
   // Deals from contacts and companies (for Deals tab)
   const [contactDeals, setContactDeals] = useState([]); // Deals linked to email contacts
   const [companyDeals, setCompanyDeals] = useState([]); // Deals linked to companies of email contacts
+  const [refreshDealsCounter, setRefreshDealsCounter] = useState(0); // Trigger to refresh deals
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [createDealAIOpen, setCreateDealAIOpen] = useState(false); // AI Deal creation modal
   const [dealSearchQuery, setDealSearchQuery] = useState('');
@@ -576,7 +596,7 @@ const CommandCenterPage = ({ theme }) => {
           .eq('company_id', selectedRightPanelCompanyId)
           .eq('is_logo', true)
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (logoData?.attachments) {
           logoUrl = logoData.attachments.permanent_url || logoData.attachments.file_url;
@@ -924,6 +944,9 @@ const CommandCenterPage = ({ theme }) => {
   const [kitCityModalOpen, setKitCityModalOpen] = useState(false);
   const [kitCompanyModalContact, setKitCompanyModalContact] = useState(null);
   const [kitEnrichmentModalOpen, setKitEnrichmentModalOpen] = useState(false);
+  // Manage Lists modal state
+  const [addToListModalOpen, setAddToListModalOpen] = useState(false);
+  const [addToListContact, setAddToListContact] = useState(null);
   // Keep in Touch - Company Details state
   const [selectedKitCompanyId, setSelectedKitCompanyId] = useState(null);
   const [kitCompanyDetails, setKitCompanyDetails] = useState(null);
@@ -1896,6 +1919,11 @@ internet businesses.`;
           : c
       )
     );
+
+    // Refresh the right panel contact details if it's the same contact
+    if (selectedRightPanelContactId === contactId && rightPanelContactDetails?.refetch) {
+      rightPanelContactDetails.refetch();
+    }
   };
 
   const profileImageModal = useProfileImageModal(handleProfileImageUpdate);
@@ -3386,6 +3414,12 @@ internet businesses.`;
     setDeleteModalContact(null);
     // Refresh the category missing list in case contact was deleted
     fetchDataIntegrity();
+  };
+
+  // Handle opening Manage Lists modal
+  const handleOpenAddToListModal = (contact) => {
+    setAddToListContact(contact);
+    setAddToListModalOpen(true);
   };
 
   // Handle editing a category missing company - open CompanyDataIntegrityModal
@@ -4938,7 +4972,7 @@ internet businesses.`;
 
       // Fetch notes linked to these contacts
       const { data: noteContacts, error: ncError } = await supabase
-        .from('note_contacts')
+        .from('notes_contacts')
         .select('note_id, contact_id')
         .in('contact_id', contactIds);
 
@@ -5081,7 +5115,7 @@ internet businesses.`;
           }));
 
           const { error: linkError } = await supabase
-            .from('note_contacts')
+            .from('notes_contacts')
             .insert(noteContacts);
 
           if (linkError) throw linkError;
@@ -5652,7 +5686,7 @@ internet businesses.`;
     };
 
     fetchDeals();
-  }, [emailContacts, emailCompanies]);
+  }, [emailContacts, emailCompanies, refreshDealsCounter]);
 
   // Fetch introductions linked to contacts
   useEffect(() => {
@@ -12487,6 +12521,30 @@ internet businesses.`;
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'whatsapp'} onClick={() => setActiveActionTab('whatsapp')} title="WhatsApp Chat" style={{ color: activeActionTab === 'whatsapp' ? '#22C55E' : undefined }}>
                     <FaWhatsapp />
                   </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'email'} onClick={() => setActiveActionTab('email')} title="Send Email" style={{ color: activeActionTab === 'email' ? '#3B82F6' : undefined }}>
+                    <FaEnvelope />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
+                    <FaRobot />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals" style={{ color: activeActionTab === 'deals' ? '#10B981' : undefined }}>
+                    <FaDollarSign />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes" style={{ color: activeActionTab === 'notes' ? '#F59E0B' : undefined }}>
+                    <FaStickyNote />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions" style={{ color: activeActionTab === 'introductions' ? '#EC4899' : undefined }}>
+                    <FaHandshake />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks" style={{ color: activeActionTab === 'tasks' ? '#10B981' : undefined }}>
+                    <FaTasks />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'files'} onClick={() => setActiveActionTab('files')} title="Files" style={{ color: activeActionTab === 'files' ? '#3B82F6' : undefined }}>
+                    <FaPaperclip />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'related'} onClick={() => setActiveActionTab('related')} title="Related by Tag" style={{ color: activeActionTab === 'related' ? '#F59E0B' : undefined }}>
+                    <FaTag />
+                  </ActionTabIcon>
                 </>
               )}
             </RightPanelVerticalNav>
@@ -14007,6 +14065,9 @@ internet businesses.`;
                   removeChatImage={removeChatImage}
                   openReplyWithDraft={openReplyWithDraft}
                   extractDraftFromMessage={extractDraftFromMessage}
+                  onAddCalendar={() => handleCalendarExtract()}
+                  onAddDeal={() => setCreateDealAIOpen(true)}
+                  onAddTask={() => setActiveActionTab('tasks')}
                 />
               )}
 
@@ -14099,10 +14160,26 @@ internet businesses.`;
                   companies={rightPanelContactDetails?.companies || []}
                   tags={rightPanelContactDetails?.tags || []}
                   cities={rightPanelContactDetails?.cities || []}
+                  lists={rightPanelContactDetails?.lists || []}
                   completenessScore={rightPanelContactDetails?.completenessScore}
                   loading={rightPanelContactDetails?.loading}
                   editable={false}
-                  onCompanyClick={(companyId) => navigate(`/companies/${companyId}`)}
+                  onCompanyClick={(companyId) => {
+                    setSelectedRightPanelCompanyId(companyId);
+                    setActiveActionTab('company');
+                  }}
+                  onEmailClick={(email) => {
+                    setInitialSelectedEmail(email);
+                    setActiveActionTab('email');
+                  }}
+                  onMobileClick={(mobile) => {
+                    setInitialSelectedMobile(mobile);
+                    setActiveActionTab('whatsapp');
+                  }}
+                  onTagClick={(tagId) => {
+                    setInitialSelectedTagId(tagId);
+                    setActiveActionTab('related');
+                  }}
                   onEdit={() => {
                     if (rightPanelContactDetails?.contact?.contact_id) {
                       setDataIntegrityContactId(rightPanelContactDetails.contact.contact_id);
@@ -14113,6 +14190,12 @@ internet businesses.`;
                     if (rightPanelContactDetails?.contact) {
                       setSelectedKeepInTouchContact(rightPanelContactDetails.contact);
                       setKitEnrichmentModalOpen(true);
+                    }
+                  }}
+                  onOpenProfileImageModal={profileImageModal.openModal}
+                  onAddToList={() => {
+                    if (rightPanelContactDetails?.contact) {
+                      handleOpenAddToListModal(rightPanelContactDetails.contact);
                     }
                   }}
                 />
@@ -14133,6 +14216,20 @@ internet businesses.`;
                   loading={loadingRightPanelCompany || rightPanelContactDetails?.loading}
                   onCompanyNavigate={(companyId) => navigate(`/companies/${companyId}`)}
                   onContactClick={(contactId) => navigate(`/contacts/${contactId}`)}
+                  onEdit={() => {
+                    if (selectedRightPanelCompanyId) {
+                      setCompanyDataIntegrityCompanyId(selectedRightPanelCompanyId);
+                      setCompanyDataIntegrityModalOpen(true);
+                    }
+                  }}
+                  onEnrich={() => {
+                    if (rightPanelCompanyDetails?.company && selectedRightPanelCompanyId) {
+                      setRightPanelCompanyEnrichModalOpen(true);
+                    }
+                  }}
+                  onAssociateCompany={() => {
+                    setRightPanelAssociateCompanyModalOpen(true);
+                  }}
                 />
               )}
               {activeActionTab === 'whatsapp' && (
@@ -14140,11 +14237,27 @@ internet businesses.`;
                   theme={theme}
                   contactId={selectedRightPanelContactId}
                   mobiles={rightPanelContactDetails?.mobiles || []}
+                  initialSelectedMobile={initialSelectedMobile}
                   onMessageSent={(contactId) => {
                     // Refresh contact details after message sent
                     if (contactId) {
                       toast.success('Message sent!');
                     }
+                    setInitialSelectedMobile(null); // Reset after sending
+                  }}
+                />
+              )}
+              {activeActionTab === 'email' && (
+                <RightPanelEmailTab
+                  theme={theme}
+                  contactId={selectedRightPanelContactId}
+                  contact={rightPanelContactDetails?.contact}
+                  emails={rightPanelContactDetails?.emails || []}
+                  initialSelectedEmail={initialSelectedEmail}
+                  onEmailSent={(contactId) => {
+                    // Refresh after email sent
+                    toast.success('Email sent!');
+                    setInitialSelectedEmail(null); // Reset after sending
                   }}
                 />
               )}
@@ -14157,6 +14270,8 @@ internet businesses.`;
                   setCreateDealAIOpen={setCreateDealAIOpen}
                   onDeleteDealContact={handleDeleteDealContact}
                   onUpdateDealStage={handleUpdateDealStage}
+                  contactId={selectedRightPanelContactId}
+                  onDealAssociated={() => setRefreshDealsCounter(c => c + 1)}
                 />
               )}
               {activeActionTab === 'introductions' && (
@@ -14172,33 +14287,42 @@ internet businesses.`;
               {activeActionTab === 'tasks' && (
                 <TasksTab
                   theme={theme}
-                  todoistTasks={todoistTasks}
-                  todoistProjects={todoistProjects}
-                  loadingTasks={loadingTasks}
-                  expandedProjects={expandedProjects}
-                  setExpandedProjects={setExpandedProjects}
-                  expandedSections={expandedSections}
-                  setExpandedSections={setExpandedSections}
-                  getProjectColor={getProjectColor}
-                  resetTaskForm={resetTaskForm}
-                  setTaskModalOpen={setTaskModalOpen}
-                  onCompleteTask={handleCompleteTask}
-                  onDeleteTask={handleDeleteTask}
-                  openEditTask={openEditTask}
+                  contactId={selectedRightPanelContactId}
+                  contactCompanies={rightPanelContactDetails?.companies || []}
+                  contactDeals={rightPanelContactDetails?.deals || []}
+                  onTaskCreated={() => rightPanelContactDetails?.refetch?.()}
                 />
               )}
 
               {activeActionTab === 'notes' && (
                 <NotesTab
                   theme={theme}
-                  contactNotes={contactNotes}
-                  loadingNotes={loadingNotes}
-                  getNoteTypeIcon={getNoteTypeIcon}
-                  resetNoteForm={resetNoteForm}
-                  setNoteModalOpen={setNoteModalOpen}
+                  contactId={selectedRightPanelContactId}
+                  contactCompanies={rightPanelContactDetails?.companies || []}
+                  contactDeals={rightPanelContactDetails?.deals || []}
+                  onNoteCreated={() => rightPanelContactDetails?.refetch?.()}
                   openInObsidian={openInObsidian}
-                  openEditNote={openEditNote}
-                  onDeleteNote={handleDeleteNote}
+                />
+              )}
+
+              {activeActionTab === 'related' && (
+                <RelatedTab
+                  theme={theme}
+                  contactTags={rightPanelContactDetails?.tags || []}
+                  currentContactId={selectedRightPanelContactId}
+                  initialSelectedTagId={initialSelectedTagId}
+                  onContactClick={(contactId) => {
+                    setSelectedRightPanelContactId(contactId);
+                    setActiveActionTab('crm');
+                  }}
+                />
+              )}
+
+              {activeActionTab === 'files' && (
+                <FilesTab
+                  theme={theme}
+                  contactId={selectedRightPanelContactId}
+                  contact={rightPanelContactDetails}
                 />
               )}
 
@@ -14249,8 +14373,8 @@ internet businesses.`;
         // Deals props
         contactDeals={contactDeals}
         onUpdateDealStage={handleUpdateDealStage}
-        // Task modal
-        setTaskModalOpen={setTaskModalOpen}
+        // Task: switch to tasks tab
+        setTaskModalOpen={() => setActiveActionTab('tasks')}
         // Create Deal AI modal
         setCreateDealAIOpen={setCreateDealAIOpen}
       />
@@ -15398,6 +15522,27 @@ internet businesses.`;
         theme={theme}
       />
 
+      {/* Manage Contact Lists Modal */}
+      <ManageContactListsModal
+        isOpen={addToListModalOpen}
+        onClose={() => {
+          setAddToListModalOpen(false);
+          setAddToListContact(null);
+          // Refresh right panel contact details if same contact
+          if (addToListContact && selectedRightPanelContactId === addToListContact.contact_id && rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
+        }}
+        contact={addToListContact}
+        theme={theme}
+        onListsUpdated={() => {
+          // Refresh right panel contact details if same contact
+          if (addToListContact && selectedRightPanelContactId === addToListContact.contact_id && rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
+        }}
+      />
+
       {/* Create Contact Modal (AI-First) */}
       <CreateContactModalAI
         isOpen={createContactModalOpen}
@@ -15688,6 +15833,10 @@ internet businesses.`;
         onClose={async () => {
           setDataIntegrityModalOpen(false);
           setDataIntegrityContactId(null);
+          // Refresh right panel contact details if same contact
+          if (dataIntegrityContactId && selectedRightPanelContactId === dataIntegrityContactId && rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
           // Refresh Keep in Touch contact data on close
           if (keepInTouchContactDetails?.contact_id) {
             // Fetch updated contact data including christmas/easter wishes
@@ -15769,6 +15918,10 @@ internet businesses.`;
         contactEmails={keepInTouchEmails}
         onEnrichComplete={async () => {
           setKitEnrichmentModalOpen(false);
+          // Refresh right panel contact details if same contact
+          if (selectedKeepInTouchContact?.contact_id && selectedRightPanelContactId === selectedKeepInTouchContact.contact_id && rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
           // Refresh contact data
           if (selectedKeepInTouchContact?.contact_id) {
             const { data: contactData } = await supabase
@@ -15858,6 +16011,32 @@ internet businesses.`;
               setKitCompanyLogo(attachmentData?.permanent_url || null);
             } else {
               setKitCompanyLogo(null);
+            }
+          }
+        }}
+        theme={theme}
+      />
+
+      {/* Right Panel - Company Enrichment Modal */}
+      <CompanyEnrichmentModal
+        isOpen={rightPanelCompanyEnrichModalOpen}
+        onClose={() => setRightPanelCompanyEnrichModalOpen(false)}
+        company={rightPanelCompanyDetails?.company ? { ...rightPanelCompanyDetails.company, company_id: selectedRightPanelCompanyId } : null}
+        companyDomains={rightPanelCompanyDetails?.domains || []}
+        onEnrichComplete={async () => {
+          setRightPanelCompanyEnrichModalOpen(false);
+          // Refresh right panel company data
+          if (selectedRightPanelCompanyId) {
+            const { data: companyData } = await supabase
+              .from('companies')
+              .select('*')
+              .eq('company_id', selectedRightPanelCompanyId)
+              .maybeSingle();
+            if (companyData) {
+              setRightPanelCompanyDetails(prev => ({
+                ...prev,
+                company: companyData
+              }));
             }
           }
         }}
@@ -16405,6 +16584,20 @@ internet businesses.`;
             }
 
             toast.success(`Company linked to ${linkCompanyModalContact.first_name || 'contact'}`);
+          }
+        }}
+      />
+
+      {/* Right Panel - Associate Company Modal */}
+      <ManageContactCompaniesModal
+        isOpen={rightPanelAssociateCompanyModalOpen}
+        onClose={() => setRightPanelAssociateCompanyModalOpen(false)}
+        contact={rightPanelContactDetails?.contact}
+        theme={theme}
+        onCompaniesUpdated={() => {
+          // Refresh right panel contact details
+          if (rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
           }
         }}
       />

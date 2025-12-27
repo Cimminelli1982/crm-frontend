@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   FaRocket, FaEnvelope, FaWhatsapp, FaBuilding, FaTag,
-  FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt, FaChevronDown, FaChevronUp
+  FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt, FaChevronDown, FaChevronUp, FaList, FaPlus
 } from 'react-icons/fa';
 
 // Contact category options
@@ -22,6 +22,7 @@ const CONTACT_CATEGORIES = [
  * @param {Array} props.companies - Array of contact_companies with company info
  * @param {Array} props.tags - Array of contact_tags with tag info
  * @param {Array} props.cities - Array of contact_cities with city info (optional)
+ * @param {Array} props.lists - Array of email_lists the contact belongs to (optional)
  * @param {boolean} props.editable - If true, shows form inputs; if false, shows readonly
  * @param {Function} props.onUpdateField - Callback(field, value) for updating contact fields
  * @param {Function} props.onEnrich - Callback for Apollo enrichment
@@ -31,8 +32,13 @@ const CONTACT_CATEGORIES = [
  * @param {Function} props.onManageTags - Callback to open tags management modal
  * @param {Function} props.onManageCities - Callback to open cities management modal
  * @param {Function} props.onCompanyClick - Callback(companyId) when clicking a company
+ * @param {Function} props.onEmailClick - Callback(email) when clicking an email address
+ * @param {Function} props.onMobileClick - Callback(mobile) when clicking a phone number
+ * @param {Function} props.onTagClick - Callback(tagId, tagName) when clicking a tag
  * @param {boolean} props.loading - Show loading state
  * @param {number} props.completenessScore - Optional completeness score (shows dot if < 100)
+ * @param {Function} props.onOpenProfileImageModal - Callback(contact) to open profile image modal
+ * @param {Function} props.onAddToList - Callback(contact) to open add to list modal
  */
 const ContactDetailsTab = ({
   theme,
@@ -42,6 +48,7 @@ const ContactDetailsTab = ({
   companies = [],
   tags = [],
   cities = [],
+  lists = [],
   editable = false,
   onUpdateField,
   onEnrich,
@@ -51,9 +58,14 @@ const ContactDetailsTab = ({
   onManageTags,
   onManageCities,
   onCompanyClick,
+  onEmailClick,
+  onMobileClick,
+  onTagClick,
   loading = false,
   completenessScore,
-  onEdit
+  onEdit,
+  onOpenProfileImageModal,
+  onAddToList
 }) => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
@@ -236,6 +248,28 @@ const ContactDetailsTab = ({
               Edit
             </button>
           )}
+          {onAddToList && (
+            <button
+              onClick={() => onAddToList(contact)}
+              title="Manage contact lists"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaPlus size={9} />
+              List
+            </button>
+          )}
         </div>
       )}
 
@@ -352,7 +386,18 @@ const ContactDetailsTab = ({
             {/* Read-only: 2-column layout with image and info */}
             <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
               {/* Left column: Profile Image */}
-              <div style={{ flexShrink: 0 }}>
+              <div
+                style={{
+                  flexShrink: 0,
+                  cursor: onOpenProfileImageModal ? 'pointer' : 'default',
+                  position: 'relative'
+                }}
+                onClick={() => onOpenProfileImageModal?.({
+                  ...contact,
+                  contact_emails: emails
+                })}
+                title={onOpenProfileImageModal ? 'Click to edit profile image' : undefined}
+              >
                 {contact.profile_image_url ? (
                   <img
                     src={contact.profile_image_url}
@@ -362,8 +407,11 @@ const ContactDetailsTab = ({
                       height: '64px',
                       borderRadius: '50%',
                       objectFit: 'cover',
-                      border: `2px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      border: `2px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                      transition: 'opacity 0.15s ease'
                     }}
+                    onMouseEnter={(e) => onOpenProfileImageModal && (e.currentTarget.style.opacity = '0.8')}
+                    onMouseLeave={(e) => onOpenProfileImageModal && (e.currentTarget.style.opacity = '1')}
                   />
                 ) : (
                   <div style={{
@@ -376,8 +424,12 @@ const ContactDetailsTab = ({
                     justifyContent: 'center',
                     fontSize: '20px',
                     fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
-                  }}>
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                    transition: 'opacity 0.15s ease'
+                  }}
+                    onMouseEnter={(e) => onOpenProfileImageModal && (e.currentTarget.style.opacity = '0.7')}
+                    onMouseLeave={(e) => onOpenProfileImageModal && (e.currentTarget.style.opacity = '1')}
+                  >
                     {(contact.first_name?.[0] || '').toUpperCase()}{(contact.last_name?.[0] || '').toUpperCase()}
                   </div>
                 )}
@@ -503,7 +555,14 @@ const ContactDetailsTab = ({
           </div>
           {emails.length > 0 ? (
             emails.map((e, idx) => (
-              <div key={e.email_id || idx} style={itemRowStyle}>
+              <div
+                key={e.email_id || idx}
+                style={{
+                  ...itemRowStyle,
+                  cursor: onEmailClick ? 'pointer' : 'default'
+                }}
+                onClick={() => onEmailClick && onEmailClick(e.email)}
+              >
                 <span style={{ flex: 1, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>{e.email}</span>
                 {e.is_primary && (
                   <span style={{ fontSize: '10px', padding: '1px 4px', background: '#10B981', color: 'white', borderRadius: '3px' }}>
@@ -537,7 +596,14 @@ const ContactDetailsTab = ({
           </div>
           {mobiles.length > 0 ? (
             mobiles.map((m, idx) => (
-              <div key={m.mobile_id || idx} style={itemRowStyle}>
+              <div
+                key={m.mobile_id || idx}
+                style={{
+                  ...itemRowStyle,
+                  cursor: onMobileClick ? 'pointer' : 'default'
+                }}
+                onClick={() => onMobileClick && onMobileClick(m.mobile)}
+              >
                 <span style={{ flex: 1, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>{m.mobile}</span>
                 {m.is_primary && (
                   <span style={{ fontSize: '10px', padding: '1px 4px', background: '#10B981', color: 'white', borderRadius: '3px' }}>
@@ -624,20 +690,26 @@ const ContactDetailsTab = ({
           </div>
           {tags.length > 0 ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {tags.map((t, idx) => (
-                <span
-                  key={t.entry_id || idx}
-                  style={{
-                    fontSize: '11px',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                    color: theme === 'dark' ? '#F9FAFB' : '#111827'
-                  }}
-                >
-                  {t.name || t.tags?.name || 'Unknown'}
-                </span>
-              ))}
+              {tags.map((t, idx) => {
+                const tagId = t.tag_id || t.tags?.tag_id;
+                const tagName = t.name || t.tags?.name || 'Unknown';
+                return (
+                  <span
+                    key={t.entry_id || idx}
+                    onClick={() => onTagClick && tagId && onTagClick(tagId, tagName)}
+                    style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      cursor: onTagClick ? 'pointer' : 'default'
+                    }}
+                  >
+                    {tagName}
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
@@ -703,6 +775,33 @@ const ContactDetailsTab = ({
           </div>
         )}
       </div>
+
+      {/* Section 4: Lists */}
+      {lists && lists.length > 0 && (
+        <div style={sectionStyle}>
+          <div style={sectionTitleStyle}>Lists</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {lists.map((list, idx) => (
+              <span
+                key={list.list_id || idx}
+                style={{
+                  fontSize: '11px',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  background: theme === 'dark' ? '#164E63' : '#ECFEFF',
+                  color: theme === 'dark' ? '#67E8F9' : '#0E7490',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <FaList size={9} />
+                {list.name || 'Unnamed List'}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
     </div>
   );

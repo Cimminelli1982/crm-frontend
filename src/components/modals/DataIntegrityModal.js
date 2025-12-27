@@ -1750,7 +1750,7 @@ const DataIntegrityModal = ({
       setSubTagSearch('');
       setSubTagSuggestions([]);
       toast.success('Tag added');
-      loadContactData();
+      // Note: Not calling loadContactData() here to avoid refreshing form while user is editing
     } catch (error) {
       toast.error('Failed to add tag');
     }
@@ -1761,7 +1761,7 @@ const DataIntegrityModal = ({
       await supabase.from('contact_tags').delete().eq('contact_id', contactId).eq('tag_id', tagId);
       setTags(tags.filter(t => t.tag_id !== tagId));
       toast.success('Tag removed');
-      loadContactData();
+      // Note: Not calling loadContactData() here to avoid refreshing form while user is editing
     } catch (error) {
       toast.error('Failed to remove tag');
     }
@@ -1807,7 +1807,7 @@ const DataIntegrityModal = ({
       setSubCitySearch('');
       setSubCitySuggestions([]);
       toast.success('City added');
-      loadContactData();
+      // Note: Not calling loadContactData() here to avoid refreshing form while user is editing
     } catch (error) {
       toast.error('Failed to add city');
     }
@@ -1818,7 +1818,7 @@ const DataIntegrityModal = ({
       await supabase.from('contact_cities').delete().eq('contact_id', contactId).eq('city_id', cityId);
       setCities(cities.filter(c => c.city_id !== cityId));
       toast.success('City removed');
-      loadContactData();
+      // Note: Not calling loadContactData() here to avoid refreshing form while user is editing
     } catch (error) {
       toast.error('Failed to remove city');
     }
@@ -1868,7 +1868,7 @@ const DataIntegrityModal = ({
       setSubCompanySearch('');
       setSubCompanySuggestions([]);
       toast.success('Company added');
-      loadContactData();
+      // Note: Not calling loadContactData() here to avoid refreshing form while user is editing
     } catch (error) {
       toast.error('Failed to add company');
     }
@@ -1879,7 +1879,7 @@ const DataIntegrityModal = ({
       await supabase.from('contact_companies').delete().eq('contact_id', contactId).eq('company_id', companyId);
       setCompanies(companies.filter(c => c.company_id !== companyId));
       toast.success('Company removed');
-      loadContactData();
+      // Note: Not calling loadContactData() here to avoid refreshing form while user is editing
     } catch (error) {
       toast.error('Failed to remove company');
     }

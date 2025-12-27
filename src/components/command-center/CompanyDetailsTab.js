@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   FaRocket, FaBuilding, FaLinkedin, FaGlobe, FaTag,
-  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp
+  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus
 } from 'react-icons/fa';
 
 // Company category options
@@ -30,6 +30,8 @@ const COMPANY_CATEGORIES = [
  * @param {Function} props.onContactClick - Callback(contactId) when clicking a contact
  * @param {Function} props.onCompanyNavigate - Callback(companyId) when clicking to navigate to company page
  * @param {boolean} props.loading - Show loading state
+ * @param {Function} props.onEdit - Callback for editing company (opens completeness modal)
+ * @param {Function} props.onAssociateCompany - Callback to open associate company modal
  */
 const CompanyDetailsTab = ({
   theme,
@@ -47,7 +49,9 @@ const CompanyDetailsTab = ({
   onEnrich,
   onContactClick,
   onCompanyNavigate,
-  loading = false
+  loading = false,
+  onEdit,
+  onAssociateCompany
 }) => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
@@ -133,7 +137,28 @@ const CompanyDetailsTab = ({
       }}>
         <FaBuilding size={40} style={{ marginBottom: '12px', opacity: 0.5 }} />
         <div style={{ fontSize: '14px', fontWeight: 500 }}>No company linked</div>
-        <div style={{ fontSize: '12px', marginTop: '4px' }}>Link a company from the Contact tab</div>
+        <div style={{ fontSize: '12px', marginTop: '4px', marginBottom: '16px' }}>Link a company to this contact</div>
+        {onAssociateCompany && (
+          <button
+            onClick={onAssociateCompany}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: 'none',
+              background: '#8B5CF6',
+              color: '#FFFFFF',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <FaPlus size={10} />
+            Associate Company
+          </button>
+        )}
       </div>
     );
   }
@@ -222,39 +247,48 @@ const CompanyDetailsTab = ({
   // Full editable/detailed view
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
-      {/* Company Selector (if multiple companies) */}
-      {companies.length > 1 && (
-        <div style={{ marginBottom: '12px' }}>
-          <select
-            value={selectedCompanyId || ''}
-            onChange={(e) => onSelectCompany?.(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '8px',
-              border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-              background: theme === 'dark' ? '#374151' : '#FFFFFF',
-              color: theme === 'dark' ? '#F9FAFB' : '#111827',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-          >
-            {companies.map(cc => {
-              // Handle both flattened (from useContactDetails) and nested data structures
-              const companyName = cc.name || cc.company?.name || cc.companies?.name || 'Unknown Company';
-              const companyId = cc.company_id || cc.company?.company_id || cc.companies?.company_id;
-              return (
-                <option key={companyId} value={companyId}>
-                  {companyName} {cc.is_primary ? '(Primary)' : ''}
-                </option>
-              );
-            })}
-          </select>
-        </div>
-      )}
+      {/* Company Selector - always visible */}
+      <div style={{ marginBottom: '12px' }}>
+        <select
+          value={selectedCompanyId || ''}
+          onChange={(e) => {
+            if (e.target.value === '__associate__') {
+              onAssociateCompany?.();
+            } else {
+              onSelectCompany?.(e.target.value);
+            }
+          }}
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+            background: theme === 'dark' ? '#374151' : '#FFFFFF',
+            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: 'pointer'
+          }}
+        >
+          {companies.map(cc => {
+            // Handle both flattened (from useContactDetails) and nested data structures
+            const companyName = cc.name || cc.company?.name || cc.companies?.name || 'Unknown Company';
+            const companyId = cc.company_id || cc.company?.company_id || cc.companies?.company_id;
+            return (
+              <option key={companyId} value={companyId}>
+                {companyName} {cc.is_primary ? '(Primary)' : ''}
+              </option>
+            );
+          })}
+          {onAssociateCompany && (
+            <option value="__associate__" style={{ fontWeight: 600, color: '#8B5CF6' }}>
+              + Associate Company...
+            </option>
+          )}
+        </select>
+      </div>
 
-      {/* Enrich with Apollo Button (only in editable mode) */}
+      {/* Enrich with Apollo Button (full width in editable mode) */}
       {editable && onEnrich && (
         <button
           onClick={onEnrich}
@@ -280,6 +314,56 @@ const CompanyDetailsTab = ({
           <FaRocket size={14} />
           Enrich with Apollo
         </button>
+      )}
+
+      {/* Read-only mode: Action buttons */}
+      {!editable && (onEnrich || onEdit) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          {onEnrich && (
+            <button
+              onClick={onEnrich}
+              title="Enrich with Apollo"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                color: '#FFFFFF',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaRocket size={9} />
+              Enrich
+            </button>
+          )}
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              title="Edit company"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaEdit size={9} />
+              Edit
+            </button>
+          )}
+        </div>
       )}
 
       {companyDetails && (
@@ -329,122 +413,41 @@ const CompanyDetailsTab = ({
               }}>
                 {companyDetails.name}
               </div>
+              {/* Category badge */}
               {companyDetails.category && companyDetails.category !== 'Not Set' && (
-                <div style={{
-                  fontSize: '12px',
-                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                  marginTop: '2px'
+                <span style={{
+                  display: 'inline-block',
+                  marginTop: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                  color: theme === 'dark' ? '#D1D5DB' : '#374151'
                 }}>
                   {companyDetails.category}
-                </div>
+                </span>
               )}
-              {companyDomains.length > 0 && (
-                <div style={{
-                  fontSize: '11px',
-                  color: '#3B82F6',
-                  marginTop: '2px'
-                }}>
-                  {companyDomains[0].domain}
-                </div>
+              {/* LinkedIn link */}
+              {companyDetails.linkedin && (
+                <a
+                  href={companyDetails.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    color: '#3B82F6',
+                    marginTop: '4px',
+                    textDecoration: 'none'
+                  }}
+                >
+                  <FaLinkedin size={11} />
+                  LinkedIn
+                </a>
               )}
             </div>
-          </div>
-
-          {/* Basic Info */}
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>Basic Info</div>
-
-            {editable ? (
-              <>
-                {/* Name */}
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={labelStyle}>Company Name</label>
-                  <input
-                    type="text"
-                    value={companyDetails.name || ''}
-                    onChange={(e) => onUpdateField?.('name', e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-
-                {/* Category */}
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={labelStyle}>Category</label>
-                  <select
-                    value={companyDetails.category || 'Not Set'}
-                    onChange={(e) => onUpdateField?.('category', e.target.value)}
-                    style={selectStyle}
-                  >
-                    {COMPANY_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* LinkedIn */}
-                <div>
-                  <label style={labelStyle}>LinkedIn</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      value={companyDetails.linkedin || ''}
-                      onChange={(e) => onUpdateField?.('linkedin', e.target.value)}
-                      placeholder="https://linkedin.com/company/..."
-                      style={{ ...inputStyle, flex: 1 }}
-                    />
-                    {companyDetails.linkedin && (
-                      <a
-                        href={companyDetails.linkedin}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          background: '#0A66C2',
-                          color: '#FFFFFF',
-                          textDecoration: 'none',
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                      >
-                        <FaLinkedin size={14} />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                {companyDetails.category && companyDetails.category !== 'Not Set' && (
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{
-                      ...tagStyle,
-                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                      color: theme === 'dark' ? '#D1D5DB' : '#374151'
-                    }}>
-                      {companyDetails.category}
-                    </span>
-                  </div>
-                )}
-                {companyDetails.linkedin && (
-                  <a
-                    href={companyDetails.linkedin}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: '12px',
-                      color: '#3B82F6',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <FaLinkedin size={12} />
-                    View on LinkedIn
-                  </a>
-                )}
-              </>
-            )}
           </div>
 
           {/* Description - Expandable */}
@@ -524,18 +527,23 @@ const CompanyDetailsTab = ({
                 </span>
               ) : (
                 companyDomains.map(d => (
-                  <span
+                  <a
                     key={d.id}
+                    href={d.domain.startsWith('http') ? d.domain : `https://${d.domain}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     style={{
                       ...tagStyle,
                       background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                      color: theme === 'dark' ? '#D1D5DB' : '#374151'
+                      color: theme === 'dark' ? '#93C5FD' : '#2563EB',
+                      textDecoration: 'none',
+                      cursor: 'pointer'
                     }}
                   >
                     <FaGlobe size={10} />
                     {d.domain}
                     {d.is_primary && <span style={{ fontSize: '10px', opacity: 0.7 }}>(primary)</span>}
-                  </span>
+                  </a>
                 ))
               )}
             </div>

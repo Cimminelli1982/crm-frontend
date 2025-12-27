@@ -13,12 +13,14 @@ const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
  * @param {string} props.contactId - The contact ID to show chats for
  * @param {Array} props.mobiles - Contact's phone numbers (fallback for sending)
  * @param {Function} props.onMessageSent - Callback when a message is sent
+ * @param {string} props.initialSelectedMobile - Pre-selected mobile number to find matching chat
  */
 const RightPanelWhatsAppTab = ({
   theme,
   contactId,
   mobiles = [],
   onMessageSent,
+  initialSelectedMobile,
 }) => {
   const [chats, setChats] = useState([]);
   const [selectedChatId, setSelectedChatId] = useState(null);
@@ -46,7 +48,10 @@ const RightPanelWhatsAppTab = ({
     autoResizeTextarea();
   }, [input, autoResizeTextarea]);
 
-  // Fetch contact's chats
+  // Helper to get last 9 digits for phone matching
+  const getLast9Digits = (phone) => (phone || '').replace(/\D/g, '').slice(-9);
+
+  // Fetch contact's chats: COMBINE contact_chats + command_center_inbox by phone
   useEffect(() => {
     const fetchChats = async () => {
       if (!contactId) {
@@ -58,38 +63,97 @@ const RightPanelWhatsAppTab = ({
 
       setLoadingChats(true);
       try {
-        const { data, error } = await supabase
+        const chatMap = new Map();
+
+        // 1. Get linked chats from contact_chats (includes groups)
+        const { data: linkedChats } = await supabase
           .from('contact_chats')
-          .select('chat_id, chats(id, chat_name, is_group_chat, baileys_jid, external_chat_id, created_at)')
+          .select('chat_id, chats(id, chat_name, is_group_chat, baileys_jid, external_chat_id)')
           .eq('contact_id', contactId);
 
-        if (error) throw error;
+        (linkedChats || []).forEach(cc => {
+          if (cc.chats?.id) {
+            chatMap.set(cc.chats.id, {
+              id: cc.chats.id,
+              chat_id: cc.chats.id,
+              chat_name: cc.chats.chat_name || 'Unknown Chat',
+              is_group_chat: cc.chats.is_group_chat || false,
+              baileys_jid: cc.chats.baileys_jid,
+              external_chat_id: cc.chats.external_chat_id,
+              messages: [],
+              latestDate: null,
+              source: 'linked'
+            });
+          }
+        });
 
-        // Transform and sort: personal chats first, then by created_at
-        const transformedChats = (data || [])
-          .map(cc => ({
-            id: cc.chats?.id || cc.chat_id,
-            chat_name: cc.chats?.chat_name || 'Unknown Chat',
-            is_group_chat: cc.chats?.is_group_chat || false,
-            baileys_jid: cc.chats?.baileys_jid,
-            external_chat_id: cc.chats?.external_chat_id, // TimelinesAI chat_id
-            created_at: cc.chats?.created_at
-          }))
-          .filter(c => c.id)
-          .sort((a, b) => {
-            // Sort: personal chats first, then by created_at (newest first)
-            if (a.is_group_chat !== b.is_group_chat) {
-              return a.is_group_chat ? 1 : -1;
+        // 2. Get chats from command_center_inbox by phone number
+        if (mobiles.length > 0) {
+          const { data: inboxMessages } = await supabase
+            .from('command_center_inbox')
+            .select('*')
+            .eq('type', 'whatsapp')
+            .order('date', { ascending: false });
+
+          const mobileSuffixes = mobiles.map(m => getLast9Digits(m.mobile));
+
+          (inboxMessages || []).forEach(msg => {
+            const msgPhoneSuffix = getLast9Digits(msg.contact_number || '');
+            if (msgPhoneSuffix.length < 9) return;
+            if (!mobileSuffixes.includes(msgPhoneSuffix)) return;
+
+            const key = msg.chat_id || msg.contact_number;
+            if (!chatMap.has(key)) {
+              chatMap.set(key, {
+                id: key,
+                chat_id: msg.chat_id,
+                chat_name: msg.chat_name || msg.contact_number,
+                contact_number: msg.contact_number,
+                is_group_chat: msg.is_group_chat || false,
+                chat_jid: msg.chat_jid,
+                messages: [],
+                latestDate: msg.date,
+                source: 'inbox'
+              });
             }
-            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            const chat = chatMap.get(key);
+            chat.messages.push(msg);
+            if (!chat.latestDate || new Date(msg.date) > new Date(chat.latestDate)) {
+              chat.latestDate = msg.date;
+            }
+            // Update contact_number if not set
+            if (!chat.contact_number) chat.contact_number = msg.contact_number;
           });
+        }
 
-        setChats(transformedChats);
+        // Convert to array and sort: personal first, then by latest date
+        const chatList = Array.from(chatMap.values()).sort((a, b) => {
+          if (a.is_group_chat !== b.is_group_chat) {
+            return a.is_group_chat ? 1 : -1;
+          }
+          return new Date(b.latestDate || 0) - new Date(a.latestDate || 0);
+        });
 
-        // Auto-select first chat (personal chat if available)
-        if (transformedChats.length > 0) {
-          setSelectedChatId(transformedChats[0].id);
-          setSelectedChat(transformedChats[0]);
+        setChats(chatList);
+
+        // Auto-select chat: prefer initialSelectedMobile match, otherwise first chat
+        if (chatList.length > 0) {
+          let chatToSelect = chatList[0];
+
+          // If initialSelectedMobile is set, try to find a matching chat
+          if (initialSelectedMobile) {
+            const mobileSuffix = getLast9Digits(initialSelectedMobile);
+            const matchingChat = chatList.find(c => {
+              const chatPhoneSuffix = getLast9Digits(c.contact_number || '');
+              return chatPhoneSuffix.length >= 9 && chatPhoneSuffix === mobileSuffix;
+            });
+            if (matchingChat) {
+              chatToSelect = matchingChat;
+            }
+          }
+
+          setSelectedChatId(chatToSelect.id);
+          setSelectedChat(chatToSelect);
         } else {
           setSelectedChatId(null);
           setSelectedChat(null);
@@ -103,47 +167,62 @@ const RightPanelWhatsAppTab = ({
     };
 
     fetchChats();
-  }, [contactId]);
+  }, [contactId, mobiles, initialSelectedMobile]);
 
-  // Fetch messages when chat is selected
+  // Show messages when chat is selected (from inbox + archived)
   useEffect(() => {
-    const fetchMessages = async () => {
-      if (!selectedChatId) {
+    const loadMessages = async () => {
+      if (!selectedChat) {
         setMessages([]);
         return;
       }
 
       setLoading(true);
       try {
-        // Fetch from interactions table filtered by chat_id
-        const { data, error } = await supabase
-          .from('interactions')
-          .select('interaction_id, direction, interaction_date, summary')
-          .eq('chat_id', selectedChatId)
-          .eq('interaction_type', 'whatsapp')
-          .order('interaction_date', { ascending: false })
-          .limit(100);
-
-        if (error) throw error;
-
-        const formattedMessages = (data || []).map(m => ({
-          id: m.interaction_id,
-          text: m.summary || '',
+        // 1. Messages from inbox (already loaded in selectedChat.messages)
+        const inboxMessages = (selectedChat.messages || []).map(m => ({
+          id: m.id || m.message_uid,
+          text: m.body_text || m.snippet || '',
           direction: m.direction,
-          date: m.interaction_date
+          date: m.date,
+          source: 'inbox'
         }));
 
-        setMessages(formattedMessages);
+        // 2. Archived messages from interactions (if chat_id exists)
+        let archivedMessages = [];
+        if (selectedChat.chat_id) {
+          const { data } = await supabase
+            .from('interactions')
+            .select('interaction_id, direction, interaction_date, summary')
+            .eq('chat_id', selectedChat.chat_id)
+            .eq('interaction_type', 'whatsapp')
+            .order('interaction_date', { ascending: false })
+            .limit(100);
+
+          archivedMessages = (data || []).map(m => ({
+            id: m.interaction_id,
+            text: m.summary || '',
+            direction: m.direction,
+            date: m.interaction_date,
+            source: 'archived'
+          }));
+        }
+
+        // Combine and sort by date (newest first)
+        const allMessages = [...inboxMessages, ...archivedMessages];
+        allMessages.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        setMessages(allMessages);
       } catch (err) {
-        console.error('Error fetching messages:', err);
+        console.error('Error loading messages:', err);
         setMessages([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchMessages();
-  }, [selectedChatId]);
+    loadMessages();
+  }, [selectedChat]);
 
   // Handle chat selection
   const handleChatSelect = (chatId) => {
@@ -194,9 +273,11 @@ ${input.trim()}`
   const handleSend = async () => {
     if (!input.trim() || sending) return;
 
-    let jid = selectedChat?.baileys_jid;
+    // Use baileys_jid or chat_jid (from inbox)
+    let jid = selectedChat?.baileys_jid || selectedChat?.chat_jid;
     const isGroup = selectedChat?.is_group_chat;
-    const phone = mobiles.length > 0 ? mobiles[0].mobile : null;
+    // For phone, prefer contact_number from chat, fallback to mobiles
+    const phone = selectedChat?.contact_number || (mobiles.length > 0 ? mobiles[0].mobile : null);
 
     const messageText = input.trim();
     setSending(true);
@@ -216,11 +297,10 @@ ${input.trim()}`
         if (searchData.success && searchData.jid) {
           jid = searchData.jid;
           // Update local state for future sends
-          setSelectedChat(prev => ({ ...prev, baileys_jid: jid }));
+          setSelectedChat(prev => ({ ...prev, baileys_jid: jid, chat_jid: jid }));
           setChats(prev => prev.map(c =>
-            c.id === selectedChat.id ? { ...c, baileys_jid: jid } : c
+            c.id === selectedChat.id ? { ...c, baileys_jid: jid, chat_jid: jid } : c
           ));
-          toast.success(`Linked group: ${searchData.chat_name}`, { duration: 2000 });
         } else {
           toast.error('Could not find group in WhatsApp');
           setSending(false);
@@ -235,9 +315,9 @@ ${input.trim()}`
         return;
       }
 
-      // For groups: always use JID
-      // For personal: prefer JID, fallback to phone
-      const destination = jid ? { jid } : { phone };
+      // For groups: always use chat_id (JID)
+      // For personal: prefer chat_id (JID), fallback to phone
+      const destination = jid ? { chat_id: jid } : { phone };
 
       const response = await fetch(`${BACKEND_URL}/whatsapp/send`, {
         method: 'POST',

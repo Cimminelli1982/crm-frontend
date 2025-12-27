@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FaDollarSign, FaRobot, FaTrash } from 'react-icons/fa';
+import { FaDollarSign, FaRobot, FaTrash, FaPlus, FaLink, FaSearch, FaChevronDown } from 'react-icons/fa';
 import { ActionCard, ActionCardHeader, ActionCardContent } from '../../pages/CommandCenterPage.styles';
+import { supabase } from '../../lib/supabaseClient';
+import toast from 'react-hot-toast';
 
 const DealActionsRow = styled.div`
   display: flex;
@@ -79,6 +81,136 @@ const StageBadge = styled.span`
   }
 `;
 
+const AddDealMenu = styled.div`
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+`;
+
+const MenuButton = styled.button`
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+  background: ${props => props.$active
+    ? (props.theme === 'dark' ? '#1F2937' : '#F3F4F6')
+    : (props.theme === 'dark' ? '#111827' : '#FFFFFF')};
+  color: ${props => props.theme === 'dark' ? '#F9FAFB' : '#111827'};
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s;
+
+  &:hover {
+    background: ${props => props.theme === 'dark' ? '#1F2937' : '#F3F4F6'};
+    border-color: ${props => props.theme === 'dark' ? '#4B5563' : '#D1D5DB'};
+  }
+`;
+
+const AssociatePanel = styled.div`
+  padding: 12px;
+  border-bottom: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 10px 12px;
+  padding-left: 36px;
+  border-radius: 8px;
+  border: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+  background: ${props => props.theme === 'dark' ? '#1F2937' : '#FFFFFF'};
+  color: ${props => props.theme === 'dark' ? '#F9FAFB' : '#111827'};
+  font-size: 13px;
+  margin-bottom: 8px;
+
+  &:focus {
+    outline: none;
+    border-color: #10B981;
+  }
+
+  &::placeholder {
+    color: ${props => props.theme === 'dark' ? '#6B7280' : '#9CA3AF'};
+  }
+`;
+
+const DealsList = styled.div`
+  max-height: 200px;
+  overflow-y: auto;
+`;
+
+const DealOption = styled.div`
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  background: ${props => props.$selected
+    ? (props.theme === 'dark' ? '#064E3B' : '#D1FAE5')
+    : (props.theme === 'dark' ? '#1F2937' : '#F9FAFB')};
+  border: 1px solid ${props => props.$selected ? '#10B981' : 'transparent'};
+
+  &:hover {
+    background: ${props => props.$selected
+      ? (props.theme === 'dark' ? '#064E3B' : '#D1FAE5')
+      : (props.theme === 'dark' ? '#374151' : '#F3F4F6')};
+  }
+`;
+
+const RelationshipSelect = styled.select`
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+  background: ${props => props.theme === 'dark' ? '#1F2937' : '#FFFFFF'};
+  color: ${props => props.theme === 'dark' ? '#F9FAFB' : '#111827'};
+  font-size: 13px;
+  margin-top: 8px;
+
+  &:focus {
+    outline: none;
+    border-color: #10B981;
+  }
+`;
+
+const AssociateButton = styled.button`
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: #10B981;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  &:hover {
+    background: #059669;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const SectionHeader = styled.div`
+  padding: 12px 16px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: ${props => props.theme === 'dark' ? '#9CA3AF' : '#6B7280'};
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
 const DealsTab = ({
   theme,
   selectedThread,
@@ -87,8 +219,84 @@ const DealsTab = ({
   setCreateDealAIOpen,
   onDeleteDealContact,
   onUpdateDealStage,
+  contactId, // The contact to associate deals with
+  onDealAssociated, // Callback after associating a deal
 }) => {
   const [updatingDeals, setUpdatingDeals] = useState({});
+  const [showAssociate, setShowAssociate] = useState(false);
+  const [allDeals, setAllDeals] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDeal, setSelectedDeal] = useState(null);
+  const [relationship, setRelationship] = useState('founder');
+  const [associating, setAssociating] = useState(false);
+  const [loadingDeals, setLoadingDeals] = useState(false);
+
+  // Fetch all deals when associate panel opens
+  useEffect(() => {
+    if (showAssociate) {
+      fetchAllDeals();
+    }
+  }, [showAssociate]);
+
+  const fetchAllDeals = async () => {
+    setLoadingDeals(true);
+    try {
+      const { data, error } = await supabase
+        .from('deals')
+        .select('deal_id, opportunity, stage, category')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAllDeals(data || []);
+    } catch (err) {
+      console.error('Error fetching deals:', err);
+      toast.error('Failed to load deals');
+    } finally {
+      setLoadingDeals(false);
+    }
+  };
+
+  const handleAssociate = async () => {
+    if (!selectedDeal || !contactId) return;
+
+    setAssociating(true);
+    try {
+      const { error } = await supabase
+        .from('deals_contacts')
+        .insert({
+          deal_id: selectedDeal.deal_id,
+          contact_id: contactId,
+          relationship: relationship
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('Contact already associated with this deal');
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success('Contact associated with deal');
+        setShowAssociate(false);
+        setSelectedDeal(null);
+        setSearchQuery('');
+        onDealAssociated?.();
+      }
+    } catch (err) {
+      console.error('Error associating deal:', err);
+      toast.error('Failed to associate deal');
+    } finally {
+      setAssociating(false);
+    }
+  };
+
+  // Filter deals by search query
+  const filteredDeals = allDeals.filter(deal =>
+    deal.opportunity?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Get already associated deal IDs to filter them out
+  const associatedDealIds = [...contactDeals, ...companyDeals].map(d => d.deal_id);
 
   const handleStageUpdate = async (dealId, newStage) => {
     if (!onUpdateDealStage) return;
@@ -104,14 +312,113 @@ const DealsTab = ({
   };
 
   return (
-    <>
-      {/* Add New Deal Button - AI Assisted */}
-      <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => setCreateDealAIOpen(true)}>
-        <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
-          <FaRobot style={{ color: '#8B5CF6' }} />
-          <span style={{ fontWeight: 600 }}>New Deal from Email</span>
-        </ActionCardContent>
-      </ActionCard>
+    <div style={{ flex: 1, overflow: 'auto' }}>
+      {/* Add Deal Menu */}
+      <AddDealMenu theme={theme}>
+        <MenuButton
+          theme={theme}
+          $active={showAssociate}
+          onClick={() => setShowAssociate(!showAssociate)}
+        >
+          <FaLink size={12} /> Associate
+        </MenuButton>
+        <MenuButton
+          theme={theme}
+          onClick={() => setCreateDealAIOpen(true)}
+        >
+          <FaPlus size={12} /> Create New
+        </MenuButton>
+      </AddDealMenu>
+
+      {/* Associate Panel */}
+      {showAssociate && (
+        <AssociatePanel theme={theme}>
+          <div style={{ position: 'relative' }}>
+            <FaSearch
+              size={14}
+              style={{
+                position: 'absolute',
+                left: '12px',
+                top: '12px',
+                color: theme === 'dark' ? '#6B7280' : '#9CA3AF'
+              }}
+            />
+            <SearchInput
+              theme={theme}
+              placeholder="Search deals..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <DealsList>
+            {loadingDeals ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF' }}>
+                Loading deals...
+              </div>
+            ) : filteredDeals.filter(d => !associatedDealIds.includes(d.deal_id)).length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                {searchQuery ? 'No deals found' : 'No deals available'}
+              </div>
+            ) : (
+              filteredDeals
+                .filter(d => !associatedDealIds.includes(d.deal_id))
+                .map(deal => (
+                  <DealOption
+                    key={deal.deal_id}
+                    theme={theme}
+                    $selected={selectedDeal?.deal_id === deal.deal_id}
+                    onClick={() => setSelectedDeal(deal)}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                      {deal.opportunity || 'Untitled Deal'}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                      <StageBadge className={deal.stage?.toLowerCase() || 'lead'}>
+                        {deal.stage || 'Lead'}
+                      </StageBadge>
+                      {deal.category && (
+                        <span style={{
+                          fontSize: '10px',
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                          color: theme === 'dark' ? '#D1D5DB' : '#374151'
+                        }}>
+                          {deal.category}
+                        </span>
+                      )}
+                    </div>
+                  </DealOption>
+                ))
+            )}
+          </DealsList>
+
+          {selectedDeal && (
+            <>
+              <RelationshipSelect
+                theme={theme}
+                value={relationship}
+                onChange={(e) => setRelationship(e.target.value)}
+              >
+                <option value="founder">Founder</option>
+                <option value="investor">Investor</option>
+                <option value="advisor">Advisor</option>
+                <option value="employee">Employee</option>
+                <option value="other">Other</option>
+              </RelationshipSelect>
+
+              <AssociateButton
+                onClick={handleAssociate}
+                disabled={associating}
+              >
+                <FaLink size={12} />
+                {associating ? 'Associating...' : 'Associate Contact'}
+              </AssociateButton>
+            </>
+          )}
+        </AssociatePanel>
+      )}
 
       {/* From Contacts Section */}
       {contactDeals.length > 0 && (
@@ -322,14 +629,14 @@ const DealsTab = ({
       )}
 
       {/* Empty State - only show when no deals at all */}
-      {contactDeals.length === 0 && companyDeals.length === 0 && selectedThread && (
+      {contactDeals.length === 0 && companyDeals.length === 0 && !showAssociate && (
         <ActionCard theme={theme}>
           <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
-            No deals linked to these contacts
+            No deals linked to this contact
           </ActionCardContent>
         </ActionCard>
       )}
-    </>
+    </div>
   );
 };
 
