@@ -133,6 +133,7 @@ import TasksTab from '../components/command-center/TasksTab';
 import NotesTab from '../components/command-center/NotesTab';
 import NotesFullTab from '../components/command-center/NotesFullTab';
 import ListsTab from '../components/command-center/ListsTab';
+import TasksFullTab from '../components/command-center/TasksFullTab';
 import ComposeEmailModal from '../components/command-center/ComposeEmailModal';
 import WhatsAppTab, { WhatsAppChatList } from '../components/command-center/WhatsAppTab';
 import ContactSelector from '../components/command-center/ContactSelector';
@@ -7752,6 +7753,7 @@ internet businesses.`;
     { id: 'introductions', label: 'Introductions', icon: FaHandshake, count: filterIntroductionsBySection(introductionsList, 'inbox').length, hasUnread: filterIntroductionsBySection(introductionsList, 'inbox').length > 0 },
     { id: 'notes', label: 'Notes', icon: FaStickyNote, count: 0, hasUnread: false },
     { id: 'lists', label: 'Lists', icon: FaList, count: 0, hasUnread: false },
+    { id: 'tasks', label: 'Tasks', icon: FaTasks, count: 0, hasUnread: false },
   ];
 
   return (
@@ -7782,8 +7784,8 @@ internet businesses.`;
 
       {/* Main 3-panel layout */}
       <MainContent>
-        {/* Left: Email List - Hidden for Notes and Lists tabs */}
-        {activeTab !== 'notes' && activeTab !== 'lists' && (
+        {/* Left: Email List - Hidden for Notes, Lists, and Tasks tabs */}
+        {activeTab !== 'notes' && activeTab !== 'lists' && activeTab !== 'tasks' && (
         <EmailListPanel theme={theme} $collapsed={listCollapsed}>
           <ListHeader theme={theme}>
             {!listCollapsed && (
@@ -11878,6 +11880,8 @@ internet businesses.`;
             <NotesFullTab theme={theme} />
           ) : activeTab === 'lists' ? (
             <ListsTab theme={theme} profileImageModal={profileImageModal} onMemberSelect={setSelectedListMember} />
+          ) : activeTab === 'tasks' ? (
+            <TasksFullTab theme={theme} />
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
@@ -12438,8 +12442,8 @@ internet businesses.`;
           )}
         </EmailContentPanel>
 
-        {/* Right: Actions Panel - Hidden for Notes and Lists tabs */}
-        {activeTab !== 'notes' && activeTab !== 'lists' && (
+        {/* Right: Actions Panel - Hidden for Notes, Lists, and Tasks tabs */}
+        {activeTab !== 'notes' && activeTab !== 'lists' && activeTab !== 'tasks' && (
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
           {/* Data Integrity Warning Bar - show only for email/whatsapp/calendar when not collapsed */}
           {!rightPanelCollapsed && ['email', 'whatsapp', 'calendar'].includes(activeTab) && (
