@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FaDollarSign, FaRobot, FaTrash, FaPlus, FaLink, FaSearch, FaChevronDown } from 'react-icons/fa';
+import { FaDollarSign, FaRobot, FaTrash, FaPlus, FaLink, FaSearch, FaChevronDown, FaPaperclip, FaFile, FaFilePdf, FaFileImage, FaFileWord, FaFileExcel, FaDownload } from 'react-icons/fa';
 import { ActionCard, ActionCardHeader, ActionCardContent } from '../../pages/CommandCenterPage.styles';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
+
+// Helper function for file icons
+const getFileIcon = (type, name) => {
+  const ext = name?.split('.').pop()?.toLowerCase();
+  if (type?.includes('pdf') || ext === 'pdf') return FaFilePdf;
+  if (type?.includes('image') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return FaFileImage;
+  if (type?.includes('word') || ['doc', 'docx'].includes(ext)) return FaFileWord;
+  if (type?.includes('excel') || type?.includes('spreadsheet') || ['xls', 'xlsx', 'csv'].includes(ext)) return FaFileExcel;
+  return FaFile;
+};
 
 const DealActionsRow = styled.div`
   display: flex;
@@ -209,6 +219,39 @@ const SectionHeader = styled.div`
   color: ${props => props.theme === 'dark' ? '#9CA3AF' : '#6B7280'};
   text-transform: uppercase;
   letter-spacing: 0.5px;
+`;
+
+const AttachmentsSection = styled.div`
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+`;
+
+const AttachmentItem = styled.a`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: ${props => props.theme === 'dark' ? '#1F2937' : '#F3F4F6'};
+  margin-top: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+  }
+`;
+
+const AttachmentName = styled.span`
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  color: ${props => props.theme === 'dark' ? '#D1D5DB' : '#374151'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const DealsTab = ({
@@ -506,6 +549,32 @@ const DealsTab = ({
                     ))}
                   </div>
                 )}
+                {/* Attachments */}
+                {deal.deal_attachments && deal.deal_attachments.length > 0 && (
+                  <AttachmentsSection theme={theme}>
+                    <div style={{ fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <FaPaperclip size={9} /> {deal.deal_attachments.length} attachment{deal.deal_attachments.length > 1 ? 's' : ''}
+                    </div>
+                    {deal.deal_attachments.map(da => {
+                      const att = da.attachments;
+                      if (!att) return null;
+                      const Icon = getFileIcon(att.file_type, att.file_name);
+                      return (
+                        <AttachmentItem
+                          key={da.attachment_id}
+                          theme={theme}
+                          href={att.permanent_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Icon size={14} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', flexShrink: 0 }} />
+                          <AttachmentName theme={theme}>{att.file_name}</AttachmentName>
+                          <FaDownload size={10} style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', flexShrink: 0 }} />
+                        </AttachmentItem>
+                      );
+                    })}
+                  </AttachmentsSection>
+                )}
                 {/* Invested/Passed buttons - only for active stages */}
                 {isActiveStage(deal.stage) && onUpdateDealStage && (
                   <DealActionsRow>
@@ -602,6 +671,32 @@ const DealsTab = ({
                   <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
                     via {deal.companyName}
                   </div>
+                )}
+                {/* Attachments */}
+                {deal.deal_attachments && deal.deal_attachments.length > 0 && (
+                  <AttachmentsSection theme={theme}>
+                    <div style={{ fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <FaPaperclip size={9} /> {deal.deal_attachments.length} attachment{deal.deal_attachments.length > 1 ? 's' : ''}
+                    </div>
+                    {deal.deal_attachments.map(da => {
+                      const att = da.attachments;
+                      if (!att) return null;
+                      const Icon = getFileIcon(att.file_type, att.file_name);
+                      return (
+                        <AttachmentItem
+                          key={da.attachment_id}
+                          theme={theme}
+                          href={att.permanent_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Icon size={14} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', flexShrink: 0 }} />
+                          <AttachmentName theme={theme}>{att.file_name}</AttachmentName>
+                          <FaDownload size={10} style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', flexShrink: 0 }} />
+                        </AttachmentItem>
+                      );
+                    })}
+                  </AttachmentsSection>
                 )}
                 {/* Invested/Passed buttons - only for active stages */}
                 {isActiveStage(deal.stage) && onUpdateDealStage && (

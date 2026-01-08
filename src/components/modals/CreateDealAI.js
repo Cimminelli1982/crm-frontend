@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import Modal from 'react-modal';
-import { FaTimes, FaRobot, FaBuilding, FaUser, FaDollarSign, FaSave, FaSpinner, FaCheck, FaLink } from 'react-icons/fa';
+import { FaTimes, FaRobot, FaBuilding, FaUser, FaDollarSign, FaSave, FaSpinner, FaCheck, FaLink, FaPaperclip, FaFile, FaFilePdf, FaFileImage, FaFileWord, FaFileExcel } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
+
+const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app';
 
@@ -231,6 +233,99 @@ const AssociationBox = styled.div`
   margin-top: 12px;
 `;
 
+// Attachment styled components
+const AttachmentsList = styled.div`
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 200px;
+  overflow-y: auto;
+`;
+
+const AttachmentItem = styled.div`
+  padding: 10px 12px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  background: ${props => props.$selected
+    ? (props.theme === 'light' ? '#DBEAFE' : '#1E3A5F')
+    : (props.theme === 'light' ? '#FFFFFF' : '#1F2937')};
+
+  &:hover {
+    background: ${props => props.$selected
+      ? (props.theme === 'light' ? '#DBEAFE' : '#1E3A5F')
+      : (props.theme === 'light' ? '#F9FAFB' : '#374151')};
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const AttCheckbox = styled.div`
+  width: 18px;
+  height: 18px;
+  border: 2px solid ${props => props.$checked ? '#3B82F6' : (props.theme === 'light' ? '#D1D5DB' : '#4B5563')};
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${props => props.$checked ? '#3B82F6' : 'transparent'};
+  color: white;
+  flex-shrink: 0;
+`;
+
+const AttachmentInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AttachmentName = styled.div`
+  font-weight: 500;
+  font-size: 13px;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const AttachmentMeta = styled.div`
+  font-size: 11px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  margin-top: 2px;
+`;
+
+const FileIcon = styled.div`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  flex-shrink: 0;
+`;
+
+const EmptyAttachments = styled.div`
+  padding: 16px;
+  text-align: center;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 12px;
+`;
+
+// Helper functions for attachments
+const getFileIcon = (type, name) => {
+  const ext = name?.split('.').pop()?.toLowerCase();
+  if (type?.includes('pdf') || ext === 'pdf') return FaFilePdf;
+  if (type?.includes('image') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return FaFileImage;
+  if (type?.includes('word') || ['doc', 'docx'].includes(ext)) return FaFileWord;
+  if (type?.includes('excel') || type?.includes('spreadsheet') || ['xls', 'xlsx', 'csv'].includes(ext)) return FaFileExcel;
+  return FaFile;
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 const modalStyles = (theme) => ({
   overlay: {
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -301,6 +396,26 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
     link_contact_to_company: true,
     contact_company_relationship: 'founder'
   });
+
+  // Attachments state
+  const [selectedAttachments, setSelectedAttachments] = useState([]);
+  const emailAttachments = email?.attachments || [];
+  const hasAttachments = sourceType === 'email' && emailAttachments.length > 0;
+
+  // Initialize selected attachments when modal opens
+  useEffect(() => {
+    if (isOpen && hasAttachments) {
+      setSelectedAttachments(emailAttachments.map((_, idx) => idx));
+    }
+  }, [isOpen, hasAttachments, emailAttachments.length]);
+
+  const toggleAttachment = (idx) => {
+    setSelectedAttachments(prev =>
+      prev.includes(idx)
+        ? prev.filter(i => i !== idx)
+        : [...prev, idx]
+    );
+  };
 
   // Extract deal info from email or WhatsApp
   const extractDealInfo = useCallback(async () => {
@@ -558,6 +673,93 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
         });
       }
 
+      // 7. Save attachments and link to deal
+      if (hasAttachments && selectedAttachments.length > 0) {
+        const attachmentsToSave = selectedAttachments.map(idx => emailAttachments[idx]);
+        let savedCount = 0;
+
+        for (const att of attachmentsToSave) {
+          try {
+            // Download attachment from Fastmail
+            const downloadUrl = `${BACKEND_URL}/attachment/${encodeURIComponent(att.blobId)}?name=${encodeURIComponent(att.name || 'attachment')}&type=${encodeURIComponent(att.type || 'application/octet-stream')}`;
+            const response = await fetch(downloadUrl);
+
+            if (!response.ok) {
+              console.error(`Failed to download ${att.name}`);
+              continue;
+            }
+
+            const blob = await response.blob();
+
+            // Sanitize filename for Supabase storage
+            const sanitizedName = (att.name || 'file')
+              .replace(/[£€$¥]/g, '')
+              .replace(/[^\w\s.-]/g, '_')
+              .replace(/\s+/g, '_')
+              .replace(/_+/g, '_');
+            const fileName = `${Date.now()}_${sanitizedName}`;
+
+            // Upload to Supabase Storage
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('attachments')
+              .upload(fileName, blob, {
+                contentType: att.type || 'application/octet-stream'
+              });
+
+            if (uploadError) {
+              console.error(`Failed to upload ${att.name}:`, uploadError);
+              continue;
+            }
+
+            // Get public URL
+            const { data: urlData } = supabase.storage
+              .from('attachments')
+              .getPublicUrl(fileName);
+
+            // Create attachment record
+            const { data: attachmentRecord, error: insertError } = await supabase
+              .from('attachments')
+              .insert({
+                file_name: att.name,
+                file_url: uploadData.path,
+                file_type: att.type,
+                file_size: att.size,
+                permanent_url: urlData.publicUrl,
+                created_by: 'User'
+              })
+              .select('attachment_id')
+              .single();
+
+            if (insertError) {
+              console.error(`Failed to save ${att.name}:`, insertError);
+              continue;
+            }
+
+            // Link attachment to deal
+            await supabase.from('deal_attachments').insert({
+              deal_id: newDeal.deal_id,
+              attachment_id: attachmentRecord.attachment_id
+            });
+
+            // Also link to company if we have one
+            if (companyId) {
+              await supabase.from('company_attachments').insert({
+                company_id: companyId,
+                attachment_id: attachmentRecord.attachment_id
+              }).catch(() => {}); // Ignore duplicates
+            }
+
+            savedCount++;
+          } catch (attError) {
+            console.error(`Error saving attachment ${att.name}:`, attError);
+          }
+        }
+
+        if (savedCount > 0) {
+          toast.success(`${savedCount} attachment${savedCount > 1 ? 's' : ''} saved to deal`);
+        }
+      }
+
       toast.success(`Deal "${dealData.opportunity}" created!`);
 
       if (onSuccess) onSuccess(newDeal);
@@ -587,6 +789,7 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
       setCompanyData({ use_existing: false, existing_company_id: null, name: '', website: '', domain: '', category: 'Startup', description: '' });
       setDealData({ opportunity: '', total_investment: '', deal_currency: 'EUR', category: 'Startup', stage: 'Lead', source_category: 'Cold Contacting', description: '', proposed_at: '' });
       setAssociations({ contact_is_proposer: true, link_contact_to_company: true, contact_company_relationship: 'founder' });
+      setSelectedAttachments([]);
     }
   }, [isOpen]);
 
@@ -741,6 +944,41 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
               </FormGroupFull>
             </FormGrid>
           </Section>
+
+          {/* Attachments Section - only shown when email has attachments */}
+          {hasAttachments && (
+            <Section theme={theme}>
+              <SectionHeader theme={theme}>
+                <SectionIcon color="#6366F1"><FaPaperclip size={14} /></SectionIcon>
+                Attachments ({selectedAttachments.length}/{emailAttachments.length})
+              </SectionHeader>
+              <AttachmentsList theme={theme}>
+                {emailAttachments.map((att, idx) => {
+                  const Icon = getFileIcon(att.type, att.name);
+                  const isSelected = selectedAttachments.includes(idx);
+                  return (
+                    <AttachmentItem
+                      key={idx}
+                      theme={theme}
+                      $selected={isSelected}
+                      onClick={() => toggleAttachment(idx)}
+                    >
+                      <AttCheckbox theme={theme} $checked={isSelected}>
+                        {isSelected && <FaCheck size={10} />}
+                      </AttCheckbox>
+                      <FileIcon theme={theme}>
+                        <Icon size={18} />
+                      </FileIcon>
+                      <AttachmentInfo>
+                        <AttachmentName theme={theme}>{att.name || 'Unnamed file'}</AttachmentName>
+                        <AttachmentMeta theme={theme}>{formatFileSize(att.size)}</AttachmentMeta>
+                      </AttachmentInfo>
+                    </AttachmentItem>
+                  );
+                })}
+              </AttachmentsList>
+            </Section>
+          )}
         </ModalBody>
 
         <ModalFooter theme={theme}>

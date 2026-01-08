@@ -428,7 +428,7 @@ const ManageContactListsModal = ({
 
       const { error } = await supabase
         .from('email_list_members')
-        .update({ is_active: false })
+        .delete()
         .eq('list_member_id', membership.list_member_id);
 
       if (error) throw error;

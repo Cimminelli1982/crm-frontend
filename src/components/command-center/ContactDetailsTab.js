@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
   FaRocket, FaEnvelope, FaWhatsapp, FaBuilding, FaTag,
-  FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt, FaChevronDown, FaChevronUp, FaList, FaPlus
+  FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt, FaChevronDown, FaChevronUp, FaList, FaPlus,
+  FaShieldAlt
 } from 'react-icons/fa';
 
 // Contact category options
@@ -9,6 +10,15 @@ const CONTACT_CATEGORIES = [
   'Not Set', 'Inbox', 'Skip', 'Professional Investor', 'Team', 'Advisor',
   'Supplier', 'Founder', 'Manager', 'Friend and Family', 'Other', 'Student',
   'Media', 'Institution', 'WhatsApp Group Contact', 'Hold', 'System'
+];
+
+const KEEP_IN_TOUCH_FREQUENCIES = [
+  'Not Set', 'Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch'
+];
+
+const WISHES_TYPES = [
+  'no wishes set', 'whatsapp standard', 'email standard', 'email custom',
+  'whatsapp custom', 'call', 'present', 'no wishes'
 ];
 
 /**
@@ -39,6 +49,8 @@ const CONTACT_CATEGORIES = [
  * @param {number} props.completenessScore - Optional completeness score (shows dot if < 100)
  * @param {Function} props.onOpenProfileImageModal - Callback(contact) to open profile image modal
  * @param {Function} props.onAddToList - Callback(contact) to open add to list modal
+ * @param {Object} props.keepInTouch - Keep in touch record {frequency, christmas, easter}
+ * @param {Function} props.onUpdateKeepInTouch - Callback(field, value) for updating keep in touch
  */
 const ContactDetailsTab = ({
   theme,
@@ -49,8 +61,10 @@ const ContactDetailsTab = ({
   tags = [],
   cities = [],
   lists = [],
+  keepInTouch = null,
   editable = false,
   onUpdateField,
+  onUpdateKeepInTouch,
   onEnrich,
   onManageEmails,
   onManageMobiles,
@@ -64,6 +78,7 @@ const ContactDetailsTab = ({
   loading = false,
   completenessScore,
   onEdit,
+  onCheck,
   onOpenProfileImageModal,
   onAddToList
 }) => {
@@ -248,10 +263,10 @@ const ContactDetailsTab = ({
               Edit
             </button>
           )}
-          {onAddToList && (
+          {onCheck && (
             <button
-              onClick={() => onAddToList(contact)}
-              title="Manage contact lists"
+              onClick={onCheck}
+              title="Run data integrity checks"
               style={{
                 padding: '4px 8px',
                 borderRadius: '6px',
@@ -266,8 +281,8 @@ const ContactDetailsTab = ({
                 gap: '4px'
               }}
             >
-              <FaPlus size={9} />
-              List
+              <FaShieldAlt size={9} />
+              Check
             </button>
           )}
         </div>
@@ -533,6 +548,63 @@ const ContactDetailsTab = ({
         )}
       </div>
 
+      {/* Section 1.5: Keep in Touch */}
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>Keep in Touch</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+          <div>
+            <label style={labelStyle}>Frequency</label>
+            <select
+              value={keepInTouch?.frequency || contact?.keep_in_touch_frequency || 'Not Set'}
+              onChange={(e) => onUpdateKeepInTouch?.('frequency', e.target.value)}
+              style={{
+                ...selectStyle,
+                fontSize: '11px',
+                padding: '4px 6px'
+              }}
+            >
+              {KEEP_IN_TOUCH_FREQUENCIES.map(freq => (
+                <option key={freq} value={freq}>{freq}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Christmas</label>
+            <select
+              value={keepInTouch?.christmas || 'no wishes set'}
+              onChange={(e) => onUpdateKeepInTouch?.('christmas', e.target.value)}
+              style={{
+                ...selectStyle,
+                fontSize: '11px',
+                padding: '4px 6px',
+                borderColor: (!keepInTouch?.christmas || keepInTouch?.christmas === 'no wishes set') ? '#EF4444' : undefined
+              }}
+            >
+              {WISHES_TYPES.map(wish => (
+                <option key={wish} value={wish}>{wish}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Easter</label>
+            <select
+              value={keepInTouch?.easter || 'no wishes set'}
+              onChange={(e) => onUpdateKeepInTouch?.('easter', e.target.value)}
+              style={{
+                ...selectStyle,
+                fontSize: '11px',
+                padding: '4px 6px',
+                borderColor: (!keepInTouch?.easter || keepInTouch?.easter === 'no wishes set') ? '#EF4444' : undefined
+              }}
+            >
+              {WISHES_TYPES.map(wish => (
+                <option key={wish} value={wish}>{wish}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Section 2: Contact Details (Emails, Mobiles, Companies) */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>Contact Details</div>
@@ -679,12 +751,12 @@ const ContactDetailsTab = ({
             <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>
               Tags
             </span>
-            {editable && onManageTags && (
-              <FaEdit
+            {onManageTags && (
+              <FaPlus
                 size={11}
                 style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
                 onClick={onManageTags}
-                title="Manage tags"
+                title="Add tag"
               />
             )}
           </div>
@@ -718,23 +790,23 @@ const ContactDetailsTab = ({
           )}
         </div>
 
-        {/* Cities (only if provided) */}
-        {cities && cities.length > 0 && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <FaMapMarkerAlt size={11} style={{ color: '#EC4899' }} />
-              <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>
-                Cities
-              </span>
-              {editable && onManageCities && (
-                <FaEdit
-                  size={11}
-                  style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
-                  onClick={onManageCities}
-                  title="Manage cities"
-                />
-              )}
-            </div>
+        {/* Cities */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+            <FaMapMarkerAlt size={11} style={{ color: '#EC4899' }} />
+            <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>
+              Cities
+            </span>
+            {onManageCities && (
+              <FaPlus
+                size={11}
+                style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                onClick={onManageCities}
+                title="Add city"
+              />
+            )}
+          </div>
+          {cities && cities.length > 0 ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {cities.map((c, idx) => (
                 <span
@@ -751,35 +823,28 @@ const ContactDetailsTab = ({
                 </span>
               ))}
             </div>
-          </div>
-        )}
-        {editable && (!cities || cities.length === 0) && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <FaMapMarkerAlt size={11} style={{ color: '#EC4899' }} />
-              <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>
-                Cities
-              </span>
-              {onManageCities && (
-                <FaEdit
-                  size={11}
-                  style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
-                  onClick={onManageCities}
-                  title="Manage cities"
-                />
-              )}
-            </div>
+          ) : (
             <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
               No cities
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Section 4: Lists */}
-      {lists && lists.length > 0 && (
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Lists</div>
+      <div style={sectionStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+          <div style={{ ...sectionTitleStyle, marginBottom: 0, flex: 1 }}>Lists</div>
+          {onAddToList && (
+            <FaPlus
+              size={11}
+              style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+              onClick={() => onAddToList(contact)}
+              title="Add to list"
+            />
+          )}
+        </div>
+        {lists && lists.length > 0 ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
             {lists.map((list, idx) => (
               <span
@@ -800,8 +865,12 @@ const ContactDetailsTab = ({
               </span>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
+            No lists
+          </div>
+        )}
+      </div>
 
     </div>
   );

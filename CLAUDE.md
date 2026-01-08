@@ -410,6 +410,44 @@ priority                integer (default 5)
 status                  text (default 'pending') -- 'pending', 'resolved', 'dismissed'
 ```
 
+### email_lists
+```
+list_id                 uuid PK
+name                    text NOT NULL
+description             text
+list_type               email_list_type NOT NULL (static, dynamic)
+is_active               boolean (default true)
+created_by              creation_source (default 'User')
+created_at              timestamptz (default now())
+last_modified_by        creation_source
+last_modified_at        timestamptz
+```
+
+### email_list_members
+```
+list_member_id          uuid PK
+list_id                 uuid FK → email_lists.list_id
+contact_id              uuid FK → contacts.contact_id
+email_id                uuid FK → contact_emails.email_id (optional, specific email)
+is_active               boolean (default true)
+added_by                creation_source (default 'User')
+added_at                timestamptz (default now())
+membership_type         membership_type (manual, filter)
+```
+
+**List Types:**
+- **static**: Contacts manually added/removed by user
+- **dynamic**: Auto-populated via filter tables (email_list_filter_*)
+
+**Dynamic List Filters** (for dynamic lists):
+- `email_list_filter_tags` - filter by tags
+- `email_list_filter_categories` - filter by contact category
+- `email_list_filter_cities` - filter by city
+- `email_list_filter_scores` - filter by score
+- `email_list_filter_kit` - filter by keep_in_touch frequency
+- `email_list_filter_christmas` - filter by christmas wishes type
+- `email_list_filter_easter` - filter by easter wishes type
+
 ---
 
 ## Enum Values
@@ -452,6 +490,12 @@ status                  text (default 'pending') -- 'pending', 'resolved', 'dism
 
 ### creation_source
 `User, LLM, Edge Function`
+
+### email_list_type
+`static, dynamic`
+
+### membership_type
+`manual, filter`
 
 ---
 

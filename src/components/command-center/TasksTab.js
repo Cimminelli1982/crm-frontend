@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   FaTasks, FaSave, FaTrash, FaCheck, FaSync, FaExternalLinkAlt,
   FaUser, FaBuilding, FaDollarSign, FaLink, FaCalendarAlt, FaFlag,
-  FaList, FaEdit, FaChevronDown, FaChevronRight
+  FaList, FaEdit, FaChevronDown, FaChevronRight, FaPlus,
+  FaInbox, FaBirthdayCake, FaHome, FaBriefcase, FaTimes, FaSearch
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -21,6 +22,7 @@ const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const TasksTab = ({
   theme,
   contactId,
+  contactName = '',
   contactCompanies = [],
   contactDeals = [],
   onTaskCreated,
@@ -60,8 +62,12 @@ const TasksTab = ({
   const [linkedCompanies, setLinkedCompanies] = useState([]);
   const [linkedDeals, setLinkedDeals] = useState([]);
 
-  // Project options
-  const projectOptions = ['Inbox', 'Work', 'Personal', 'Team', 'Birthdays', 'Aborted'];
+  // Contact search modal state
+  const [showContactSearchModal, setShowContactSearchModal] = useState(false);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  const [contactSearchResults, setContactSearchResults] = useState([]);
+  const [contactSearchLoading, setContactSearchLoading] = useState(false);
+  const [linkedContactsInfo, setLinkedContactsInfo] = useState([]); // [{contact_id, name}]
 
   // Fetch all tasks linked to contact, their companies, and their deals
   const fetchAllTasks = useCallback(async () => {
@@ -183,12 +189,19 @@ const TasksTab = ({
   const loadTaskLinks = async (taskId) => {
     try {
       const [contactsRes, companiesRes, dealsRes] = await Promise.all([
-        supabase.from('task_contacts').select('contact_id').eq('task_id', taskId),
+        supabase.from('task_contacts').select('contact_id, contacts(first_name, last_name)').eq('task_id', taskId),
         supabase.from('task_companies').select('company_id').eq('task_id', taskId),
         supabase.from('task_deals').select('deal_id').eq('task_id', taskId),
       ]);
 
-      setLinkedContacts(contactsRes.data?.map(r => r.contact_id) || []);
+      const contactIds = contactsRes.data?.map(r => r.contact_id) || [];
+      const contactInfos = contactsRes.data?.map(r => ({
+        contact_id: r.contact_id,
+        name: r.contacts ? `${r.contacts.first_name || ''} ${r.contacts.last_name || ''}`.trim() : 'Unknown'
+      })) || [];
+
+      setLinkedContacts(contactIds);
+      setLinkedContactsInfo(contactInfos);
       setLinkedCompanies(companiesRes.data?.map(r => r.company_id) || []);
       setLinkedDeals(dealsRes.data?.map(r => r.deal_id) || []);
     } catch (err) {
@@ -196,23 +209,90 @@ const TasksTab = ({
     }
   };
 
-  // Handle dropdown change
-  const handleDropdownChange = (e) => {
-    const value = e.target.value;
-    if (value === '__create__') {
-      setSelectedTaskId(null);
-      setIsCreating(true);
-      setContent('');
-      setDescription('');
-      setDueString('');
-      setPriority(1);
-      setProjectName('Inbox');
-      setLinkedContacts([contactId]);
-      setLinkedCompanies([]);
-      setLinkedDeals([]);
+  // Search contacts for linking
+  const searchContacts = async (query) => {
+    if (!query || query.length < 2) {
+      setContactSearchResults([]);
+      return;
+    }
+
+    setContactSearchLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name')
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+        .limit(10);
+
+      if (error) throw error;
+      // Filter out already linked contacts
+      const filtered = (data || []).filter(c => !linkedContacts.includes(c.contact_id));
+      setContactSearchResults(filtered);
+    } catch (err) {
+      console.error('Error searching contacts:', err);
+    } finally {
+      setContactSearchLoading(false);
+    }
+  };
+
+  // Add contact to task
+  const addContactToTask = async (contact) => {
+    const taskId = selectedTaskId;
+
+    if (!taskId) {
+      // For new tasks, just update local state
+      if (!linkedContacts.includes(contact.contact_id)) {
+        setLinkedContacts(prev => [...prev, contact.contact_id]);
+        setLinkedContactsInfo(prev => [...prev, {
+          contact_id: contact.contact_id,
+          name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
+        }]);
+      }
     } else {
-      setSelectedTaskId(value);
-      setIsCreating(false);
+      // For existing tasks, save to DB
+      try {
+        await supabase.from('task_contacts').insert({
+          task_id: taskId,
+          contact_id: contact.contact_id
+        });
+        setLinkedContacts(prev => [...prev, contact.contact_id]);
+        setLinkedContactsInfo(prev => [...prev, {
+          contact_id: contact.contact_id,
+          name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
+        }]);
+        toast.success('Contact linked');
+      } catch (err) {
+        console.error('Error adding contact:', err);
+        toast.error('Failed to link contact');
+      }
+    }
+
+    // Clear search
+    setContactSearchQuery('');
+    setContactSearchResults([]);
+  };
+
+  // Remove contact from task
+  const removeContactFromTask = async (contactIdToRemove) => {
+    const taskId = selectedTaskId;
+
+    if (!taskId) {
+      // For new tasks, just update local state
+      setLinkedContacts(prev => prev.filter(id => id !== contactIdToRemove));
+      setLinkedContactsInfo(prev => prev.filter(c => c.contact_id !== contactIdToRemove));
+    } else {
+      // For existing tasks, delete from DB
+      try {
+        await supabase.from('task_contacts').delete()
+          .eq('task_id', taskId)
+          .eq('contact_id', contactIdToRemove);
+        setLinkedContacts(prev => prev.filter(id => id !== contactIdToRemove));
+        setLinkedContactsInfo(prev => prev.filter(c => c.contact_id !== contactIdToRemove));
+        toast.success('Contact unlinked');
+      } catch (err) {
+        console.error('Error removing contact:', err);
+        toast.error('Failed to unlink contact');
+      }
     }
   };
 
@@ -454,7 +534,60 @@ const TasksTab = ({
         }
       }
 
-      toast.success('Synced from Todoist');
+      // === ORPHAN DETECTION ===
+      // Find tasks in Supabase that are "open" but weren't returned by Todoist
+      const syncedTodoistIds = todoistTasks.map(tt => tt.id);
+
+      const { data: orphanTasks } = await supabase
+        .from('tasks')
+        .select('task_id, todoist_id, content')
+        .eq('status', 'open')
+        .not('todoist_id', 'is', null);
+
+      const orphans = (orphanTasks || []).filter(t => !syncedTodoistIds.includes(t.todoist_id));
+
+      if (orphans.length > 0) {
+        console.log(`[Sync] Found ${orphans.length} orphan tasks to check`);
+
+        for (const orphan of orphans) {
+          try {
+            const orphanResponse = await fetch(`${BACKEND_URL}/todoist/tasks/${orphan.todoist_id}`);
+
+            if (orphanResponse.status === 404) {
+              console.log(`[Sync] Task "${orphan.content}" deleted in Todoist, marking completed`);
+              await supabase
+                .from('tasks')
+                .update({
+                  status: 'completed',
+                  completed_at: new Date().toISOString(),
+                  synced_at: new Date().toISOString()
+                })
+                .eq('task_id', orphan.task_id);
+            } else if (orphanResponse.ok) {
+              const { task: todoistTask } = await orphanResponse.json();
+              console.log(`[Sync] Updating orphan task "${orphan.content}" - completed: ${todoistTask.is_completed}`);
+              await supabase
+                .from('tasks')
+                .update({
+                  content: todoistTask.content,
+                  description: todoistTask.description || null,
+                  due_date: todoistTask.due?.date || null,
+                  due_datetime: todoistTask.due?.datetime || null,
+                  due_string: todoistTask.due?.string || null,
+                  priority: todoistTask.priority || 1,
+                  status: todoistTask.is_completed ? 'completed' : 'open',
+                  completed_at: todoistTask.is_completed ? new Date().toISOString() : null,
+                  synced_at: new Date().toISOString(),
+                })
+                .eq('task_id', orphan.task_id);
+            }
+          } catch (err) {
+            console.error(`[Sync] Error checking orphan task ${orphan.todoist_id}:`, err);
+          }
+        }
+      }
+
+      toast.success(`Synced from Todoist${orphans.length > 0 ? ` (${orphans.length} orphans resolved)` : ''}`);
       fetchAllTasks();
     } catch (err) {
       console.error('Error syncing from Todoist:', err);
@@ -633,18 +766,6 @@ const TasksTab = ({
     overflow: 'hidden',
   };
 
-  const dropdownStyle = {
-    width: '100%',
-    padding: '10px 12px',
-    borderRadius: '8px',
-    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-    background: theme === 'dark' ? '#374151' : '#FFFFFF',
-    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-    fontSize: '13px',
-    fontWeight: 500,
-    cursor: 'pointer',
-  };
-
   const buttonStyle = {
     padding: '6px 12px',
     borderRadius: '6px',
@@ -669,78 +790,26 @@ const TasksTab = ({
 
   return (
     <div style={containerStyle}>
-      {/* Header: Dropdown + Actions */}
+      {/* Header: Actions - only show in editor mode */}
+      {viewMode === 'editor' && hasContent && (
       <div style={{ padding: '12px', borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
-        {/* Task Selector Dropdown */}
-        <select
-          value={isCreating ? '__create__' : (selectedTaskId || '')}
-          onChange={handleDropdownChange}
-          style={dropdownStyle}
-        >
-          <option value="" disabled>Select a task...</option>
-          {allTasks.map(task => (
-            <option key={task.task_id} value={task.task_id}>
-              {task.content}
-              {task.source === 'company' && task.companyName ? ` (${task.companyName})` : ''}
-              {task.source === 'deal' && task.dealName ? ` (${task.dealName})` : ''}
-            </option>
-          ))}
-          <option value="__create__" style={{ fontWeight: 600 }}>
-            + Create New Task
-          </option>
-        </select>
-
         {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button
-            onClick={() => setViewMode(viewMode === 'list' ? 'editor' : 'list')}
-            style={{
-              ...buttonStyle,
-              background: viewMode === 'list'
-                ? '#3B82F6'
-                : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-              color: viewMode === 'list'
-                ? '#FFFFFF'
-                : (theme === 'dark' ? '#D1D5DB' : '#374151'),
-            }}
-            title={viewMode === 'list' ? 'Switch to Editor' : 'Switch to List View'}
-          >
-            {viewMode === 'list' ? <FaEdit size={11} /> : <FaList size={11} />}
-            {viewMode === 'list' ? 'Editor' : 'List'}
-          </button>
-
-          <button
-            onClick={openAssociateModal}
+            onClick={() => setViewMode('list')}
             style={{
               ...buttonStyle,
               background: theme === 'dark' ? '#374151' : '#E5E7EB',
               color: theme === 'dark' ? '#D1D5DB' : '#374151',
             }}
-            title="Associate existing task with this contact"
+            title="Back to List"
           >
-            <FaLink size={11} />
-            Associate
+            <FaList size={11} />
+            List
           </button>
 
           <button
-            onClick={handleSyncFromTodoist}
-            disabled={syncing}
-            style={{
-              ...buttonStyle,
-              background: theme === 'dark' ? '#374151' : '#E5E7EB',
-              color: theme === 'dark' ? '#D1D5DB' : '#374151',
-              opacity: syncing ? 0.6 : 1,
-            }}
-            title="Sync from Todoist"
-          >
-            <FaSync size={11} className={syncing ? 'fa-spin' : ''} />
-            {syncing ? 'Syncing...' : 'Sync'}
-          </button>
-
-          {hasContent && (
-            <>
-              <button
-                onClick={() => setShowLinkPanel(!showLinkPanel)}
+            onClick={() => setShowLinkPanel(!showLinkPanel)}
                 style={{
                   ...buttonStyle,
                   background: showLinkPanel
@@ -814,13 +883,12 @@ const TasksTab = ({
                   </button>
                 </>
               )}
-            </>
-          )}
         </div>
       </div>
+      )}
 
-      {/* Link Panel (collapsible) */}
-      {hasContent && showLinkPanel && (
+      {/* Link Panel (collapsible) - only in editor mode */}
+      {viewMode === 'editor' && hasContent && showLinkPanel && (
         <div style={{
           padding: '12px',
           borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
@@ -836,7 +904,7 @@ const TasksTab = ({
             Link Task To
           </div>
 
-          {/* Contact */}
+          {/* Contacts */}
           <div style={{ marginBottom: '10px' }}>
             <div style={{
               fontSize: '10px',
@@ -846,30 +914,116 @@ const TasksTab = ({
               alignItems: 'center',
               gap: '4px',
             }}>
-              <FaUser size={9} /> Contact
+              <FaUser size={9} /> Contacts ({linkedContacts.length})
             </div>
-            <button
-              onClick={() => toggleLink('contact', contactId)}
-              style={{
-                padding: '6px 10px',
+
+            {/* Linked contacts as chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              {linkedContactsInfo.map(contact => (
+                <div
+                  key={contact.contact_id}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    background: theme === 'dark' ? '#064E3B' : '#D1FAE5',
+                    border: '1px solid #10B981',
+                    color: '#10B981',
+                    fontSize: '11px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <FaCheck size={8} />
+                  {contact.name || 'Unknown'}
+                  <button
+                    onClick={() => removeContactFromTask(contact.contact_id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#10B981',
+                      cursor: 'pointer',
+                      padding: '0',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <FaTimes size={9} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Search input for adding contacts */}
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={contactSearchQuery}
+                onChange={(e) => {
+                  setContactSearchQuery(e.target.value);
+                  searchContacts(e.target.value);
+                }}
+                placeholder="Search contacts to add..."
+                style={{
+                  width: '100%',
+                  padding: '6px 10px',
+                  paddingRight: '30px',
+                  borderRadius: '6px',
+                  border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                  background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                  color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                  fontSize: '11px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <FaSearch
+                size={10}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                }}
+              />
+            </div>
+
+            {/* Search results dropdown */}
+            {contactSearchResults.length > 0 && (
+              <div style={{
+                marginTop: '4px',
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
                 borderRadius: '6px',
-                border: `1px solid ${linkedContacts.includes(contactId) ? '#10B981' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
-                background: linkedContacts.includes(contactId)
-                  ? (theme === 'dark' ? '#064E3B' : '#D1FAE5')
-                  : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
-                color: linkedContacts.includes(contactId)
-                  ? '#10B981'
-                  : (theme === 'dark' ? '#D1D5DB' : '#374151'),
-                fontSize: '11px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
-              {linkedContacts.includes(contactId) && <FaCheck size={9} />}
-              Current Contact
-            </button>
+                maxHeight: '150px',
+                overflowY: 'auto',
+              }}>
+                {contactSearchResults.map(contact => (
+                  <div
+                    key={contact.contact_id}
+                    onClick={() => addContactToTask(contact)}
+                    style={{
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = theme === 'dark' ? '#374151' : '#F3F4F6'}
+                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  >
+                    <FaPlus size={9} style={{ marginRight: '6px' }} />
+                    {contact.first_name} {contact.last_name}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {contactSearchLoading && (
+              <div style={{ fontSize: '10px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>
+                Searching...
+              </div>
+            )}
           </div>
 
           {/* Companies */}
@@ -1010,7 +1164,7 @@ const TasksTab = ({
 
               {expandedSections.open && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {allTasks.length === 0 ? (
+                  {allTasks.length === 0 && (
                     <div style={{
                       padding: '16px',
                       textAlign: 'center',
@@ -1019,8 +1173,8 @@ const TasksTab = ({
                     }}>
                       No open tasks
                     </div>
-                  ) : (
-                    allTasks.map(task => (
+                  )}
+                  {allTasks.map(task => (
                       <div
                         key={task.task_id}
                         onClick={() => {
@@ -1101,8 +1255,59 @@ const TasksTab = ({
                           </div>
                         </div>
                       </div>
-                    ))
-                  )}
+                    ))}
+                    {/* Add Task Button */}
+                    <div
+                      onClick={() => {
+                        setSelectedTaskId(null);
+                        setIsCreating(true);
+                        setViewMode('editor');
+                        setContent('');
+                        setDescription('');
+                        setDueString('');
+                        setPriority(4);
+                        setLinkedContacts(contactId ? [contactId] : []);
+                        setLinkedContactsInfo(contactId ? [{ contact_id: contactId, name: contactName || 'Current Contact' }] : []);
+                        setLinkedCompanies([]);
+                        setLinkedDeals([]);
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        background: 'transparent',
+                        borderRadius: '8px',
+                        border: `1px dashed ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                        fontSize: '12px',
+                      }}
+                    >
+                      <FaPlus size={10} />
+                      Add Task
+                    </div>
+                    {/* Associate Button */}
+                    <div
+                      onClick={openAssociateModal}
+                      style={{
+                        padding: '10px 12px',
+                        background: 'transparent',
+                        borderRadius: '8px',
+                        border: `1px dashed ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                        fontSize: '12px',
+                      }}
+                    >
+                      <FaLink size={10} />
+                      Associate Existing Task
+                    </div>
                 </div>
               )}
             </div>
@@ -1274,6 +1479,36 @@ const TasksTab = ({
                 placeholder="e.g., tomorrow, next monday, 2024-12-31"
                 style={inputStyle}
               />
+              {/* Quick Date Buttons */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                {[
+                  { label: 'This Week', value: 'friday' },
+                  { label: 'This Month', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-20`; })() },
+                  { label: 'This Sprint', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 2).padStart(2, '0')}-15`; })() },
+                  { label: 'Someday', value: '' },
+                ].map(opt => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setDueString(opt.value)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      border: `1px solid ${dueString === opt.value ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
+                      background: dueString === opt.value
+                        ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
+                        : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
+                      color: dueString === opt.value
+                        ? '#3B82F6'
+                        : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                      fontSize: '10px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Priority */}
@@ -1323,23 +1558,48 @@ const TasksTab = ({
                 fontSize: '11px',
                 fontWeight: 600,
                 color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                marginBottom: '4px',
+                marginBottom: '6px',
                 display: 'block',
               }}>
                 Project
               </label>
-              <select
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  cursor: 'pointer',
-                }}
-              >
-                {projectOptions.map(proj => (
-                  <option key={proj} value={proj}>{proj}</option>
-                ))}
-              </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                {[
+                  { name: 'Inbox', icon: FaInbox },
+                  { name: 'Birthday', icon: FaBirthdayCake },
+                  { name: 'Personal', icon: FaHome },
+                  { name: 'Work', icon: FaBriefcase },
+                ].map(proj => {
+                  const Icon = proj.icon;
+                  const isSelected = projectName === proj.name;
+                  return (
+                    <button
+                      key={proj.name}
+                      onClick={() => setProjectName(proj.name)}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: `1px solid ${isSelected ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
+                        background: isSelected
+                          ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
+                          : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
+                        color: isSelected
+                          ? '#3B82F6'
+                          : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Icon size={12} />
+                      {proj.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Todoist Info (if linked) */}

@@ -184,12 +184,42 @@ const useSupabaseTasks = (contactId = null) => {
         await supabase.from('task_companies').delete().eq('task_id', savedTask.task_id);
         await supabase.from('task_deals').delete().eq('task_id', savedTask.task_id);
       } else {
-        // Create new task
+        // Create new task - first create in Todoist to get todoist_id
+        let todoistId = null;
+        let todoistUrl = null;
+        let todoistProjectId = null;
+
+        try {
+          const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: taskData.content,
+              description: taskData.description,
+              due_string: taskData.due_string,
+              priority: taskData.priority
+            })
+          });
+
+          if (todoistResponse.ok) {
+            const todoistTask = await todoistResponse.json();
+            todoistId = todoistTask.task?.id || todoistTask.id;
+            todoistUrl = todoistTask.task?.url || todoistTask.url;
+            todoistProjectId = todoistTask.task?.project_id || todoistTask.project_id;
+          }
+        } catch (todoistError) {
+          console.warn('Failed to create in Todoist, saving locally only:', todoistError);
+        }
+
+        // Then save to Supabase with todoist_id
         const { data, error } = await supabase
           .from('tasks')
           .insert({
             ...taskData,
             status: 'open',
+            todoist_id: todoistId,
+            todoist_url: todoistUrl,
+            todoist_project_id: todoistProjectId,
             created_at: new Date().toISOString()
           })
           .select()
@@ -367,19 +397,38 @@ const useSupabaseTasks = (contactId = null) => {
   const syncFromTodoist = useCallback(async () => {
     setSyncing(true);
     try {
-      // Fetch all tasks from Todoist
-      const response = await fetch(`${BACKEND_URL}/todoist/tasks`);
-      if (!response.ok) throw new Error('Failed to fetch from Todoist');
+      // Fetch all tasks and projects from Todoist
+      const [tasksResponse, projectsResponse, sectionsResponse] = await Promise.all([
+        fetch(`${BACKEND_URL}/todoist/tasks`),
+        fetch(`${BACKEND_URL}/todoist/projects`),
+        fetch(`${BACKEND_URL}/todoist/sections`)
+      ]);
 
-      const { tasks: todoistTasks } = await response.json();
+      if (!tasksResponse.ok) throw new Error('Failed to fetch tasks from Todoist');
 
-      // For each Todoist task, upsert into Supabase
+      const { tasks: todoistTasks } = await tasksResponse.json();
+
+      // Build project name lookup
+      const projectMap = {};
+      if (projectsResponse.ok) {
+        const { projects } = await projectsResponse.json();
+        projects.forEach(p => { projectMap[p.id] = p.name; });
+      }
+
+      // Build section name lookup
+      const sectionMap = {};
+      if (sectionsResponse.ok) {
+        const { sections } = await sectionsResponse.json();
+        sections.forEach(s => { sectionMap[s.id] = s.name; });
+      }
+
+      // Phase 1: Upsert all tasks (without resolving parent_id yet)
       for (const tt of todoistTasks) {
         const { data: existing } = await supabase
           .from('tasks')
           .select('task_id, updated_at, synced_at')
           .eq('todoist_id', tt.id)
-          .single();
+          .maybeSingle();
 
         const taskData = {
           todoist_id: tt.id,
@@ -391,16 +440,22 @@ const useSupabaseTasks = (contactId = null) => {
           priority: tt.priority || 1,
           status: tt.is_completed ? 'completed' : 'open',
           todoist_project_id: tt.project_id,
+          todoist_project_name: projectMap[tt.project_id] || null,
+          todoist_section_id: tt.section_id || null,
+          todoist_section_name: tt.section_id ? sectionMap[tt.section_id] : null,
           todoist_url: tt.url,
+          todoist_parent_id: tt.parent_id || null,
+          task_order: tt.order || 0,
           synced_at: new Date().toISOString()
         };
 
         if (existing) {
-          // Only update if Supabase hasn't been modified since last sync
+          // Update if: never synced OR Supabase hasn't been modified since last sync
           const supabaseUpdated = new Date(existing.updated_at);
-          const lastSync = existing.synced_at ? new Date(existing.synced_at) : new Date(0);
+          const lastSync = existing.synced_at ? new Date(existing.synced_at) : null;
+          const shouldUpdate = !lastSync || supabaseUpdated <= lastSync;
 
-          if (supabaseUpdated <= lastSync) {
+          if (shouldUpdate) {
             await supabase
               .from('tasks')
               .update(taskData)
@@ -415,6 +470,45 @@ const useSupabaseTasks = (contactId = null) => {
             });
         }
       }
+
+      // Phase 2: Resolve parent_id references
+      // Get all tasks with todoist_parent_id that need parent_id resolved
+      const { data: tasksWithParent } = await supabase
+        .from('tasks')
+        .select('task_id, todoist_parent_id')
+        .not('todoist_parent_id', 'is', null);
+
+      if (tasksWithParent && tasksWithParent.length > 0) {
+        // Get mapping of todoist_id -> task_id
+        const todoistIds = tasksWithParent.map(t => t.todoist_parent_id);
+        const { data: parentTasks } = await supabase
+          .from('tasks')
+          .select('task_id, todoist_id')
+          .in('todoist_id', todoistIds);
+
+        const todoistToTaskId = {};
+        parentTasks?.forEach(pt => {
+          todoistToTaskId[pt.todoist_id] = pt.task_id;
+        });
+
+        // Update parent_id for each subtask
+        for (const task of tasksWithParent) {
+          const parentTaskId = todoistToTaskId[task.todoist_parent_id];
+          if (parentTaskId) {
+            await supabase
+              .from('tasks')
+              .update({ parent_id: parentTaskId })
+              .eq('task_id', task.task_id);
+          }
+        }
+      }
+
+      // Clear parent_id for tasks that no longer have a parent
+      await supabase
+        .from('tasks')
+        .update({ parent_id: null })
+        .is('todoist_parent_id', null)
+        .not('parent_id', 'is', null);
 
       toast.success('Synced from Todoist');
 

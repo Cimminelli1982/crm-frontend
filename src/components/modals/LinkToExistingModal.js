@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
-import { FiX, FiSearch, FiPlus, FiLink, FiLoader } from 'react-icons/fi';
+import { FiX, FiSearch, FiPlus, FiLink, FiLoader, FiCheck } from 'react-icons/fi';
 import { FaBuilding, FaUser, FaLightbulb } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
@@ -311,6 +311,26 @@ const LinkToExistingModal = ({
       if (entityType === 'company') {
         // 1. Find contacts with this domain and get their linked companies
         const domain = itemData.domain;
+
+        // Check if domain is already linked to a company
+        const { data: existingLink } = await supabase
+          .from('company_domains')
+          .select('company_id, companies(name)')
+          .eq('domain', domain)
+          .single();
+
+        if (existingLink) {
+          // Domain already linked - show as "already linked" not as suggestion
+          allSuggestions.push({
+            id: existingLink.company_id,
+            name: existingLink.companies?.name || 'Unknown',
+            source: 'already_linked',
+            sourceDetail: 'Already linked'
+          });
+          setSuggestions(allSuggestions);
+          setLoading(false);
+          return;
+        }
 
         // Step 1: Get contacts with this email domain
         const { data: contactEmails } = await supabase
@@ -666,18 +686,34 @@ const LinkToExistingModal = ({
                     <SuggestionMeta theme={theme}>{suggestion.category}</SuggestionMeta>
                   )}
                 </SuggestionInfo>
-                <LinkButton
-                  theme={theme}
-                  onClick={() => handleLink(suggestion.id, suggestion.name)}
-                  disabled={linking === suggestion.id}
-                >
-                  {linking === suggestion.id ? (
-                    <FiLoader className="animate-spin" />
-                  ) : (
-                    <FiLink />
-                  )}
-                  Link
-                </LinkButton>
+                {suggestion.source === 'already_linked' ? (
+                  <span style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    background: theme === 'dark' ? '#065F46' : '#D1FAE5',
+                    color: theme === 'dark' ? '#6EE7B7' : '#047857',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <FiCheck /> Linked
+                  </span>
+                ) : (
+                  <LinkButton
+                    theme={theme}
+                    onClick={() => handleLink(suggestion.id, suggestion.name)}
+                    disabled={linking === suggestion.id}
+                  >
+                    {linking === suggestion.id ? (
+                      <FiLoader className="animate-spin" />
+                    ) : (
+                      <FiLink />
+                    )}
+                    Link
+                  </LinkButton>
+                )}
               </SuggestionItem>
             ))}
           </SectionCard>

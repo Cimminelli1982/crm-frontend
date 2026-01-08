@@ -27,6 +27,155 @@ const STATUS_SECTIONS = [
   { id: 'completed', label: 'Completed', icon: FaCheckCircle, color: '#6B7280' },
 ];
 
+// Date categorization helpers
+const getQuarterEndMonth = (date) => {
+  const month = date.getMonth();
+  if (month < 3) return 2; // Q1: Jan-Mar, ends in March (index 2)
+  if (month < 6) return 5; // Q2: Apr-Jun, ends in June (index 5)
+  if (month < 9) return 8; // Q3: Jul-Sep, ends in September (index 8)
+  return 11; // Q4: Oct-Dec, ends in December (index 11)
+};
+
+const isThisWeek = (dateStr) => {
+  if (!dateStr) return false;
+  const date = new Date(dateStr);
+  const now = new Date();
+  // Start of week (Monday)
+  const startOfWeek = new Date(now);
+  const day = now.getDay();
+  const diff = day === 0 ? 6 : day - 1; // Adjust for Monday start
+  startOfWeek.setDate(now.getDate() - diff);
+  startOfWeek.setHours(0, 0, 0, 0);
+  // End of week (Sunday)
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 7);
+  return date >= startOfWeek && date < endOfWeek;
+};
+
+const isThisMonth = (dateStr) => {
+  if (!dateStr) return false;
+  const date = new Date(dateStr);
+  const now = new Date();
+  // Same month and year, but NOT this week
+  return date.getMonth() === now.getMonth() &&
+         date.getFullYear() === now.getFullYear() &&
+         !isThisWeek(dateStr);
+};
+
+const isThisSprint = (dateStr) => {
+  if (!dateStr) return false;
+  const date = new Date(dateStr);
+  const now = new Date();
+
+  // Not this week and not this month
+  if (isThisWeek(dateStr) || isThisMonth(dateStr)) return false;
+
+  // Check if in current quarter
+  const quarterEndMonth = getQuarterEndMonth(now);
+  const quarterEndDate = new Date(now.getFullYear(), quarterEndMonth + 1, 0); // Last day of quarter
+
+  // Must be after this month but within the quarter
+  const endOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return date > endOfThisMonth && date <= quarterEndDate;
+};
+
+const isSomeday = (task) => {
+  // No due date OR due date beyond current quarter
+  if (!task.due_date) return true;
+
+  const date = new Date(task.due_date);
+  const now = new Date();
+  const quarterEndMonth = getQuarterEndMonth(now);
+  const quarterEndDate = new Date(now.getFullYear(), quarterEndMonth + 1, 0);
+
+  return date > quarterEndDate;
+};
+
+// Task Item Component
+const TaskItem = ({ task, theme, selectedTask, loadTask, handleComplete, getPriorityColor, onDragStart }) => (
+  <div
+    draggable
+    onDragStart={(e) => onDragStart(e, task)}
+    onClick={() => loadTask(task)}
+    style={{
+      padding: '8px 10px',
+      borderRadius: '6px',
+      background: selectedTask?.task_id === task.task_id
+        ? (theme === 'dark' ? '#374151' : '#E5E7EB')
+        : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
+      border: `1px solid ${selectedTask?.task_id === task.task_id
+        ? '#3B82F6'
+        : (theme === 'dark' ? '#374151' : '#E5E7EB')}`,
+      cursor: 'grab',
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: '8px',
+    }}
+  >
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        handleComplete(task.task_id);
+      }}
+      style={{
+        width: '14px',
+        height: '14px',
+        borderRadius: '50%',
+        border: `2px solid ${getPriorityColor(task.priority)}`,
+        flexShrink: 0,
+        marginTop: '2px',
+        cursor: 'pointer',
+      }}
+      title="Complete task"
+    />
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{
+        fontWeight: 500,
+        fontSize: '12px',
+        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {task.content}
+      </div>
+      <div style={{
+        display: 'flex',
+        gap: '4px',
+        marginTop: '3px',
+        flexWrap: 'wrap',
+      }}>
+        {task.due_string && (
+          <span style={{
+            fontSize: '9px',
+            padding: '1px 4px',
+            borderRadius: '3px',
+            background: task.due_date && new Date(task.due_date) < new Date()
+              ? '#FEE2E2'
+              : (theme === 'dark' ? '#374151' : '#F3F4F6'),
+            color: task.due_date && new Date(task.due_date) < new Date()
+              ? '#DC2626'
+              : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+          }}>
+            {task.due_string}
+          </span>
+        )}
+        {task.todoist_project_name && task.todoist_project_name !== 'Inbox' && (
+          <span style={{
+            fontSize: '9px',
+            padding: '1px 4px',
+            borderRadius: '3px',
+            background: theme === 'dark' ? '#374151' : '#F3F4F6',
+            color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+          }}>
+            {task.todoist_project_name}
+          </span>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
 const TasksFullTab = ({ theme }) => {
   // Tasks list state
   const [tasks, setTasks] = useState([]);
@@ -34,7 +183,14 @@ const TasksFullTab = ({ theme }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProject, setSelectedProject] = useState('all');
-  const [expandedSections, setExpandedSections] = useState({ open: true, completed: false });
+  const [expandedSections, setExpandedSections] = useState({
+    open: true,
+    thisWeek: true,
+    thisMonth: true,
+    thisSprint: true,
+    someday: false,
+    completed: false
+  });
 
   // Selected task state
   const [selectedTask, setSelectedTask] = useState(null);
@@ -168,11 +324,42 @@ const TasksFullTab = ({ theme }) => {
       let savedTask;
 
       if (isCreating) {
+        // First create in Todoist to get todoist_id
+        let todoistId = null;
+        let todoistUrl = null;
+        let todoistProjectId = null;
+
+        try {
+          const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: taskData.content,
+              description: taskData.description,
+              due_string: taskData.due_string,
+              priority: taskData.priority,
+            }),
+          });
+
+          if (todoistResponse.ok) {
+            const todoistTask = await todoistResponse.json();
+            todoistId = todoistTask.task?.id || todoistTask.id;
+            todoistUrl = todoistTask.task?.url || todoistTask.url;
+            todoistProjectId = todoistTask.task?.project_id || todoistTask.project_id;
+          }
+        } catch (todoistError) {
+          console.warn('Failed to create in Todoist:', todoistError);
+        }
+
+        // Then save to Supabase with todoist_id
         const { data, error } = await supabase
           .from('tasks')
           .insert({
             ...taskData,
             status: 'open',
+            todoist_id: todoistId,
+            todoist_url: todoistUrl,
+            todoist_project_id: todoistProjectId,
             created_at: new Date().toISOString(),
           })
           .select()
@@ -295,17 +482,29 @@ const TasksFullTab = ({ theme }) => {
   const handleSyncFromTodoist = async () => {
     setSyncing(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/todoist/tasks`);
-      if (!response.ok) throw new Error('Failed to fetch from Todoist');
+      // Fetch tasks and projects from Todoist
+      const [tasksResponse, projectsResponse] = await Promise.all([
+        fetch(`${BACKEND_URL}/todoist/tasks`),
+        fetch(`${BACKEND_URL}/todoist/projects`),
+      ]);
 
-      const { tasks: todoistTasks } = await response.json();
+      if (!tasksResponse.ok) throw new Error('Failed to fetch from Todoist');
+
+      const { tasks: todoistTasks } = await tasksResponse.json();
+
+      // Build project name lookup
+      const projectMap = {};
+      if (projectsResponse.ok) {
+        const { projects } = await projectsResponse.json();
+        projects.forEach(p => { projectMap[p.id] = p.name; });
+      }
 
       for (const tt of todoistTasks) {
         const { data: existing } = await supabase
           .from('tasks')
           .select('task_id, updated_at, synced_at')
           .eq('todoist_id', tt.id)
-          .single();
+          .maybeSingle();
 
         const taskData = {
           todoist_id: tt.id,
@@ -317,20 +516,19 @@ const TasksFullTab = ({ theme }) => {
           priority: tt.priority || 1,
           status: tt.is_completed ? 'completed' : 'open',
           todoist_project_id: tt.project_id,
+          todoist_project_name: projectMap[tt.project_id] || null,
+          todoist_parent_id: tt.parent_id || null,
+          task_order: tt.order || 0,
           todoist_url: tt.url,
           synced_at: new Date().toISOString(),
         };
 
         if (existing) {
-          const supabaseUpdated = new Date(existing.updated_at);
-          const lastSync = existing.synced_at ? new Date(existing.synced_at) : new Date(0);
-
-          if (supabaseUpdated <= lastSync) {
-            await supabase
-              .from('tasks')
-              .update(taskData)
-              .eq('task_id', existing.task_id);
-          }
+          // Always update from Todoist - Todoist is source of truth
+          await supabase
+            .from('tasks')
+            .update(taskData)
+            .eq('task_id', existing.task_id);
         } else {
           await supabase.from('tasks').insert({
             ...taskData,
@@ -339,7 +537,90 @@ const TasksFullTab = ({ theme }) => {
         }
       }
 
-      toast.success('Synced from Todoist');
+      // Resolve parent_id from todoist_parent_id
+      const { data: tasksWithParent } = await supabase
+        .from('tasks')
+        .select('task_id, todoist_parent_id')
+        .not('todoist_parent_id', 'is', null);
+
+      if (tasksWithParent && tasksWithParent.length > 0) {
+        const todoistIds = tasksWithParent.map(t => t.todoist_parent_id);
+        const { data: parentTasks } = await supabase
+          .from('tasks')
+          .select('task_id, todoist_id')
+          .in('todoist_id', todoistIds);
+
+        const todoistToTaskId = {};
+        parentTasks?.forEach(pt => { todoistToTaskId[pt.todoist_id] = pt.task_id; });
+
+        for (const task of tasksWithParent) {
+          const parentTaskId = todoistToTaskId[task.todoist_parent_id];
+          if (parentTaskId) {
+            await supabase
+              .from('tasks')
+              .update({ parent_id: parentTaskId })
+              .eq('task_id', task.task_id);
+          }
+        }
+      }
+
+      // === ORPHAN DETECTION ===
+      // Find tasks in Supabase that are "open" but weren't returned by Todoist
+      const syncedTodoistIds = todoistTasks.map(tt => tt.id);
+
+      const { data: orphanTasks } = await supabase
+        .from('tasks')
+        .select('task_id, todoist_id, content')
+        .eq('status', 'open')
+        .not('todoist_id', 'is', null);
+
+      const orphans = (orphanTasks || []).filter(t => !syncedTodoistIds.includes(t.todoist_id));
+
+      if (orphans.length > 0) {
+        console.log(`[Sync] Found ${orphans.length} orphan tasks to check`);
+
+        for (const orphan of orphans) {
+          try {
+            const response = await fetch(`${BACKEND_URL}/todoist/tasks/${orphan.todoist_id}`);
+
+            if (response.status === 404) {
+              // Task deleted in Todoist - mark as completed in Supabase
+              console.log(`[Sync] Task "${orphan.content}" deleted in Todoist, marking completed`);
+              await supabase
+                .from('tasks')
+                .update({
+                  status: 'completed',
+                  completed_at: new Date().toISOString(),
+                  synced_at: new Date().toISOString()
+                })
+                .eq('task_id', orphan.task_id);
+            } else if (response.ok) {
+              const { task: todoistTask } = await response.json();
+
+              // Task exists - update with latest data (might be completed or updated)
+              console.log(`[Sync] Updating orphan task "${orphan.content}" - completed: ${todoistTask.is_completed}`);
+              await supabase
+                .from('tasks')
+                .update({
+                  content: todoistTask.content,
+                  description: todoistTask.description || null,
+                  due_date: todoistTask.due?.date || null,
+                  due_datetime: todoistTask.due?.datetime || null,
+                  due_string: todoistTask.due?.string || null,
+                  priority: todoistTask.priority || 1,
+                  status: todoistTask.is_completed ? 'completed' : 'open',
+                  completed_at: todoistTask.is_completed ? new Date().toISOString() : null,
+                  synced_at: new Date().toISOString(),
+                })
+                .eq('task_id', orphan.task_id);
+            }
+          } catch (err) {
+            console.error(`[Sync] Error checking orphan task ${orphan.todoist_id}:`, err);
+          }
+        }
+      }
+
+      toast.success(`Synced from Todoist${orphans.length > 0 ? ` (${orphans.length} orphans resolved)` : ''}`);
       fetchTasks();
     } catch (error) {
       console.error('Error syncing from Todoist:', error);
@@ -461,6 +742,122 @@ const TasksFullTab = ({ theme }) => {
     }
   };
 
+  // Drag and drop state
+  const [draggedTask, setDraggedTask] = useState(null);
+  const [dragOverCategory, setDragOverCategory] = useState(null);
+
+  const handleDragStart = (e, task) => {
+    setDraggedTask(task);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, category) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCategory(category);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverCategory(null);
+  };
+
+  const handleDrop = async (e, targetCategory) => {
+    e.preventDefault();
+    setDragOverCategory(null);
+
+    if (!draggedTask) return;
+
+    // Calculate new due_date based on target category
+    const now = new Date();
+    let newDueDate = null;
+    let newDueString = null;
+
+    switch (targetCategory) {
+      case 'thisWeek': {
+        // Set to Friday of this week (avoids timezone edge cases)
+        const day = now.getDay();
+        // Days until Friday: Sun=5, Mon=4, Tue=3, Wed=2, Thu=1, Fri=0, Sat=6 (next Fri)
+        const daysUntilFriday = day === 0 ? 5 : (day <= 5 ? 5 - day : 6);
+        const targetDate = new Date(now);
+        targetDate.setDate(now.getDate() + daysUntilFriday);
+        // Use local date format to avoid UTC timezone issues
+        newDueDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+        newDueString = 'friday';
+        break;
+      }
+      case 'thisMonth': {
+        // Set to 15th of this month (middle of month, after this week)
+        const targetDate = new Date(now.getFullYear(), now.getMonth(), 20);
+        // Use local date format to avoid UTC timezone issues
+        newDueDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+        newDueString = newDueDate;
+        break;
+      }
+      case 'thisSprint': {
+        // Set to 15th of next month within the quarter
+        const quarterEndMonth = getQuarterEndMonth(now);
+        let targetDate;
+        if (now.getMonth() < quarterEndMonth) {
+          // Set to next month
+          targetDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+        } else {
+          // Already in last month of quarter, set to end of quarter
+          targetDate = new Date(now.getFullYear(), quarterEndMonth + 1, 0);
+        }
+        // Use local date format to avoid UTC timezone issues
+        newDueDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+        newDueString = newDueDate;
+        break;
+      }
+      case 'someday': {
+        // Remove due date
+        newDueDate = null;
+        newDueString = null;
+        break;
+      }
+      default:
+        return;
+    }
+
+    try {
+      // Update in Supabase
+      await supabase
+        .from('tasks')
+        .update({
+          due_date: newDueDate,
+          due_string: newDueString,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('task_id', draggedTask.task_id);
+
+      // Sync to Todoist if linked
+      if (draggedTask.todoist_id) {
+        try {
+          // Use due_date (ISO format) for Todoist, not due_string
+          const todoistPayload = newDueDate
+            ? { due_date: newDueDate }
+            : { due_date: null };
+
+          await fetch(`${BACKEND_URL}/todoist/tasks/${draggedTask.todoist_id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(todoistPayload),
+          });
+        } catch (syncErr) {
+          console.warn('Failed to sync to Todoist:', syncErr);
+        }
+      }
+
+      toast.success(`Moved to ${targetCategory.replace(/([A-Z])/g, ' $1').toLowerCase()}`);
+      fetchTasks();
+    } catch (error) {
+      console.error('Error moving task:', error);
+      toast.error('Failed to move task');
+    }
+
+    setDraggedTask(null);
+  };
+
   // Filter tasks
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = !searchQuery ||
@@ -470,6 +867,12 @@ const TasksFullTab = ({ theme }) => {
       task.todoist_project_name === selectedProject;
     return matchesSearch && matchesProject;
   });
+
+  // Categorize open tasks by due date
+  const thisWeekTasks = filteredTasks.filter(t => isThisWeek(t.due_date));
+  const thisMonthTasks = filteredTasks.filter(t => isThisMonth(t.due_date));
+  const thisSprintTasks = filteredTasks.filter(t => isThisSprint(t.due_date));
+  const somedayTasks = filteredTasks.filter(t => isSomeday(t));
 
   const filteredCompletedTasks = completedTasks.filter(task => {
     const matchesSearch = !searchQuery ||
@@ -616,7 +1019,7 @@ const TasksFullTab = ({ theme }) => {
             </div>
           ) : (
             <>
-              {/* Open Tasks */}
+              {/* Open Tasks Header */}
               <div style={{ marginBottom: '16px' }}>
                 <div
                   onClick={() => setExpandedSections(prev => ({ ...prev, open: !prev.open }))}
@@ -650,100 +1053,210 @@ const TasksFullTab = ({ theme }) => {
                 </div>
 
                 {expandedSections.open && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {filteredTasks.length === 0 ? (
-                      <div style={{
-                        padding: '16px',
-                        textAlign: 'center',
-                        color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                        fontSize: '13px',
-                      }}>
-                        No open tasks
+                  <div style={{ paddingLeft: '12px' }}>
+                    {/* This Week */}
+                    <div
+                      style={{ marginBottom: '12px' }}
+                      onDragOver={(e) => handleDragOver(e, 'thisWeek')}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, 'thisWeek')}
+                    >
+                      <div
+                        onClick={() => setExpandedSections(prev => ({ ...prev, thisWeek: !prev.thisWeek }))}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: dragOverCategory === 'thisWeek'
+                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
+                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                          border: dragOverCategory === 'thisWeek' ? '2px dashed #EF4444' : '2px solid transparent',
+                          cursor: 'pointer',
+                          marginBottom: '6px',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {expandedSections.thisWeek ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
+                        <FaClock size={10} style={{ color: '#EF4444' }} />
+                        <span style={{
+                          fontWeight: 500,
+                          fontSize: '12px',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        }}>
+                          This Week
+                        </span>
+                        <span style={{
+                          marginLeft: 'auto',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#EF4444',
+                        }}>
+                          {thisWeekTasks.length}
+                        </span>
                       </div>
-                    ) : (
-                      filteredTasks.map(task => (
-                        <div
-                          key={task.task_id}
-                          onClick={() => loadTask(task)}
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: '8px',
-                            background: selectedTask?.task_id === task.task_id
-                              ? (theme === 'dark' ? '#374151' : '#E5E7EB')
-                              : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
-                            border: `1px solid ${selectedTask?.task_id === task.task_id
-                              ? '#3B82F6'
-                              : (theme === 'dark' ? '#374151' : '#E5E7EB')}`,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '10px',
-                          }}
-                        >
-                          <div
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleComplete(task.task_id);
-                            }}
-                            style={{
-                              width: '16px',
-                              height: '16px',
-                              borderRadius: '50%',
-                              border: `2px solid ${getPriorityColor(task.priority)}`,
-                              flexShrink: 0,
-                              marginTop: '2px',
-                              cursor: 'pointer',
-                            }}
-                            title="Complete task"
-                          />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{
-                              fontWeight: 500,
-                              fontSize: '13px',
-                              color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}>
-                              {task.content}
-                            </div>
-                            <div style={{
-                              display: 'flex',
-                              gap: '6px',
-                              marginTop: '4px',
-                              flexWrap: 'wrap',
-                            }}>
-                              {task.due_string && (
-                                <span style={{
-                                  fontSize: '10px',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  background: task.due_date && new Date(task.due_date) < new Date()
-                                    ? '#FEE2E2'
-                                    : (theme === 'dark' ? '#374151' : '#F3F4F6'),
-                                  color: task.due_date && new Date(task.due_date) < new Date()
-                                    ? '#DC2626'
-                                    : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
-                                }}>
-                                  {task.due_string}
-                                </span>
-                              )}
-                              {task.todoist_project_name && task.todoist_project_name !== 'Inbox' && (
-                                <span style={{
-                                  fontSize: '10px',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  background: theme === 'dark' ? '#374151' : '#F3F4F6',
-                                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                                }}>
-                                  {task.todoist_project_name}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                      {expandedSections.thisWeek && thisWeekTasks.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {thisWeekTasks.map(task => (
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                          ))}
                         </div>
-                      ))
-                    )}
+                      )}
+                    </div>
+
+                    {/* This Month */}
+                    <div
+                      style={{ marginBottom: '12px' }}
+                      onDragOver={(e) => handleDragOver(e, 'thisMonth')}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, 'thisMonth')}
+                    >
+                      <div
+                        onClick={() => setExpandedSections(prev => ({ ...prev, thisMonth: !prev.thisMonth }))}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: dragOverCategory === 'thisMonth'
+                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
+                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                          border: dragOverCategory === 'thisMonth' ? '2px dashed #F59E0B' : '2px solid transparent',
+                          cursor: 'pointer',
+                          marginBottom: '6px',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {expandedSections.thisMonth ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
+                        <FaCalendarAlt size={10} style={{ color: '#F59E0B' }} />
+                        <span style={{
+                          fontWeight: 500,
+                          fontSize: '12px',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        }}>
+                          This Month
+                        </span>
+                        <span style={{
+                          marginLeft: 'auto',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#F59E0B',
+                        }}>
+                          {thisMonthTasks.length}
+                        </span>
+                      </div>
+                      {expandedSections.thisMonth && thisMonthTasks.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {thisMonthTasks.map(task => (
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* This Sprint */}
+                    <div
+                      style={{ marginBottom: '12px' }}
+                      onDragOver={(e) => handleDragOver(e, 'thisSprint')}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, 'thisSprint')}
+                    >
+                      <div
+                        onClick={() => setExpandedSections(prev => ({ ...prev, thisSprint: !prev.thisSprint }))}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: dragOverCategory === 'thisSprint'
+                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
+                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                          border: dragOverCategory === 'thisSprint' ? '2px dashed #8B5CF6' : '2px solid transparent',
+                          cursor: 'pointer',
+                          marginBottom: '6px',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {expandedSections.thisSprint ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
+                        <FaFlag size={10} style={{ color: '#8B5CF6' }} />
+                        <span style={{
+                          fontWeight: 500,
+                          fontSize: '12px',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        }}>
+                          This Sprint
+                        </span>
+                        <span style={{
+                          marginLeft: 'auto',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#8B5CF6',
+                        }}>
+                          {thisSprintTasks.length}
+                        </span>
+                      </div>
+                      {expandedSections.thisSprint && thisSprintTasks.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {thisSprintTasks.map(task => (
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Someday */}
+                    <div
+                      style={{ marginBottom: '12px' }}
+                      onDragOver={(e) => handleDragOver(e, 'someday')}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, 'someday')}
+                    >
+                      <div
+                        onClick={() => setExpandedSections(prev => ({ ...prev, someday: !prev.someday }))}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: dragOverCategory === 'someday'
+                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
+                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                          border: dragOverCategory === 'someday' ? '2px dashed #6B7280' : '2px solid transparent',
+                          cursor: 'pointer',
+                          marginBottom: '6px',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {expandedSections.someday ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
+                        <FaCircle size={10} style={{ color: '#6B7280' }} />
+                        <span style={{
+                          fontWeight: 500,
+                          fontSize: '12px',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        }}>
+                          Someday
+                        </span>
+                        <span style={{
+                          marginLeft: 'auto',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#6B7280',
+                        }}>
+                          {somedayTasks.length}
+                        </span>
+                      </div>
+                      {expandedSections.someday && somedayTasks.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {somedayTasks.map(task => (
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

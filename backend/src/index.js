@@ -391,18 +391,25 @@ async function upsertGoogleCalendarEvents(events) {
 }
 
 // Start polling
+const TODOIST_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
 function startPolling() {
   console.log(`Starting email polling every ${SYNC_INTERVAL / 1000} seconds...`);
+  console.log(`Starting Todoist sync every ${TODOIST_SYNC_INTERVAL / 1000} seconds...`);
 
   // Initial sync
   autoSync();
   // syncCalendar(); // DISABLED - using Google Calendar instead of CalDAV
   syncGoogleCalendar();
+  syncTodoist(); // Initial Todoist sync
 
-  // Then every 60 seconds
+  // Then every 60 seconds for email/calendar
   setInterval(autoSync, SYNC_INTERVAL);
   // setInterval(syncCalendar, SYNC_INTERVAL); // DISABLED - using Google Calendar instead of CalDAV
   setInterval(syncGoogleCalendar, SYNC_INTERVAL);
+
+  // Todoist sync every 5 minutes
+  setInterval(syncTodoist, TODOIST_SYNC_INTERVAL);
 }
 
 // Health check
@@ -900,12 +907,13 @@ app.get('/attachment/:blobId', async (req, res) => {
 const TODOIST_API_URL = 'https://api.todoist.com/rest/v2';
 const TODOIST_TOKEN = process.env.TODOIST_API_TOKEN;
 
-// Project IDs to include (Work, Personal, Team, Inbox)
+// Project IDs to include (Work, Personal, Team, Inbox, Birthdays)
 const INCLUDED_PROJECT_IDS = [
   '2335921711', // Inbox
   '2336453097', // Personal
   '2336882454', // Work
   '2344002643', // Team
+  '2360053180', // Birthdays
 ];
 
 // Helper to make Todoist API requests
@@ -930,6 +938,118 @@ async function todoistRequest(endpoint, options = {}) {
   }
 
   return response.json();
+}
+
+// Sync Todoist tasks to Supabase (runs every 5 minutes)
+async function syncTodoist() {
+  console.log('[Todoist] Starting sync...');
+  try {
+    // 1. Fetch active tasks from Todoist
+    const tasks = await todoistRequest('/tasks');
+    const filteredTasks = tasks.filter(t => INCLUDED_PROJECT_IDS.includes(t.project_id));
+
+    // 2. Fetch projects for name lookup
+    const projects = await todoistRequest('/projects');
+    const projectMap = {};
+    projects.forEach(p => { projectMap[p.id] = p.name; });
+
+    // 3. Upsert tasks into Supabase
+    const todoistIds = filteredTasks.map(t => t.id);
+
+    for (const tt of filteredTasks) {
+      const { data: existing } = await supabase
+        .from('tasks')
+        .select('task_id')
+        .eq('todoist_id', tt.id)
+        .maybeSingle();
+
+      const taskData = {
+        todoist_id: tt.id,
+        content: tt.content,
+        description: tt.description || null,
+        due_date: tt.due?.date || null,
+        due_datetime: tt.due?.datetime || null,
+        due_string: tt.due?.string || null,
+        priority: tt.priority || 1,
+        status: tt.is_completed ? 'completed' : 'open',
+        todoist_project_id: tt.project_id,
+        todoist_project_name: projectMap[tt.project_id] || null,
+        todoist_parent_id: tt.parent_id || null,
+        task_order: tt.order || 0,
+        todoist_url: tt.url,
+        synced_at: new Date().toISOString(),
+      };
+
+      if (existing) {
+        await supabase
+          .from('tasks')
+          .update(taskData)
+          .eq('task_id', existing.task_id);
+      } else {
+        await supabase.from('tasks').insert({
+          ...taskData,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    // 4. Orphan detection - find tasks open in Supabase but not in Todoist
+    // Only check tasks from included projects to avoid unnecessary API calls
+    const { data: orphanTasks } = await supabase
+      .from('tasks')
+      .select('task_id, todoist_id, content, todoist_project_id')
+      .eq('status', 'open')
+      .not('todoist_id', 'is', null)
+      .in('todoist_project_id', INCLUDED_PROJECT_IDS);
+
+    const orphans = (orphanTasks || []).filter(t => !todoistIds.includes(t.todoist_id));
+
+    if (orphans.length > 0) {
+      console.log(`[Todoist] Found ${orphans.length} orphan tasks to check`);
+
+      for (const orphan of orphans) {
+        try {
+          const task = await todoistRequest(`/tasks/${orphan.todoist_id}`);
+
+          // Task exists - update with latest data
+          console.log(`[Todoist] Orphan "${orphan.content}" is_completed: ${task.is_completed}`);
+          await supabase
+            .from('tasks')
+            .update({
+              content: task.content,
+              description: task.description || null,
+              due_date: task.due?.date || null,
+              due_datetime: task.due?.datetime || null,
+              due_string: task.due?.string || null,
+              priority: task.priority || 1,
+              status: task.is_completed ? 'completed' : 'open',
+              completed_at: task.is_completed ? new Date().toISOString() : null,
+              synced_at: new Date().toISOString(),
+            })
+            .eq('task_id', orphan.task_id);
+        } catch (err) {
+          if (err.message?.includes('404')) {
+            // Task deleted in Todoist
+            console.log(`[Todoist] Orphan "${orphan.content}" deleted, marking completed`);
+            await supabase
+              .from('tasks')
+              .update({
+                status: 'completed',
+                completed_at: new Date().toISOString(),
+                synced_at: new Date().toISOString()
+              })
+              .eq('task_id', orphan.task_id);
+          } else {
+            console.error(`[Todoist] Error checking orphan ${orphan.todoist_id}:`, err.message);
+          }
+        }
+      }
+    }
+
+    console.log(`[Todoist] Sync complete: ${filteredTasks.length} active tasks, ${orphans.length} orphans resolved`);
+  } catch (error) {
+    console.error('[Todoist] Sync error:', error.message);
+  }
 }
 
 // ==================== CRM AGENT ENDPOINTS ====================
@@ -979,6 +1099,19 @@ app.get('/todoist/projects', async (req, res) => {
     res.json({ projects: filteredProjects });
   } catch (error) {
     console.error('Todoist projects error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all sections (for included projects)
+app.get('/todoist/sections', async (req, res) => {
+  try {
+    const sections = await todoistRequest('/sections');
+    // Filter to included projects only
+    const filteredSections = sections.filter(s => INCLUDED_PROJECT_IDS.includes(s.project_id));
+    res.json({ sections: filteredSections });
+  } catch (error) {
+    console.error('Todoist sections error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1034,6 +1167,22 @@ app.post('/todoist/tasks', async (req, res) => {
     res.json({ task });
   } catch (error) {
     console.error('Todoist create task error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get a single task by ID
+app.get('/todoist/tasks/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const task = await todoistRequest(`/tasks/${id}`);
+    res.json({ task });
+  } catch (error) {
+    console.error('Todoist get task error:', error);
+    // Return 404 if task not found (deleted or doesn't exist)
+    if (error.message?.includes('404') || error.message?.includes('not found')) {
+      return res.status(404).json({ error: 'Task not found', deleted: true });
+    }
     res.status(500).json({ error: error.message });
   }
 });

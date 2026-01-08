@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   FaRocket, FaBuilding, FaLinkedin, FaGlobe, FaTag,
-  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus
+  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaClone
 } from 'react-icons/fa';
 
 // Company category options
@@ -51,7 +51,8 @@ const CompanyDetailsTab = ({
   onCompanyNavigate,
   loading = false,
   onEdit,
-  onAssociateCompany
+  onAssociateCompany,
+  onDuplicates
 }) => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
@@ -317,7 +318,7 @@ const CompanyDetailsTab = ({
       )}
 
       {/* Read-only mode: Action buttons */}
-      {!editable && (onEnrich || onEdit) && (
+      {!editable && (onEnrich || onEdit || onDuplicates) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
           {onEnrich && (
             <button
@@ -361,6 +362,28 @@ const CompanyDetailsTab = ({
             >
               <FaEdit size={9} />
               Edit
+            </button>
+          )}
+          {onDuplicates && (
+            <button
+              onClick={onDuplicates}
+              title="Merge with duplicate company"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaClone size={9} />
+              Duplicates
             </button>
           )}
         </div>

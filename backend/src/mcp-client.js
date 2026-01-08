@@ -132,6 +132,75 @@ class MCPClientManager {
         },
         _server: 'crm',
         _handler: this.handleMarkNotDuplicate.bind(this)
+      },
+      // List Management Tools
+      {
+        name: 'crm_get_lists',
+        description: 'Get all available email lists. Returns static lists (can add contacts manually) and dynamic lists (auto-populated by filters).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            list_type: { type: 'string', enum: ['static', 'dynamic', 'all'], description: 'Filter by list type (default: all)' }
+          }
+        },
+        _server: 'crm',
+        _handler: this.handleGetLists.bind(this)
+      },
+      {
+        name: 'crm_add_contact_to_list',
+        description: 'Add a contact to a static email list. Use contact name or ID, and list name or ID.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'Contact UUID' },
+            contact_name: { type: 'string', description: 'Contact name (alternative to contact_id)' },
+            list_id: { type: 'string', description: 'List UUID' },
+            list_name: { type: 'string', description: 'List name (alternative to list_id)' }
+          }
+        },
+        _server: 'crm',
+        _handler: this.handleAddContactToList.bind(this)
+      },
+      {
+        name: 'crm_remove_contact_from_list',
+        description: 'Remove a contact from a static email list.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'Contact UUID' },
+            list_id: { type: 'string', description: 'List UUID' }
+          },
+          required: ['contact_id', 'list_id']
+        },
+        _server: 'crm',
+        _handler: this.handleRemoveContactFromList.bind(this)
+      },
+      {
+        name: 'crm_get_contact_lists',
+        description: 'Get all lists a contact belongs to.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'Contact UUID' }
+          },
+          required: ['contact_id']
+        },
+        _server: 'crm',
+        _handler: this.handleGetContactLists.bind(this)
+      },
+      {
+        name: 'crm_search_contacts',
+        description: 'Search for contacts by name, email, or company.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search term (name, email, or company)' },
+            limit: { type: 'number', description: 'Max results (default 10)' }
+          },
+          required: ['query']
+        },
+        _server: 'crm',
+        _handler: this.handleSearchContacts.bind(this)
       }
     ];
 
@@ -342,6 +411,228 @@ class MCPClientManager {
       .or(`and(contact_id_1.eq.${contact_id_1},contact_id_2.eq.${contact_id_2}),and(contact_id_1.eq.${contact_id_2},contact_id_2.eq.${contact_id_1})`);
 
     return { success: true, message: 'Marked as not duplicates' };
+  }
+
+  // List Management Handlers
+  async handleGetLists({ list_type = 'all' }) {
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured');
+
+    let query = supabase
+      .from('email_lists')
+      .select('list_id, name, description, list_type, is_active')
+      .eq('is_active', true)
+      .order('name');
+
+    if (list_type !== 'all') {
+      query = query.eq('list_type', list_type);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return {
+      count: data?.length || 0,
+      lists: data || [],
+      note: 'Static lists can have contacts added manually. Dynamic lists are auto-populated by filters.'
+    };
+  }
+
+  async handleAddContactToList({ contact_id, contact_name, list_id, list_name }) {
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured');
+
+    // Resolve contact_id from name if needed
+    let resolvedContactId = contact_id;
+    let contactInfo = null;
+    if (!resolvedContactId && contact_name) {
+      const { data: contacts, error } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name')
+        .or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`)
+        .limit(5);
+      if (error) throw error;
+      if (!contacts || contacts.length === 0) {
+        return { success: false, error: `No contact found matching "${contact_name}"` };
+      }
+      if (contacts.length > 1) {
+        return {
+          success: false,
+          error: 'Multiple contacts found. Please be more specific or use contact_id.',
+          matches: contacts.map(c => ({ id: c.contact_id, name: `${c.first_name} ${c.last_name}` }))
+        };
+      }
+      resolvedContactId = contacts[0].contact_id;
+      contactInfo = contacts[0];
+    }
+
+    // Resolve list_id from name if needed
+    let resolvedListId = list_id;
+    let listInfo = null;
+    if (!resolvedListId && list_name) {
+      const { data: lists, error } = await supabase
+        .from('email_lists')
+        .select('list_id, name, list_type')
+        .ilike('name', `%${list_name}%`)
+        .eq('is_active', true)
+        .limit(5);
+      if (error) throw error;
+      if (!lists || lists.length === 0) {
+        return { success: false, error: `No list found matching "${list_name}"` };
+      }
+      if (lists.length > 1) {
+        return {
+          success: false,
+          error: 'Multiple lists found. Please be more specific or use list_id.',
+          matches: lists.map(l => ({ id: l.list_id, name: l.name, type: l.list_type }))
+        };
+      }
+      resolvedListId = lists[0].list_id;
+      listInfo = lists[0];
+    }
+
+    if (!resolvedContactId || !resolvedListId) {
+      return { success: false, error: 'Both contact and list must be specified (by id or name)' };
+    }
+
+    // Check if list is static (can add manually)
+    if (!listInfo) {
+      const { data: list } = await supabase
+        .from('email_lists')
+        .select('name, list_type')
+        .eq('list_id', resolvedListId)
+        .single();
+      listInfo = list;
+    }
+
+    if (listInfo?.list_type === 'dynamic') {
+      return { success: false, error: `Cannot manually add contacts to dynamic list "${listInfo.name}". Dynamic lists are auto-populated.` };
+    }
+
+    // Check if already a member
+    const { data: existing } = await supabase
+      .from('email_list_members')
+      .select('*')
+      .eq('contact_id', resolvedContactId)
+      .eq('list_id', resolvedListId)
+      .eq('is_active', true)
+      .single();
+
+    if (existing) {
+      // Get contact name for response
+      if (!contactInfo) {
+        const { data: c } = await supabase.from('contacts').select('first_name, last_name').eq('contact_id', resolvedContactId).single();
+        contactInfo = c;
+      }
+      return { success: false, error: `${contactInfo?.first_name} ${contactInfo?.last_name} is already in "${listInfo?.name}"` };
+    }
+
+    // Add to list
+    const { error: insertError } = await supabase
+      .from('email_list_members')
+      .insert({
+        list_id: resolvedListId,
+        contact_id: resolvedContactId,
+        added_by: 'LLM',
+        is_active: true
+      });
+
+    if (insertError) throw insertError;
+
+    // Get names for response
+    if (!contactInfo) {
+      const { data: c } = await supabase.from('contacts').select('first_name, last_name').eq('contact_id', resolvedContactId).single();
+      contactInfo = c;
+    }
+
+    return {
+      success: true,
+      message: `Added ${contactInfo?.first_name} ${contactInfo?.last_name} to "${listInfo?.name}"`,
+      contact_id: resolvedContactId,
+      list_id: resolvedListId
+    };
+  }
+
+  async handleRemoveContactFromList({ contact_id, list_id }) {
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured');
+
+    // Check list type
+    const { data: list } = await supabase
+      .from('email_lists')
+      .select('name, list_type')
+      .eq('list_id', list_id)
+      .single();
+
+    if (list?.list_type === 'dynamic') {
+      return { success: false, error: `Cannot manually remove from dynamic list "${list.name}"` };
+    }
+
+    const { error } = await supabase
+      .from('email_list_members')
+      .update({ is_active: false })
+      .eq('contact_id', contact_id)
+      .eq('list_id', list_id);
+
+    if (error) throw error;
+
+    return { success: true, message: `Removed from "${list?.name}"` };
+  }
+
+  async handleGetContactLists({ contact_id }) {
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured');
+
+    const { data, error } = await supabase
+      .from('email_list_members')
+      .select(`
+        list_id,
+        added_at,
+        email_lists (list_id, name, description, list_type)
+      `)
+      .eq('contact_id', contact_id)
+      .eq('is_active', true);
+
+    if (error) throw error;
+
+    return {
+      count: data?.length || 0,
+      lists: data?.map(m => ({
+        list_id: m.list_id,
+        name: m.email_lists?.name,
+        type: m.email_lists?.list_type,
+        added_at: m.added_at
+      })) || []
+    };
+  }
+
+  async handleSearchContacts({ query, limit = 10 }) {
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured');
+
+    const { data, error } = await supabase
+      .from('contacts')
+      .select(`
+        contact_id, first_name, last_name, job_role, category,
+        contact_emails (email, is_primary),
+        contact_companies (companies (name))
+      `)
+      .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+      .limit(limit);
+
+    if (error) throw error;
+
+    return {
+      count: data?.length || 0,
+      contacts: data?.map(c => ({
+        contact_id: c.contact_id,
+        name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+        job_role: c.job_role,
+        category: c.category,
+        primary_email: c.contact_emails?.find(e => e.is_primary)?.email || c.contact_emails?.[0]?.email,
+        company: c.contact_companies?.[0]?.companies?.name
+      })) || []
+    };
   }
 
   async connectSupabase() {

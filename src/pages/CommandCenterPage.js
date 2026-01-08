@@ -119,6 +119,7 @@ import ManageContactTagsModal from '../components/modals/ManageContactTagsModal'
 import ManageContactCitiesModal from '../components/modals/ManageContactCitiesModal';
 import ManageContactCompaniesModal from '../components/modals/ManageContactCompaniesModal';
 import ManageContactListsModal from '../components/modals/ManageContactListsModal';
+import MergeCompanyModal from '../components/modals/MergeCompanyModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
@@ -153,8 +154,6 @@ const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // 
 // Helper to sanitize email HTML - removes cid: image references that can't be displayed
 const sanitizeEmailHtml = (html) => {
   if (!html) return html;
-  // Remove img tags with cid: src (embedded images we can't display)
-  // Replace with a placeholder or remove entirely
   return html
     .replace(/<img[^>]*src=["']cid:[^"']*["'][^>]*>/gi, '')
     .replace(/src=["']cid:[^"']*["']/gi, 'src=""');
@@ -211,10 +210,11 @@ const CommandCenterPage = ({ theme }) => {
     return items.filter(item => item.status === status);
   };
 
-  // Calendar sections state (needReview, thisWeek, upcoming)
+  // Calendar sections state (needReview, thisWeek, thisMonth, upcoming)
   const [calendarSections, setCalendarSections] = useState({
     needReview: true,
     thisWeek: true,
+    thisMonth: true,
     upcoming: true
   });
 
@@ -237,6 +237,9 @@ const CommandCenterPage = ({ theme }) => {
     endOfWeek.setDate(startOfToday.getDate() + daysUntilSunday);
     endOfWeek.setHours(23, 59, 59, 999);
 
+    // Get end of this month
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
     if (type === 'thisWeek') {
       // Events that haven't started yet and are within this week
       return events
@@ -245,10 +248,18 @@ const CommandCenterPage = ({ theme }) => {
           return eventDate >= now && eventDate <= endOfWeek;
         })
         .sort((a, b) => new Date(a.date) - new Date(b.date));
-    } else if (type === 'upcoming') {
-      // Events after this week
+    } else if (type === 'thisMonth') {
+      // Events after this week but within current month
       return events
-        .filter(event => new Date(event.date) > endOfWeek)
+        .filter(event => {
+          const eventDate = new Date(event.date);
+          return eventDate > endOfWeek && eventDate <= endOfMonth;
+        })
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    } else if (type === 'upcoming') {
+      // Events after this month
+      return events
+        .filter(event => new Date(event.date) > endOfMonth)
         .sort((a, b) => new Date(a.date) - new Date(b.date));
     } else if (type === 'needReview' || type === 'past') {
       // Past events (start time has passed), sorted most recent first
@@ -346,6 +357,10 @@ const CommandCenterPage = ({ theme }) => {
 
   // Right panel associate company modal state
   const [rightPanelAssociateCompanyModalOpen, setRightPanelAssociateCompanyModalOpen] = useState(false);
+
+  // Right panel company merge/duplicate modal state
+  const [companyMergeModalOpen, setCompanyMergeModalOpen] = useState(false);
+  const [companyMergeCompany, setCompanyMergeCompany] = useState(null);
 
   // Right panel email tab - pre-selected email
   const [initialSelectedEmail, setInitialSelectedEmail] = useState(null);
@@ -4013,7 +4028,7 @@ internet businesses.`;
       const { data: duplicatesRaw, error: duplicatesError } = await supabase
         .from('duplicates_inbox')
         .select('*')
-        .in('inbox_id', inboxIds)
+        .or(`inbox_id.in.(${inboxIds.join(',')}),inbox_id.is.null`)
         .eq('status', 'pending');
 
       if (duplicatesError) {
@@ -5237,7 +5252,7 @@ internet businesses.`;
       }
       const { data: refreshed } = await supabase
         .from('deals_contacts')
-        .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
+        .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
         .in('contact_id', contactIds);
       if (refreshed) {
         const dealsMap = new Map();
@@ -5598,7 +5613,7 @@ internet businesses.`;
           deal_id,
           contact_id,
           relationship,
-          deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)
+          deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))
         `)
         .in('contact_id', contactIds);
 
@@ -5653,7 +5668,7 @@ internet businesses.`;
               deal_id,
               contact_id,
               relationship,
-              deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)
+              deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))
             `)
             .in('contact_id', companyContactIds);
 
@@ -8304,6 +8319,95 @@ internet businesses.`;
                     })
                   )}
 
+                  {/* This Month Events Section */}
+                  <div
+                    onClick={() => toggleCalendarSection('thisMonth')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: calendarSections.thisMonth ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>This Month</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterCalendarEvents(calendarEvents, 'thisMonth').length}
+                    </span>
+                  </div>
+                  {calendarSections.thisMonth && (
+                    filterCalendarEvents(calendarEvents, 'thisMonth').map(event => {
+                      let cleanSubject = (event.subject || 'No title')
+                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '');
+                      // Extract person name from "Quick call - S. Cimminelli (Person Name)" format
+                      const quickCallMatch = cleanSubject.match(/^Quick call - S\. Cimminelli \(([^)]+)\)$/i);
+                      if (quickCallMatch) {
+                        cleanSubject = quickCallMatch[1];
+                      } else {
+                        cleanSubject = cleanSubject
+                          .replace(/Simone Cimminelli/gi, '')
+                          .replace(/<>/g, '')
+                          .replace(/\s+/g, ' ')
+                          .trim() || 'Meeting';
+                      }
+
+                      const location = (event.event_location || '').toLowerCase();
+                      const isRemote = location.includes('zoom') || location.includes('meet') ||
+                        location.includes('teams') || location.includes('webex') ||
+                        location.includes('http') || location.includes('skype');
+
+                      const eventDate = new Date(event.date);
+                      const dayName = eventDate.toLocaleDateString('en-GB', { weekday: 'short' });
+                      const dateStr = `${dayName} ${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${eventDate.getFullYear()}`;
+
+                      return (
+                        <EmailItem
+                          key={event.id}
+                          theme={theme}
+                          $selected={selectedCalendarEvent?.id === event.id}
+                          $unread={!event.is_read}
+                          onClick={() => {
+                            setSelectedCalendarEvent(event);
+                            setCalendarEventDescription(event.body_text || event.description || '');
+                          }}
+                        >
+                          <EmailSender theme={theme}>
+                            {!event.is_read && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {cleanSubject}
+                            </span>
+                            <span style={{
+                              marginLeft: '8px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              flexShrink: 0,
+                              backgroundColor: isRemote ? '#3B82F6' : '#10B981',
+                              color: 'white'
+                            }}>
+                              {isRemote ? 'Remote' : 'In Person'}
+                            </span>
+                          </EmailSender>
+                          <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                            {dateStr}
+                          </EmailSubject>
+                          <EmailSnippet theme={theme}>
+                            {event.event_location || 'No location'}
+                          </EmailSnippet>
+                        </EmailItem>
+                      );
+                    })
+                  )}
+
                   {/* Upcoming Events Section */}
                   <div
                     onClick={() => toggleCalendarSection('upcoming')}
@@ -8400,7 +8504,7 @@ internet businesses.`;
           {!listCollapsed && activeTab === 'calendar' && (
             <PendingCount theme={theme}>
               {calendarViewMode === 'toProcess'
-                ? `${filterCalendarEvents(calendarEvents, 'needReview').length} inbox, ${filterCalendarEvents(calendarEvents, 'thisWeek').length} this week, ${filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming`
+                ? `${filterCalendarEvents(calendarEvents, 'needReview').length} inbox, ${filterCalendarEvents(calendarEvents, 'thisWeek').length} this week, ${filterCalendarEvents(calendarEvents, 'thisMonth').length} this month, ${filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming`
                 : `${processedMeetings.length} meetings processed`
               }
             </PendingCount>
@@ -12228,26 +12332,40 @@ internet businesses.`;
                         </span>
                       </div>
                     </div>
-                    {email.body_html ? (
-                      <div
-                        style={{
-                          color: theme === 'light' ? '#374151' : '#D1D5DB',
-                          fontSize: '14px',
-                          lineHeight: '1.6',
-                          whiteSpace: 'pre-wrap',
-                        }}
-                        dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body_html) }}
-                      />
-                    ) : (
-                      <div style={{
-                        color: theme === 'light' ? '#374151' : '#D1D5DB',
-                        fontSize: '14px',
-                        lineHeight: '1.6',
-                        whiteSpace: 'pre-wrap'
-                      }}>
-                        {email.body_text || email.snippet || 'No content'}
-                      </div>
-                    )}
+                    <iframe
+                      title="email-content"
+                      srcDoc={(() => {
+                        const hasRealHtml = email.body_html && /<(html|body|div|p|br|span|table|tr|td|a href|img|ul|ol|li|h[1-6]|strong|em|b|i)[>\s/]/i.test(email.body_html);
+                        const content = hasRealHtml
+                          ? sanitizeEmailHtml(email.body_html)
+                          : (email.body_text || email.body_html || email.snippet || 'No content').replace(/\n/g, '<br>');
+                        return `
+                          <!DOCTYPE html>
+                          <html>
+                          <head>
+                            <style>
+                              body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: ${theme === 'light' ? '#374151' : '#D1D5DB'}; background: transparent; }
+                              img { max-width: 100%; height: auto; }
+                              a { color: #3B82F6; }
+                            </style>
+                          </head>
+                          <body>${content}</body>
+                          </html>
+                        `;
+                      })()}
+                      style={{
+                        width: '100%',
+                        border: 'none',
+                        minHeight: '200px',
+                        background: 'transparent',
+                      }}
+                      onLoad={(e) => {
+                        const iframe = e.target;
+                        if (iframe.contentDocument?.body) {
+                          iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px';
+                        }
+                      }}
+                    />
                   </div>
                 ))}
               </div>
@@ -14166,8 +14284,52 @@ internet businesses.`;
                   cities={rightPanelContactDetails?.cities || []}
                   lists={rightPanelContactDetails?.lists || []}
                   completenessScore={rightPanelContactDetails?.completenessScore}
+                  keepInTouch={rightPanelContactDetails?.keepInTouch}
                   loading={rightPanelContactDetails?.loading}
                   editable={false}
+                  onUpdateKeepInTouch={async (field, value) => {
+                    const contactId = selectedRightPanelContactId;
+                    if (!contactId) return;
+
+                    try {
+                      // Check if keep_in_touch record exists
+                      const { data: existing } = await supabase
+                        .from('keep_in_touch')
+                        .select('id')
+                        .eq('contact_id', contactId)
+                        .maybeSingle();
+
+                      if (existing) {
+                        // Update existing record
+                        const { error } = await supabase
+                          .from('keep_in_touch')
+                          .update({ [field]: value })
+                          .eq('contact_id', contactId);
+                        if (error) throw error;
+                      } else {
+                        // Create new record
+                        const { error } = await supabase
+                          .from('keep_in_touch')
+                          .insert({ contact_id: contactId, [field]: value });
+                        if (error) throw error;
+                      }
+
+                      // Also update contacts table for frequency (trigger should do this but be safe)
+                      if (field === 'frequency') {
+                        await supabase
+                          .from('contacts')
+                          .update({ keep_in_touch_frequency: value })
+                          .eq('contact_id', contactId);
+                      }
+
+                      // Refetch to update UI
+                      rightPanelContactDetails?.refetch?.();
+                      toast.success(`${field} updated`);
+                    } catch (err) {
+                      console.error('Error updating keep in touch:', err);
+                      toast.error('Failed to update');
+                    }
+                  }}
                   onCompanyClick={(companyId) => {
                     setSelectedRightPanelCompanyId(companyId);
                     setActiveActionTab('company');
@@ -14196,10 +14358,62 @@ internet businesses.`;
                       setKitEnrichmentModalOpen(true);
                     }
                   }}
+                  onCheck={async () => {
+                    if (rightPanelContactDetails?.contact?.contact_id) {
+                      const contactId = rightPanelContactDetails.contact.contact_id;
+                      const contactName = `${rightPanelContactDetails.contact.first_name || ''} ${rightPanelContactDetails.contact.last_name || ''}`.trim();
+
+                      // Get current inbox_id from selected message
+                      let inboxId = null;
+                      if (activeTab === 'email' && selectedThread?.length > 0) {
+                        inboxId = selectedThread[0].id;
+                      } else if (activeTab === 'whatsapp' && selectedWhatsappChat?.messages?.length > 0) {
+                        inboxId = selectedWhatsappChat.messages[0].id;
+                      } else if (activeTab === 'calendar' && selectedCalendarEvent) {
+                        inboxId = selectedCalendarEvent.id;
+                      }
+
+                      if (!inboxId) {
+                        toast.error('Select a message first to run checks', { id: 'check-contact' });
+                        return;
+                      }
+
+                      toast.loading(`Running data integrity checks for ${contactName}...`, { id: 'check-contact' });
+                      try {
+                        const { data, error } = await supabase.rpc('run_contact_data_integrity_checks', {
+                          p_contact_id: contactId,
+                          p_inbox_id: inboxId
+                        });
+                        if (error) throw error;
+                        const total = data?.find(r => r.check_name === 'TOTAL')?.issues_created || 0;
+                        if (total > 0) {
+                          toast.success(`Found ${total} issue${total > 1 ? 's' : ''} for ${contactName}`, { id: 'check-contact' });
+                        } else {
+                          toast.success(`No new issues for ${contactName}`, { id: 'check-contact' });
+                        }
+                        fetchDataIntegrity();
+                      } catch (err) {
+                        console.error('Error running data integrity checks:', err);
+                        toast.error('Failed to run checks', { id: 'check-contact' });
+                      }
+                    }
+                  }}
                   onOpenProfileImageModal={profileImageModal.openModal}
                   onAddToList={() => {
                     if (rightPanelContactDetails?.contact) {
                       handleOpenAddToListModal(rightPanelContactDetails.contact);
+                    }
+                  }}
+                  onManageTags={() => {
+                    if (rightPanelContactDetails?.contact) {
+                      setSelectedKeepInTouchContact(rightPanelContactDetails.contact);
+                      setKitTagsModalOpen(true);
+                    }
+                  }}
+                  onManageCities={() => {
+                    if (rightPanelContactDetails?.contact) {
+                      setSelectedKeepInTouchContact(rightPanelContactDetails.contact);
+                      setKitCityModalOpen(true);
                     }
                   }}
                 />
@@ -14233,6 +14447,12 @@ internet businesses.`;
                   }}
                   onAssociateCompany={() => {
                     setRightPanelAssociateCompanyModalOpen(true);
+                  }}
+                  onDuplicates={() => {
+                    if (rightPanelCompanyDetails?.company && selectedRightPanelCompanyId) {
+                      setCompanyMergeCompany({ ...rightPanelCompanyDetails.company, company_id: selectedRightPanelCompanyId });
+                      setCompanyMergeModalOpen(true);
+                    }
                   }}
                 />
               )}
@@ -14292,6 +14512,7 @@ internet businesses.`;
                 <TasksTab
                   theme={theme}
                   contactId={selectedRightPanelContactId}
+                  contactName={rightPanelContactDetails?.contact ? `${rightPanelContactDetails.contact.first_name || ''} ${rightPanelContactDetails.contact.last_name || ''}`.trim() : ''}
                   contactCompanies={rightPanelContactDetails?.companies || []}
                   contactDeals={rightPanelContactDetails?.deals || []}
                   onTaskCreated={() => rightPanelContactDetails?.refetch?.()}
@@ -14591,7 +14812,7 @@ internet businesses.`;
                                 const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
                                 const { data: refreshed } = await supabase
                                   .from('deals_contacts')
-                                  .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
+                                  .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
                                   .in('contact_id', contactIds);
                                 if (refreshed) {
                                   const dealsMap = new Map();
@@ -14693,7 +14914,7 @@ internet businesses.`;
                   const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
                   const { data: refreshed } = await supabase
                     .from('deals_contacts')
-                    .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
+                    .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
                     .in('contact_id', contactIds);
 
                   if (refreshed) {
@@ -16047,6 +16268,20 @@ internet businesses.`;
         theme={theme}
       />
 
+      {/* Company Merge/Duplicate Modal */}
+      <MergeCompanyModal
+        isOpen={companyMergeModalOpen}
+        onRequestClose={() => {
+          setCompanyMergeModalOpen(false);
+          setCompanyMergeCompany(null);
+          // Refresh right panel after merge
+          if (rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
+        }}
+        company={companyMergeCompany}
+      />
+
       {/* Create Company from Domain Modal */}
       <CreateCompanyFromDomainModal
         isOpen={createCompanyFromDomainModalOpen}
@@ -16353,7 +16588,7 @@ internet businesses.`;
 
             const { data: dealsContactsData } = await supabase
               .from('deals_contacts')
-              .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
+              .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
               .in('contact_id', contactIds);
 
             const dealsMap = new Map();
@@ -16420,7 +16655,13 @@ internet businesses.`;
       {/* Keep in Touch - Tags Modal */}
       <ManageContactTagsModal
         isOpen={kitTagsModalOpen}
-        onClose={() => setKitTagsModalOpen(false)}
+        onClose={() => {
+          setKitTagsModalOpen(false);
+          // Refresh right panel if same contact
+          if (selectedKeepInTouchContact?.contact_id === selectedRightPanelContactId && rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
+        }}
         contact={selectedKeepInTouchContact}
         theme={theme}
         onTagsUpdated={async () => {
@@ -16444,6 +16685,10 @@ internet businesses.`;
             } else {
               setKeepInTouchTags([]);
             }
+            // Also refresh right panel if same contact
+            if (selectedKeepInTouchContact.contact_id === selectedRightPanelContactId && rightPanelContactDetails?.refetch) {
+              rightPanelContactDetails.refetch();
+            }
           }
         }}
       />
@@ -16451,7 +16696,13 @@ internet businesses.`;
       {/* Keep in Touch - City Modal */}
       <ManageContactCitiesModal
         isOpen={kitCityModalOpen}
-        onClose={() => setKitCityModalOpen(false)}
+        onClose={() => {
+          setKitCityModalOpen(false);
+          // Refresh right panel if same contact
+          if (selectedKeepInTouchContact?.contact_id === selectedRightPanelContactId && rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
+        }}
         contact={selectedKeepInTouchContact}
         theme={theme}
         onCitiesUpdated={async () => {
@@ -16474,6 +16725,10 @@ internet businesses.`;
               setKeepInTouchCities(citiesWithDetails);
             } else {
               setKeepInTouchCities([]);
+            }
+            // Also refresh right panel if same contact
+            if (selectedKeepInTouchContact.contact_id === selectedRightPanelContactId && rightPanelContactDetails?.refetch) {
+              rightPanelContactDetails.refetch();
             }
           }
         }}
