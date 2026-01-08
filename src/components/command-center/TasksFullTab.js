@@ -3,7 +3,8 @@ import {
   FaTasks, FaPlus, FaSearch, FaFolder, FaSave, FaTrash, FaCheck,
   FaLink, FaUser, FaBuilding, FaDollarSign, FaSync, FaExternalLinkAlt,
   FaChevronRight, FaChevronDown, FaCalendarAlt, FaFlag, FaFilter,
-  FaClock, FaCheckCircle, FaCircle, FaInbox, FaBirthdayCake, FaHome, FaBriefcase
+  FaClock, FaCheckCircle, FaCircle, FaInbox, FaBirthdayCake, FaHome, FaBriefcase,
+  FaExclamationTriangle
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -266,6 +267,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
   const [editProjectName, setEditProjectName] = useState('Inbox');
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [todoistCount, setTodoistCount] = useState(null);
 
   // New task state
   const [isCreating, setIsCreating] = useState(false);
@@ -332,6 +334,27 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
+
+  // Fetch Todoist task count to compare with Supabase
+  const fetchTodoistCount = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/todoist/tasks`);
+      if (res.ok) {
+        const { tasks: todoistTasks } = await res.json();
+        setTodoistCount(todoistTasks?.length || 0);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch Todoist count:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTodoistCount();
+  }, [fetchTodoistCount]);
+
+  // Calculate Supabase open task count
+  const supabaseOpenCount = tasks.filter(t => t.status === 'open').length;
+  const syncMismatch = todoistCount !== null && todoistCount !== supabaseOpenCount;
 
   // Notify parent when linkedContacts changes (for shared right panel)
   useEffect(() => {
@@ -572,150 +595,16 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
     }
   };
 
-  // Sync from Todoist
+  // Sync from Todoist (calls backend endpoint)
   const handleSyncFromTodoist = async () => {
     setSyncing(true);
     try {
-      // Fetch tasks and projects from Todoist
-      const [tasksResponse, projectsResponse] = await Promise.all([
-        fetch(`${BACKEND_URL}/todoist/tasks`),
-        fetch(`${BACKEND_URL}/todoist/projects`),
-      ]);
+      const response = await fetch(`${BACKEND_URL}/todoist/sync`, { method: 'POST' });
+      if (!response.ok) throw new Error('Sync failed');
 
-      if (!tasksResponse.ok) throw new Error('Failed to fetch from Todoist');
-
-      const { tasks: todoistTasks } = await tasksResponse.json();
-
-      // Build project name lookup
-      const projectMap = {};
-      if (projectsResponse.ok) {
-        const { projects } = await projectsResponse.json();
-        projects.forEach(p => { projectMap[p.id] = p.name; });
-      }
-
-      for (const tt of todoistTasks) {
-        const { data: existing } = await supabase
-          .from('tasks')
-          .select('task_id, updated_at, synced_at')
-          .eq('todoist_id', tt.id)
-          .maybeSingle();
-
-        const taskData = {
-          todoist_id: tt.id,
-          content: tt.content,
-          description: tt.description || null,
-          due_date: tt.due?.date || null,
-          due_datetime: tt.due?.datetime || null,
-          due_string: tt.due?.string || null,
-          priority: tt.priority || 1,
-          status: tt.is_completed ? 'completed' : 'open',
-          todoist_project_id: tt.project_id,
-          todoist_project_name: projectMap[tt.project_id] || null,
-          todoist_parent_id: tt.parent_id || null,
-          task_order: tt.order || 0,
-          todoist_url: tt.url,
-          synced_at: new Date().toISOString(),
-        };
-
-        if (existing) {
-          // Always update from Todoist - Todoist is source of truth
-          await supabase
-            .from('tasks')
-            .update(taskData)
-            .eq('task_id', existing.task_id);
-        } else {
-          await supabase.from('tasks').insert({
-            ...taskData,
-            created_at: new Date().toISOString(),
-          });
-        }
-      }
-
-      // Resolve parent_id from todoist_parent_id
-      const { data: tasksWithParent } = await supabase
-        .from('tasks')
-        .select('task_id, todoist_parent_id')
-        .not('todoist_parent_id', 'is', null);
-
-      if (tasksWithParent && tasksWithParent.length > 0) {
-        const todoistIds = tasksWithParent.map(t => t.todoist_parent_id);
-        const { data: parentTasks } = await supabase
-          .from('tasks')
-          .select('task_id, todoist_id')
-          .in('todoist_id', todoistIds);
-
-        const todoistToTaskId = {};
-        parentTasks?.forEach(pt => { todoistToTaskId[pt.todoist_id] = pt.task_id; });
-
-        for (const task of tasksWithParent) {
-          const parentTaskId = todoistToTaskId[task.todoist_parent_id];
-          if (parentTaskId) {
-            await supabase
-              .from('tasks')
-              .update({ parent_id: parentTaskId })
-              .eq('task_id', task.task_id);
-          }
-        }
-      }
-
-      // === ORPHAN DETECTION ===
-      // Find tasks in Supabase that are "open" but weren't returned by Todoist
-      const syncedTodoistIds = todoistTasks.map(tt => tt.id);
-
-      const { data: orphanTasks } = await supabase
-        .from('tasks')
-        .select('task_id, todoist_id, content')
-        .eq('status', 'open')
-        .not('todoist_id', 'is', null);
-
-      const orphans = (orphanTasks || []).filter(t => !syncedTodoistIds.includes(t.todoist_id));
-
-      if (orphans.length > 0) {
-        console.log(`[Sync] Found ${orphans.length} orphan tasks to check`);
-
-        for (const orphan of orphans) {
-          try {
-            const response = await fetch(`${BACKEND_URL}/todoist/tasks/${orphan.todoist_id}`);
-
-            if (response.status === 404) {
-              // Task deleted in Todoist - mark as completed in Supabase
-              console.log(`[Sync] Task "${orphan.content}" deleted in Todoist, marking completed`);
-              await supabase
-                .from('tasks')
-                .update({
-                  status: 'completed',
-                  completed_at: new Date().toISOString(),
-                  synced_at: new Date().toISOString()
-                })
-                .eq('task_id', orphan.task_id);
-            } else if (response.ok) {
-              const { task: todoistTask } = await response.json();
-
-              // Task exists - update with latest data (might be completed or updated)
-              console.log(`[Sync] Updating orphan task "${orphan.content}" - completed: ${todoistTask.is_completed}`);
-              await supabase
-                .from('tasks')
-                .update({
-                  content: todoistTask.content,
-                  description: todoistTask.description || null,
-                  due_date: todoistTask.due?.date || null,
-                  due_datetime: todoistTask.due?.datetime || null,
-                  due_string: todoistTask.due?.string || null,
-                  priority: todoistTask.priority || 1,
-                  status: todoistTask.is_completed ? 'completed' : 'open',
-                  completed_at: todoistTask.is_completed ? new Date().toISOString() : null,
-                  synced_at: new Date().toISOString(),
-                })
-                .eq('task_id', orphan.task_id);
-            }
-          } catch (err) {
-            console.error(`[Sync] Error checking orphan task ${orphan.todoist_id}:`, err);
-          }
-        }
-      }
-
-      toast.success(`Synced from Todoist${orphans.length > 0 ? ` (${orphans.length} orphans resolved)` : ''}`);
+      toast.success('Synced from Todoist');
       fetchTasks();
+      fetchTodoistCount();
     } catch (error) {
       console.error('Error syncing from Todoist:', error);
       toast.error('Failed to sync from Todoist');
@@ -1168,6 +1057,20 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
               gap: '8px',
             }}>
               <FaTasks /> Tasks
+              {syncMismatch && (
+                <span
+                  title={`Sync needed: Supabase ${supabaseOpenCount} vs Todoist ${todoistCount}`}
+                  style={{
+                    color: '#F59E0B',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  onClick={handleSyncFromTodoist}
+                >
+                  <FaExclamationTriangle size={14} />
+                </span>
+              )}
             </h3>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button

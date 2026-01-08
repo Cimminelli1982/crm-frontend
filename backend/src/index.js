@@ -1085,6 +1085,18 @@ app.get('/todoist/sections', async (req, res) => {
   }
 });
 
+// Trigger manual sync from Todoist
+app.post('/todoist/sync', async (req, res) => {
+  try {
+    console.log('[Todoist] Manual sync triggered');
+    await syncTodoist();
+    res.json({ success: true, message: 'Sync completed' });
+  } catch (error) {
+    console.error('Todoist manual sync error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get all tasks (filtered to included projects)
 app.get('/todoist/tasks', async (req, res) => {
   try {
