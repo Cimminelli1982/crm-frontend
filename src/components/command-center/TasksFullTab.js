@@ -3,7 +3,7 @@ import {
   FaTasks, FaPlus, FaSearch, FaFolder, FaSave, FaTrash, FaCheck,
   FaLink, FaUser, FaBuilding, FaDollarSign, FaSync, FaExternalLinkAlt,
   FaChevronRight, FaChevronDown, FaCalendarAlt, FaFlag, FaFilter,
-  FaClock, FaCheckCircle, FaCircle
+  FaClock, FaCheckCircle, FaCircle, FaInbox, FaBirthdayCake, FaHome, FaBriefcase
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -16,9 +16,7 @@ const PROJECTS = [
   { id: 'Inbox', label: 'Inbox', color: '#808080' },
   { id: 'Work', label: 'Work', color: '#4073ff' },
   { id: 'Personal', label: 'Personal', color: '#b8255f' },
-  { id: 'Team', label: 'Team', color: '#7ecc49' },
-  { id: 'Birthdays', label: 'Birthdays', color: '#db4035' },
-  { id: 'Aborted', label: 'Aborted', color: '#ccac93' },
+  { id: 'Birthdays 🎂', label: 'Birthdays', color: '#db4035' },
 ];
 
 // Status sections
@@ -92,7 +90,41 @@ const isSomeday = (task) => {
 };
 
 // Task Item Component
-const TaskItem = ({ task, theme, selectedTask, loadTask, handleComplete, getPriorityColor, onDragStart }) => (
+const TaskItem = ({ task, theme, selectedTask, loadTask, handleComplete, getPriorityColor, onDragStart, onInlineEdit, editingTaskId }) => {
+  const [localName, setLocalName] = React.useState(task.content);
+  const inputRef = React.useRef(null);
+  const isEditing = editingTaskId === task.task_id;
+
+  React.useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  React.useEffect(() => {
+    setLocalName(task.content);
+  }, [task.content]);
+
+  const handleSaveInline = () => {
+    if (localName.trim() && localName.trim() !== task.content) {
+      onInlineEdit(task, localName.trim());
+    } else {
+      onInlineEdit(null); // Exit edit mode even if no change
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveInline();
+    } else if (e.key === 'Escape') {
+      setLocalName(task.content);
+      onInlineEdit(null); // Cancel editing
+    }
+  };
+
+  return (
   <div
     draggable
     onDragStart={(e) => onDragStart(e, task)}
@@ -129,16 +161,47 @@ const TaskItem = ({ task, theme, selectedTask, loadTask, handleComplete, getPrio
       title="Complete task"
     />
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{
-        fontWeight: 500,
-        fontSize: '12px',
-        color: theme === 'dark' ? '#F9FAFB' : '#111827',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>
-        {task.content}
-      </div>
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          type="text"
+          value={localName}
+          onChange={(e) => setLocalName(e.target.value)}
+          onBlur={handleSaveInline}
+          onKeyDown={handleKeyDown}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: '100%',
+            padding: '2px 4px',
+            borderRadius: '4px',
+            border: `1px solid #3B82F6`,
+            background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+            fontSize: '12px',
+            fontWeight: 500,
+            outline: 'none',
+          }}
+        />
+      ) : (
+        <div
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onInlineEdit(task);
+          }}
+          style={{
+            fontWeight: 500,
+            fontSize: '12px',
+            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            cursor: 'text',
+          }}
+          title="Double-click to edit"
+        >
+          {task.content}
+        </div>
+      )}
       <div style={{
         display: 'flex',
         gap: '4px',
@@ -174,15 +237,16 @@ const TaskItem = ({ task, theme, selectedTask, loadTask, handleComplete, getPrio
       </div>
     </div>
   </div>
-);
+  );
+};
 
-const TasksFullTab = ({ theme }) => {
+const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
   // Tasks list state
   const [tasks, setTasks] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProject, setSelectedProject] = useState('all');
+  const [selectedProject, setSelectedProject] = useState('Inbox');
   const [expandedSections, setExpandedSections] = useState({
     open: true,
     thisWeek: true,
@@ -206,6 +270,9 @@ const TasksFullTab = ({ theme }) => {
   // New task state
   const [isCreating, setIsCreating] = useState(false);
 
+  // Inline editing state
+  const [editingTaskId, setEditingTaskId] = useState(null);
+
   // Linked entities state
   const [linkedContacts, setLinkedContacts] = useState([]);
   const [linkedCompanies, setLinkedCompanies] = useState([]);
@@ -227,7 +294,7 @@ const TasksFullTab = ({ theme }) => {
         .from('tasks')
         .select(`
           *,
-          task_contacts(contact:contacts(contact_id, first_name, last_name, profile_image_url)),
+          task_contacts(contact:contacts(contact_id, first_name, last_name, profile_image_url, show_missing)),
           task_companies(company:companies(company_id, name)),
           task_deals(deal:deals(deal_id, opportunity))
         `)
@@ -241,7 +308,7 @@ const TasksFullTab = ({ theme }) => {
         .from('tasks')
         .select(`
           *,
-          task_contacts(contact:contacts(contact_id, first_name, last_name, profile_image_url)),
+          task_contacts(contact:contacts(contact_id, first_name, last_name, profile_image_url, show_missing)),
           task_companies(company:companies(company_id, name)),
           task_deals(deal:deals(deal_id, opportunity))
         `)
@@ -265,6 +332,11 @@ const TasksFullTab = ({ theme }) => {
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
+
+  // Notify parent when linkedContacts changes (for shared right panel)
+  useEffect(() => {
+    onLinkedContactsChange?.(linkedContacts);
+  }, [linkedContacts, onLinkedContactsChange]);
 
   // Load task into editor
   const loadTask = useCallback((task) => {
@@ -329,26 +401,48 @@ const TasksFullTab = ({ theme }) => {
         let todoistUrl = null;
         let todoistProjectId = null;
 
-        try {
-          const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content: taskData.content,
-              description: taskData.description,
-              due_string: taskData.due_string,
-              priority: taskData.priority,
-            }),
-          });
-
-          if (todoistResponse.ok) {
-            const todoistTask = await todoistResponse.json();
-            todoistId = todoistTask.task?.id || todoistTask.id;
-            todoistUrl = todoistTask.task?.url || todoistTask.url;
-            todoistProjectId = todoistTask.task?.project_id || todoistTask.project_id;
+        // Get project_id from project name
+        let targetProjectId = null;
+        if (editProjectName) {
+          try {
+            const projectsRes = await fetch(`${BACKEND_URL}/todoist/projects`);
+            if (projectsRes.ok) {
+              const { projects } = await projectsRes.json();
+              const proj = projects.find(p => p.name === editProjectName);
+              if (proj) targetProjectId = proj.id;
+            }
+          } catch (e) {
+            console.warn('Failed to fetch projects:', e);
           }
-        } catch (todoistError) {
-          console.warn('Failed to create in Todoist:', todoistError);
+        }
+
+        const todoistPayload = {
+          content: taskData.content,
+          description: taskData.description,
+          due_string: taskData.due_string,
+          priority: taskData.priority,
+        };
+        if (targetProjectId) {
+          todoistPayload.project_id = targetProjectId;
+        }
+
+        const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(todoistPayload),
+        });
+
+        if (todoistResponse.ok) {
+          const todoistTask = await todoistResponse.json();
+          todoistId = todoistTask.task?.id || todoistTask.id;
+          todoistUrl = todoistTask.task?.url || todoistTask.url;
+          todoistProjectId = todoistTask.task?.project_id || todoistTask.project_id;
+        } else {
+          const errText = await todoistResponse.text();
+          console.error('Todoist create failed:', errText);
+          toast.error('Failed to create in Todoist');
+          setSaving(false);
+          return; // Don't create orphan task in Supabase
         }
 
         // Then save to Supabase with todoist_id
@@ -698,6 +792,7 @@ const TasksFullTab = ({ theme }) => {
       setShowLinkModal(false);
       setLinkSearchQuery('');
       setLinkSearchResults([]);
+      fetchTasks(); // Refresh to see updated links
     } catch (error) {
       console.error('Error adding link:', error);
       toast.error('Failed to add link');
@@ -726,9 +821,140 @@ const TasksFullTab = ({ theme }) => {
         setLinkedDeals(prev => prev.filter(d => d.deal_id !== id));
       }
       toast.success('Link removed');
+      fetchTasks(); // Refresh to see updated links
     } catch (error) {
       console.error('Error removing link:', error);
       toast.error('Failed to remove link');
+    }
+  };
+
+  // Inline edit handler
+  const handleInlineEdit = async (task, newContent) => {
+    // If task is null, just cancel editing
+    if (!task) {
+      setEditingTaskId(null);
+      return;
+    }
+
+    // If no newContent, start editing mode
+    if (!newContent) {
+      setEditingTaskId(task.task_id);
+      return;
+    }
+
+    // Save the new content
+    setEditingTaskId(null);
+
+    try {
+      // Update in Supabase
+      await supabase
+        .from('tasks')
+        .update({
+          content: newContent,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('task_id', task.task_id);
+
+      // Sync to Todoist if linked
+      if (task.todoist_id) {
+        try {
+          await fetch(`${BACKEND_URL}/todoist/tasks/${task.todoist_id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: newContent }),
+          });
+        } catch (syncErr) {
+          console.warn('Failed to sync to Todoist:', syncErr);
+        }
+      }
+
+      // Update local state immediately for better UX
+      setTasks(prev => prev.map(t =>
+        t.task_id === task.task_id ? { ...t, content: newContent } : t
+      ));
+
+      // Also update selectedTask if it's the one being edited
+      if (selectedTask?.task_id === task.task_id) {
+        setSelectedTask(prev => ({ ...prev, content: newContent }));
+        setEditContent(newContent);
+      }
+
+      toast.success('Task updated');
+    } catch (error) {
+      console.error('Error updating task:', error);
+      toast.error('Failed to update task');
+      fetchTasks(); // Refresh to get correct state
+    }
+  };
+
+  // Auto-save field helper
+  const saveField = async (field, value, todoistField = null) => {
+    if (!selectedTask || isCreating) return;
+
+    const updates = { [field]: value, updated_at: new Date().toISOString() };
+
+    // Handle due_date parsing
+    if (field === 'due_string') {
+      if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        updates.due_date = value;
+      } else if (!value) {
+        updates.due_date = null;
+      }
+    }
+
+    try {
+      // Sync to Todoist FIRST for project changes (to get project_id)
+      if (selectedTask.todoist_id && field === 'todoist_project_name') {
+        // Fetch projects to get project_id from project name
+        const projectsResponse = await fetch(`${BACKEND_URL}/todoist/projects`);
+        if (projectsResponse.ok) {
+          const { projects } = await projectsResponse.json();
+          const targetProject = projects.find(p => p.name === value);
+          if (targetProject) {
+            updates.todoist_project_id = targetProject.id;
+            const todoistRes = await fetch(`${BACKEND_URL}/todoist/tasks/${selectedTask.todoist_id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ project_id: targetProject.id }),
+            });
+            if (!todoistRes.ok) {
+              console.error('[Todoist PATCH failed]', await todoistRes.text());
+              toast.error('Failed to update Todoist');
+              return;
+            }
+            console.log('[Todoist PATCH success] project_id:', targetProject.id, targetProject.name);
+          }
+        }
+      } else if (selectedTask.todoist_id) {
+        // Sync other fields to Todoist
+        const todoistPayload = {};
+        if (todoistField) {
+          todoistPayload[todoistField] = value;
+        } else if (field === 'due_string') {
+          todoistPayload.due_string = value || null;
+        } else {
+          todoistPayload[field] = value;
+        }
+        fetch(`${BACKEND_URL}/todoist/tasks/${selectedTask.todoist_id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(todoistPayload),
+        }).catch(console.warn);
+      }
+
+      // Update Supabase
+      await supabase
+        .from('tasks')
+        .update(updates)
+        .eq('task_id', selectedTask.task_id);
+
+      // Update local state
+      setTasks(prev => prev.map(t => t.task_id === selectedTask.task_id ? { ...t, ...updates } : t));
+      setSelectedTask(prev => ({ ...prev, ...updates }));
+      toast.success('Saved');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to save');
     }
   };
 
@@ -1054,6 +1280,41 @@ const TasksFullTab = ({ theme }) => {
 
                 {expandedSections.open && (
                   <div style={{ paddingLeft: '12px' }}>
+                    {/* Inbox: flat list without subcategories */}
+                    {selectedProject === 'Inbox' ? (
+                      filteredTasks.length === 0 ? (
+                        <div style={{
+                          padding: '40px 20px',
+                          textAlign: 'center',
+                          color: theme === 'dark' ? '#10B981' : '#059669',
+                        }}>
+                          <FaCheckCircle size={48} style={{ marginBottom: '12px', opacity: 0.8 }} />
+                          <div style={{ fontSize: '16px', fontWeight: 600 }}>All done!</div>
+                          <div style={{ fontSize: '13px', marginTop: '4px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF' }}>
+                            No tasks in Inbox
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {filteredTasks.map(task => (
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
+                          ))}
+                        </div>
+                      )
+                    ) : filteredTasks.length === 0 ? (
+                      <div style={{
+                        padding: '40px 20px',
+                        textAlign: 'center',
+                        color: theme === 'dark' ? '#10B981' : '#059669',
+                      }}>
+                        <FaCheckCircle size={48} style={{ marginBottom: '12px', opacity: 0.8 }} />
+                        <div style={{ fontSize: '16px', fontWeight: 600 }}>All done!</div>
+                        <div style={{ fontSize: '13px', marginTop: '4px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF' }}>
+                          No tasks in {selectedProject}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
                     {/* This Week */}
                     <div
                       style={{ marginBottom: '12px' }}
@@ -1099,7 +1360,7 @@ const TasksFullTab = ({ theme }) => {
                       {expandedSections.thisWeek && thisWeekTasks.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {thisWeekTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
                           ))}
                         </div>
                       )}
@@ -1150,7 +1411,7 @@ const TasksFullTab = ({ theme }) => {
                       {expandedSections.thisMonth && thisMonthTasks.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {thisMonthTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
                           ))}
                         </div>
                       )}
@@ -1201,7 +1462,7 @@ const TasksFullTab = ({ theme }) => {
                       {expandedSections.thisSprint && thisSprintTasks.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {thisSprintTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
                           ))}
                         </div>
                       )}
@@ -1252,11 +1513,13 @@ const TasksFullTab = ({ theme }) => {
                       {expandedSections.someday && somedayTasks.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {somedayTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} />
+                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
                           ))}
                         </div>
                       )}
                     </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1379,58 +1642,18 @@ const TasksFullTab = ({ theme }) => {
                 }}>
                   {isCreating ? 'New Task' : 'Edit Task'}
                 </h3>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                {selectedTask?.todoist_url && (
                   <button
-                    onClick={handleSave}
-                    disabled={saving}
+                    onClick={() => window.open(selectedTask.todoist_url, '_blank')}
                     style={{
                       ...buttonStyle,
-                      background: '#10B981',
-                      color: '#FFFFFF',
-                      opacity: saving ? 0.6 : 1,
+                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
                     }}
                   >
-                    <FaSave size={12} />
-                    {saving ? 'Saving...' : 'Save'}
+                    <FaExternalLinkAlt size={12} />
                   </button>
-                  {!isCreating && selectedTask?.status === 'open' && (
-                    <button
-                      onClick={() => handleComplete(selectedTask.task_id)}
-                      style={{
-                        ...buttonStyle,
-                        background: '#3B82F6',
-                        color: '#FFFFFF',
-                      }}
-                    >
-                      <FaCheck size={12} />
-                      Complete
-                    </button>
-                  )}
-                  {selectedTask?.todoist_url && (
-                    <button
-                      onClick={() => window.open(selectedTask.todoist_url, '_blank')}
-                      style={{
-                        ...buttonStyle,
-                        background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                        color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                      }}
-                    >
-                      <FaExternalLinkAlt size={12} />
-                    </button>
-                  )}
-                  {!isCreating && (
-                    <button
-                      onClick={handleDelete}
-                      style={{
-                        ...buttonStyle,
-                        background: '#EF4444',
-                        color: '#FFFFFF',
-                      }}
-                    >
-                      <FaTrash size={12} />
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
 
@@ -1450,6 +1673,11 @@ const TasksFullTab = ({ theme }) => {
                   type="text"
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
+                  onBlur={() => {
+                    if (editContent.trim() && editContent.trim() !== selectedTask?.content) {
+                      saveField('content', editContent.trim());
+                    }
+                  }}
                   placeholder="What needs to be done?"
                   style={{
                     ...inputStyle,
@@ -1473,6 +1701,12 @@ const TasksFullTab = ({ theme }) => {
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
+                  onBlur={() => {
+                    const newDesc = editDescription.trim() || null;
+                    if (newDesc !== (selectedTask?.description || null)) {
+                      saveField('description', newDesc);
+                    }
+                  }}
                   placeholder="Add details..."
                   rows={4}
                   style={{
@@ -1500,9 +1734,56 @@ const TasksFullTab = ({ theme }) => {
                   type="text"
                   value={editDueString}
                   onChange={(e) => setEditDueString(e.target.value)}
+                  onBlur={() => {
+                    if (editDueString !== (selectedTask?.due_string || '')) {
+                      saveField('due_string', editDueString || null);
+                    }
+                  }}
                   placeholder="e.g., tomorrow, next monday, 2024-12-31"
                   style={inputStyle}
                 />
+                {/* Quick Date Buttons */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'This Week', value: 'friday', getDate: () => {
+                      const now = new Date();
+                      const day = now.getDay();
+                      const daysUntilFriday = day === 0 ? 5 : (day <= 5 ? 5 - day : 6);
+                      const friday = new Date(now);
+                      friday.setDate(now.getDate() + daysUntilFriday);
+                      return `${friday.getFullYear()}-${String(friday.getMonth() + 1).padStart(2, '0')}-${String(friday.getDate()).padStart(2, '0')}`;
+                    }},
+                    { label: 'This Month', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-20`; })() },
+                    { label: 'This Sprint', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 2).padStart(2, '0')}-15`; })() },
+                    { label: 'Someday', value: '' },
+                  ].map(opt => (
+                    <button
+                      key={opt.label}
+                      onClick={async () => {
+                        const dateValue = opt.getDate ? opt.getDate() : opt.value;
+                        setEditDueString(opt.value || dateValue);
+                        await saveField('due_string', dateValue || null);
+                        fetchTasks(); // Refresh to update categories
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: `1px solid ${editDueString === opt.value ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
+                        background: editDueString === opt.value
+                          ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
+                          : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
+                        color: editDueString === opt.value
+                          ? '#3B82F6'
+                          : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Priority */}
@@ -1522,7 +1803,10 @@ const TasksFullTab = ({ theme }) => {
                   {[1, 2, 3, 4].map(p => (
                     <button
                       key={p}
-                      onClick={() => setEditPriority(p)}
+                      onClick={() => {
+                        setEditPriority(p);
+                        saveField('priority', p);
+                      }}
                       style={{
                         padding: '8px 16px',
                         borderRadius: '6px',
@@ -1546,6 +1830,200 @@ const TasksFullTab = ({ theme }) => {
                 </div>
               </div>
 
+              {/* Linked To Section (moved from right column) */}
+              {!isCreating && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                    marginBottom: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    <FaLink size={11} /> Linked To
+                  </label>
+
+                  {/* Contacts */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginBottom: '6px',
+                    }}>
+                      <FaUser size={9} /> Contacts
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => { setLinkType('contact'); setShowLinkModal(true); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3B82F6',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                        }}
+                      >
+                        + Add
+                      </button>
+                      {linkedContacts.length === 0 ? (
+                        <span style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
+                          No contacts linked
+                        </span>
+                      ) : (
+                        linkedContacts.map(contact => (
+                          <div
+                            key={contact.contact_id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                              fontSize: '12px',
+                              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            }}
+                          >
+                            {contact.first_name} {contact.last_name}
+                            <button
+                              onClick={() => removeLink('contact', contact.contact_id)}
+                              style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0', display: 'flex' }}
+                            >
+                              <FaTrash size={9} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Companies */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginBottom: '6px',
+                    }}>
+                      <FaBuilding size={9} /> Companies
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => { setLinkType('company'); setShowLinkModal(true); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3B82F6',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                        }}
+                      >
+                        + Add
+                      </button>
+                      {linkedCompanies.length === 0 ? (
+                        <span style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
+                          No companies linked
+                        </span>
+                      ) : (
+                        linkedCompanies.map(company => (
+                          <div
+                            key={company.company_id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                              fontSize: '12px',
+                              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            }}
+                          >
+                            {company.name}
+                            <button
+                              onClick={() => removeLink('company', company.company_id)}
+                              style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0', display: 'flex' }}
+                            >
+                              <FaTrash size={9} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Deals */}
+                  <div>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginBottom: '6px',
+                    }}>
+                      <FaDollarSign size={9} /> Deals
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => { setLinkType('deal'); setShowLinkModal(true); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3B82F6',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                        }}
+                      >
+                        + Add
+                      </button>
+                      {linkedDeals.length === 0 ? (
+                        <span style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
+                          No deals linked
+                        </span>
+                      ) : (
+                        linkedDeals.map(deal => (
+                          <div
+                            key={deal.deal_id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                              fontSize: '12px',
+                              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            }}
+                          >
+                            {deal.opportunity}
+                            <button
+                              onClick={() => removeLink('deal', deal.deal_id)}
+                              style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0', display: 'flex' }}
+                            >
+                              <FaTrash size={9} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Project */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{
@@ -1557,18 +2035,130 @@ const TasksFullTab = ({ theme }) => {
                 }}>
                   Project
                 </label>
-                <select
-                  value={editProjectName}
-                  onChange={(e) => setEditProjectName(e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {PROJECTS.filter(p => p.id !== 'all').map(proj => (
-                    <option key={proj.id} value={proj.id}>{proj.label}</option>
-                  ))}
-                </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  {[
+                    { name: 'Inbox', icon: FaInbox },
+                    { name: 'Birthdays 🎂', icon: FaBirthdayCake },
+                    { name: 'Personal', icon: FaHome },
+                    { name: 'Work', icon: FaBriefcase },
+                  ].map(proj => {
+                    const Icon = proj.icon;
+                    const isSelected = editProjectName === proj.name;
+                    return (
+                      <button
+                        key={proj.name}
+                        onClick={() => {
+                          setEditProjectName(proj.name);
+                          saveField('todoist_project_name', proj.name);
+                          // Select next task in list
+                          const currentIndex = filteredTasks.findIndex(t => t.task_id === selectedTask?.task_id);
+                          if (currentIndex !== -1 && filteredTasks.length > 1) {
+                            const nextTask = filteredTasks[currentIndex + 1] || filteredTasks[currentIndex - 1];
+                            if (nextTask) {
+                              setTimeout(() => loadTask(nextTask), 100);
+                            }
+                          }
+                        }}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          border: `1px solid ${isSelected ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
+                          background: isSelected
+                            ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
+                            : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
+                          color: isSelected
+                            ? '#3B82F6'
+                            : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}
+                      >
+                        <Icon size={14} />
+                        {proj.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ marginBottom: '16px' }}>
+                {isCreating ? (
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: '#10B981',
+                      color: '#FFFFFF',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      opacity: saving ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <FaPlus size={14} />
+                    {saving ? 'Creating...' : 'Create Task'}
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    {selectedTask?.status === 'open' && (
+                      <button
+                        onClick={() => handleComplete(selectedTask.task_id)}
+                        style={{
+                          flex: 1,
+                          padding: '12px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#3B82F6',
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                        }}
+                      >
+                        <FaCheck size={14} />
+                        Complete
+                      </button>
+                    )}
+                    <button
+                      onClick={handleDelete}
+                      style={{
+                        flex: 1,
+                        padding: '12px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: '#EF4444',
+                        color: '#FFFFFF',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      <FaTrash size={14} />
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Todoist Info */}
@@ -1591,278 +2181,6 @@ const TasksFullTab = ({ theme }) => {
             </div>
           </>
         )}
-      </div>
-
-      {/* Right Column: Linked Entities */}
-      <div style={{ ...columnStyle, width: '280px', minWidth: '240px', borderRight: 'none' }}>
-        <div style={headerStyle}>
-          <h3 style={{
-            margin: 0,
-            fontSize: '14px',
-            fontWeight: 600,
-            color: theme === 'dark' ? '#F9FAFB' : '#111827',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            <FaLink /> Linked To
-          </h3>
-        </div>
-
-        <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
-          {!isEditing || isCreating ? (
-            <div style={{
-              padding: '40px 20px',
-              textAlign: 'center',
-              color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-              fontSize: '13px',
-            }}>
-              {isCreating ? 'Save task first to add links' : 'Select a task to see links'}
-            </div>
-          ) : (
-            <>
-              {/* Contacts */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}>
-                    <FaUser size={10} /> Contacts
-                  </span>
-                  <button
-                    onClick={() => {
-                      setLinkType('contact');
-                      setShowLinkModal(true);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#3B82F6',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                    }}
-                  >
-                    + Add
-                  </button>
-                </div>
-                {linkedContacts.length === 0 ? (
-                  <div style={{
-                    fontSize: '12px',
-                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                    fontStyle: 'italic',
-                  }}>
-                    No contacts linked
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {linkedContacts.map(contact => (
-                      <div
-                        key={contact.contact_id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
-                        }}
-                      >
-                        <span style={{
-                          fontSize: '13px',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        }}>
-                          {contact.first_name} {contact.last_name}
-                        </span>
-                        <button
-                          onClick={() => removeLink('contact', contact.contact_id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#EF4444',
-                            cursor: 'pointer',
-                            padding: '2px',
-                          }}
-                        >
-                          <FaTrash size={10} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Companies */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}>
-                    <FaBuilding size={10} /> Companies
-                  </span>
-                  <button
-                    onClick={() => {
-                      setLinkType('company');
-                      setShowLinkModal(true);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#3B82F6',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                    }}
-                  >
-                    + Add
-                  </button>
-                </div>
-                {linkedCompanies.length === 0 ? (
-                  <div style={{
-                    fontSize: '12px',
-                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                    fontStyle: 'italic',
-                  }}>
-                    No companies linked
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {linkedCompanies.map(company => (
-                      <div
-                        key={company.company_id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
-                        }}
-                      >
-                        <span style={{
-                          fontSize: '13px',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        }}>
-                          {company.name}
-                        </span>
-                        <button
-                          onClick={() => removeLink('company', company.company_id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#EF4444',
-                            cursor: 'pointer',
-                            padding: '2px',
-                          }}
-                        >
-                          <FaTrash size={10} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Deals */}
-              <div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}>
-                    <FaDollarSign size={10} /> Deals
-                  </span>
-                  <button
-                    onClick={() => {
-                      setLinkType('deal');
-                      setShowLinkModal(true);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#3B82F6',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                    }}
-                  >
-                    + Add
-                  </button>
-                </div>
-                {linkedDeals.length === 0 ? (
-                  <div style={{
-                    fontSize: '12px',
-                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                    fontStyle: 'italic',
-                  }}>
-                    No deals linked
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {linkedDeals.map(deal => (
-                      <div
-                        key={deal.deal_id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
-                        }}
-                      >
-                        <span style={{
-                          fontSize: '13px',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        }}>
-                          {deal.opportunity}
-                        </span>
-                        <button
-                          onClick={() => removeLink('deal', deal.deal_id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#EF4444',
-                            cursor: 'pointer',
-                            padding: '2px',
-                          }}
-                        >
-                          <FaTrash size={10} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
       </div>
 
       {/* Link Modal */}

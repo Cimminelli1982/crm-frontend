@@ -1029,15 +1029,11 @@ async function syncTodoist() {
             .eq('task_id', orphan.task_id);
         } catch (err) {
           if (err.message?.includes('404')) {
-            // Task deleted in Todoist
-            console.log(`[Todoist] Orphan "${orphan.content}" deleted, marking completed`);
+            // Task deleted in Todoist - delete from Supabase too
+            console.log(`[Todoist] Orphan "${orphan.content}" deleted in Todoist, deleting from Supabase`);
             await supabase
               .from('tasks')
-              .update({
-                status: 'completed',
-                completed_at: new Date().toISOString(),
-                synced_at: new Date().toISOString()
-              })
+              .delete()
               .eq('task_id', orphan.task_id);
           } else {
             console.error(`[Todoist] Error checking orphan ${orphan.todoist_id}:`, err.message);
@@ -1194,11 +1190,15 @@ app.patch('/todoist/tasks/:id', async (req, res) => {
     const { section_id, project_id, ...updates } = req.body;
     console.log(`[Todoist] Update request - id: ${id}, section_id: ${section_id}, project_id: ${project_id}, updates:`, updates);
 
-    // First, update basic task properties (content, description, priority, due_string)
-    const task = await todoistRequest(`/tasks/${id}`, {
-      method: 'POST',
-      body: JSON.stringify(updates),
-    });
+    let task = null;
+
+    // Only update basic task properties if there are any (content, description, priority, due_string)
+    if (Object.keys(updates).length > 0) {
+      task = await todoistRequest(`/tasks/${id}`, {
+        method: 'POST',
+        body: JSON.stringify(updates),
+      });
+    }
 
     // If section_id or project_id changed, we need to move the task
     // Todoist REST API requires a separate call for moving tasks
