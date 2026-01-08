@@ -993,11 +993,10 @@ async function syncTodoist() {
       }
     }
 
-    // 4. Orphan detection - find tasks open in Supabase but not in Todoist
-    // Only check tasks from included projects to avoid unnecessary API calls
+    // 4. Orphan detection - delete tasks in Supabase that are not in Todoist active list
     const { data: orphanTasks } = await supabase
       .from('tasks')
-      .select('task_id, todoist_id, content, todoist_project_id')
+      .select('task_id, todoist_id, content')
       .eq('status', 'open')
       .not('todoist_id', 'is', null)
       .in('todoist_project_id', INCLUDED_PROJECT_IDS);
@@ -1005,44 +1004,18 @@ async function syncTodoist() {
     const orphans = (orphanTasks || []).filter(t => !todoistIds.includes(t.todoist_id));
 
     if (orphans.length > 0) {
-      console.log(`[Todoist] Found ${orphans.length} orphan tasks to check`);
+      console.log(`[Todoist] Deleting ${orphans.length} orphan tasks not in Todoist`);
 
       for (const orphan of orphans) {
-        try {
-          const task = await todoistRequest(`/tasks/${orphan.todoist_id}`);
-
-          // Task exists - update with latest data
-          console.log(`[Todoist] Orphan "${orphan.content}" is_completed: ${task.is_completed}`);
-          await supabase
-            .from('tasks')
-            .update({
-              content: task.content,
-              description: task.description || null,
-              due_date: task.due?.date || null,
-              due_datetime: task.due?.datetime || null,
-              due_string: task.due?.string || null,
-              priority: task.priority || 1,
-              status: task.is_completed ? 'completed' : 'open',
-              completed_at: task.is_completed ? new Date().toISOString() : null,
-              synced_at: new Date().toISOString(),
-            })
-            .eq('task_id', orphan.task_id);
-        } catch (err) {
-          if (err.message?.includes('404')) {
-            // Task deleted in Todoist - delete from Supabase too
-            console.log(`[Todoist] Orphan "${orphan.content}" deleted in Todoist, deleting from Supabase`);
-            await supabase
-              .from('tasks')
-              .delete()
-              .eq('task_id', orphan.task_id);
-          } else {
-            console.error(`[Todoist] Error checking orphan ${orphan.todoist_id}:`, err.message);
-          }
-        }
+        console.log(`[Todoist] Deleting orphan: "${orphan.content}" (${orphan.todoist_id})`);
+        await supabase
+          .from('tasks')
+          .delete()
+          .eq('task_id', orphan.task_id);
       }
     }
 
-    console.log(`[Todoist] Sync complete: ${filteredTasks.length} active tasks, ${orphans.length} orphans resolved`);
+    console.log(`[Todoist] Sync complete: ${filteredTasks.length} active tasks, ${orphans.length} orphans deleted`);
   } catch (error) {
     console.error('[Todoist] Sync error:', error.message);
   }
