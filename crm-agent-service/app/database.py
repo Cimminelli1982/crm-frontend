@@ -261,6 +261,20 @@ class Database:
                     "last_modified_at": datetime.utcnow().isoformat()
                 }).eq("mobile_number", phone_number).execute()
 
+    # ==================== WHATSAPP CHAT DONE TRACKING ====================
+
+    async def get_whatsapp_chat_done(self, chat_id: str) -> dict | None:
+        """Check if a chat was recently marked as done. Returns the record if found."""
+        result = self.client.table("whatsapp_chat_done").select("*").eq(
+            "chat_id", chat_id
+        ).execute()
+        return result.data[0] if result.data else None
+
+    async def delete_whatsapp_chat_done(self, chat_id: str) -> None:
+        """Delete the done record for a chat (e.g., when contact replies)."""
+        self.client.table("whatsapp_chat_done").delete().eq(
+            "chat_id", chat_id
+        ).execute()
 
     # ==================== ACTION EXECUTION ====================
 

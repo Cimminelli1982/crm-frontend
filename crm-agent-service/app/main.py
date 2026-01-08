@@ -1417,6 +1417,37 @@ async def whatsapp_webhook(request: Request):
                 logger.info("whatsapp_spam_blocked", phone=contact_phone)
                 return {"success": True, "skipped": "spam number"}
 
+        # Check if this chat was recently marked as "done" (to prevent sent messages from reappearing)
+        if chat_id_str:
+            done_record = await db.get_whatsapp_chat_done(chat_id_str)
+            if done_record:
+                if direction == 'received':
+                    # Contact replied! Clear the done record and allow the message
+                    await db.delete_whatsapp_chat_done(chat_id_str)
+                    logger.info("whatsapp_chat_done_cleared", chat_id=chat_id_str, reason="received_reply")
+                elif direction == 'sent':
+                    # Sent message - check if it's recent (likely from CRM) or older (from phone)
+                    from datetime import datetime, timedelta, timezone
+                    done_at = datetime.fromisoformat(done_record['done_at'].replace('Z', '+00:00'))
+                    message_timestamp = message.get('timestamp')
+                    if message_timestamp:
+                        try:
+                            msg_time = datetime.fromisoformat(message_timestamp.replace('Z', '+00:00'))
+                            # If message is within 5 minutes of done_at, skip it (it's the same message from CRM)
+                            if msg_time <= done_at + timedelta(minutes=5):
+                                logger.info("whatsapp_sent_skipped", chat_id=chat_id_str,
+                                           reason="recent_crm_message", msg_time=str(msg_time), done_at=str(done_at))
+                                return {"success": True, "skipped": "recent sent message from CRM"}
+                            else:
+                                # Message is older than 5 min after done - probably from phone, allow it
+                                await db.delete_whatsapp_chat_done(chat_id_str)
+                                logger.info("whatsapp_chat_done_cleared", chat_id=chat_id_str,
+                                           reason="sent_from_phone", msg_time=str(msg_time))
+                        except Exception as time_err:
+                            logger.warning("whatsapp_timestamp_parse_error", error=str(time_err))
+                            # On error, skip to be safe
+                            return {"success": True, "skipped": "timestamp parse error"}
+
         # Prepare attachment data - TimelinesAI sends "attachments" (plural array)
         attachments_list = message.get('attachments', [])
         attachments_json = None
