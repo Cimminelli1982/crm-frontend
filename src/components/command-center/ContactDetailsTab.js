@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   FaRocket, FaEnvelope, FaWhatsapp, FaBuilding, FaTag,
   FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt, FaChevronDown, FaChevronUp, FaList, FaPlus,
-  FaShieldAlt
+  FaShieldAlt, FaSyncAlt
 } from 'react-icons/fa';
 
 // Contact category options
@@ -79,6 +79,7 @@ const ContactDetailsTab = ({
   completenessScore,
   onEdit,
   onCheck,
+  onRefresh,
   onOpenProfileImageModal,
   onAddToList
 }) => {
@@ -283,6 +284,27 @@ const ContactDetailsTab = ({
             >
               <FaShieldAlt size={9} />
               Check
+            </button>
+          )}
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              title="Refresh"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <FaSyncAlt size={9} />
             </button>
           )}
         </div>
@@ -551,58 +573,131 @@ const ContactDetailsTab = ({
       {/* Section 1.5: Keep in Touch */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>Keep in Touch</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-          <div>
-            <label style={labelStyle}>Frequency</label>
-            <select
-              value={keepInTouch?.frequency || contact?.keep_in_touch_frequency || 'Not Set'}
-              onChange={(e) => onUpdateKeepInTouch?.('frequency', e.target.value)}
-              style={{
-                ...selectStyle,
-                fontSize: '11px',
-                padding: '4px 6px'
-              }}
-            >
-              {KEEP_IN_TOUCH_FREQUENCIES.map(freq => (
-                <option key={freq} value={freq}>{freq}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Christmas</label>
-            <select
-              value={keepInTouch?.christmas || 'no wishes set'}
-              onChange={(e) => onUpdateKeepInTouch?.('christmas', e.target.value)}
-              style={{
-                ...selectStyle,
-                fontSize: '11px',
-                padding: '4px 6px',
-                borderColor: (!keepInTouch?.christmas || keepInTouch?.christmas === 'no wishes set') ? '#EF4444' : undefined
-              }}
-            >
-              {WISHES_TYPES.map(wish => (
-                <option key={wish} value={wish}>{wish}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Easter</label>
-            <select
-              value={keepInTouch?.easter || 'no wishes set'}
-              onChange={(e) => onUpdateKeepInTouch?.('easter', e.target.value)}
-              style={{
-                ...selectStyle,
-                fontSize: '11px',
-                padding: '4px 6px',
-                borderColor: (!keepInTouch?.easter || keepInTouch?.easter === 'no wishes set') ? '#EF4444' : undefined
-              }}
-            >
-              {WISHES_TYPES.map(wish => (
-                <option key={wish} value={wish}>{wish}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        {(() => {
+          const currentFrequency = keepInTouch?.frequency || contact?.keep_in_touch_frequency || 'Not Set';
+          const isFrequencyInactive = currentFrequency === 'Not Set' || currentFrequency === 'Do not keep in touch';
+          return (
+            <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={labelStyle}>Frequency</label>
+                <select
+                  value={currentFrequency}
+                  onChange={(e) => {
+                    const newFreq = e.target.value;
+                    if (newFreq === 'Not Set' || newFreq === 'Do not keep in touch') {
+                      onUpdateField?.('keep_in_touch_frequency', newFreq);
+                    } else {
+                      onUpdateKeepInTouch?.('frequency', newFreq);
+                    }
+                  }}
+                  style={{
+                    ...selectStyle,
+                    fontSize: '11px',
+                    padding: '4px 6px'
+                  }}
+                >
+                  {KEEP_IN_TOUCH_FREQUENCIES.map(freq => (
+                    <option key={freq} value={freq}>{freq}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Christmas</label>
+                <select
+                  value={keepInTouch?.christmas || 'no wishes set'}
+                  onChange={(e) => onUpdateKeepInTouch?.('christmas', e.target.value)}
+                  disabled={isFrequencyInactive}
+                  style={{
+                    ...selectStyle,
+                    fontSize: '11px',
+                    padding: '4px 6px',
+                    borderColor: (!isFrequencyInactive && (!keepInTouch?.christmas || keepInTouch?.christmas === 'no wishes set')) ? '#EF4444' : undefined,
+                    opacity: isFrequencyInactive ? 0.5 : 1,
+                    cursor: isFrequencyInactive ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {WISHES_TYPES.map(wish => (
+                    <option key={wish} value={wish}>{wish}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Easter</label>
+                <select
+                  value={keepInTouch?.easter || 'no wishes set'}
+                  onChange={(e) => onUpdateKeepInTouch?.('easter', e.target.value)}
+                  disabled={isFrequencyInactive}
+                  style={{
+                    ...selectStyle,
+                    fontSize: '11px',
+                    padding: '4px 6px',
+                    borderColor: (!isFrequencyInactive && (!keepInTouch?.easter || keepInTouch?.easter === 'no wishes set')) ? '#EF4444' : undefined,
+                    opacity: isFrequencyInactive ? 0.5 : 1,
+                    cursor: isFrequencyInactive ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {WISHES_TYPES.map(wish => (
+                    <option key={wish} value={wish}>{wish}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Quick Actions - hidden when all fields are properly set */}
+            {(() => {
+              const christmasSet = keepInTouch?.christmas && keepInTouch.christmas !== 'no wishes set';
+              const easterSet = keepInTouch?.easter && keepInTouch.easter !== 'no wishes set';
+              const allSet = !isFrequencyInactive && christmasSet && easterSet;
+              if (allSet) return null;
+              return (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                  <button
+                    onClick={() => {
+                      onUpdateField?.('keep_in_touch_frequency', 'Do not keep in touch');
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Don't Keep in Touch
+                  </button>
+                  <button
+                    onClick={() => {
+                      onUpdateKeepInTouch?.({
+                        frequency: 'Twice per Year',
+                        christmas: 'whatsapp standard',
+                        easter: 'whatsapp standard'
+                      });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Standard
+                  </button>
+                </div>
+              );
+            })()}
+            </>
+          );
+        })()}
       </div>
 
       {/* Section 2: Contact Details (Emails, Mobiles, Companies) */}
@@ -616,12 +711,12 @@ const ContactDetailsTab = ({
             <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>
               Emails
             </span>
-            {editable && onManageEmails && (
-              <FaEdit
+            {onManageEmails && (
+              <FaPlus
                 size={11}
                 style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
                 onClick={onManageEmails}
-                title="Manage emails"
+                title="Add email"
               />
             )}
           </div>
@@ -657,12 +752,12 @@ const ContactDetailsTab = ({
             <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>
               Phone Numbers
             </span>
-            {editable && onManageMobiles && (
-              <FaEdit
+            {onManageMobiles && (
+              <FaPlus
                 size={11}
                 style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
                 onClick={onManageMobiles}
-                title="Manage phone numbers"
+                title="Add phone number"
               />
             )}
           </div>

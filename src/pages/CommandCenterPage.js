@@ -86,7 +86,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList, FaSyncAlt } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -130,6 +130,7 @@ import AITab from '../components/command-center/AITab';
 import CRMTab from '../components/command-center/CRMTab';
 import DealsTab from '../components/command-center/DealsTab';
 import IntroductionsTab from '../components/command-center/IntroductionsTab';
+import IntroductionsPanelTab from '../components/command-center/IntroductionsPanelTab';
 import TasksTab from '../components/command-center/TasksTab';
 import NotesTab from '../components/command-center/NotesTab';
 import NotesFullTab from '../components/command-center/NotesFullTab';
@@ -187,6 +188,7 @@ const CommandCenterPage = ({ theme }) => {
   const [whatsappChats, setWhatsappChats] = useState([]); // Grouped by chat_id
   const [selectedWhatsappChat, setSelectedWhatsappChat] = useState(null);
   const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [whatsappRefreshTrigger, setWhatsappRefreshTrigger] = useState(0);
 
   // Baileys WhatsApp connection status
   const [baileysStatus, setBaileysStatus] = useState({ status: 'unknown', hasQR: false });
@@ -346,11 +348,13 @@ const CommandCenterPage = ({ theme }) => {
   // Right panel contact selector state
   const [selectedRightPanelContactId, setSelectedRightPanelContactId] = useState(null);
   const [selectedListMember, setSelectedListMember] = useState(null); // From ListsTab
+  const [tasksLinkedContacts, setTasksLinkedContacts] = useState([]); // From TasksFullTab
 
   // Right panel company selector state (for CompanyDetailsTab)
   const [selectedRightPanelCompanyId, setSelectedRightPanelCompanyId] = useState(null);
   const [rightPanelCompanyDetails, setRightPanelCompanyDetails] = useState(null);
   const [loadingRightPanelCompany, setLoadingRightPanelCompany] = useState(false);
+  const [rightPanelCompanyRefreshKey, setRightPanelCompanyRefreshKey] = useState(0);
 
   // Right panel company enrichment modal state (separate from KIT to avoid conflicts)
   const [rightPanelCompanyEnrichModalOpen, setRightPanelCompanyEnrichModalOpen] = useState(false);
@@ -485,6 +489,11 @@ const CommandCenterPage = ({ theme }) => {
   const [keepInTouchContacts, setKeepInTouchContacts] = useState([]);
   const [keepInTouchLoading, setKeepInTouchLoading] = useState(false);
   const [keepInTouchRefreshTrigger, setKeepInTouchRefreshTrigger] = useState(0);
+
+  // Direct email/mobile management modals
+  const [manageEmailsModalOpen, setManageEmailsModalOpen] = useState(false);
+  const [manageMobilesModalOpen, setManageMobilesModalOpen] = useState(false);
+  const [contactForManageModal, setContactForManageModal] = useState(null);
   const [selectedKeepInTouchContact, setSelectedKeepInTouchContact] = useState(null);
   const [keepInTouchSections, setKeepInTouchSections] = useState({
     due: true,
@@ -683,7 +692,7 @@ const CommandCenterPage = ({ theme }) => {
     };
 
     fetchCompanyDetails();
-  }, [selectedRightPanelCompanyId]);
+  }, [selectedRightPanelCompanyId, rightPanelCompanyRefreshKey]);
 
   // Compute available contacts for ContactSelector based on active tab
   const availableRightPanelContacts = useMemo(() => {
@@ -747,9 +756,71 @@ const CommandCenterPage = ({ theme }) => {
       }];
     }
 
+    // For tasks - use linked contacts from TasksFullTab
+    if (activeTab === 'tasks' && tasksLinkedContacts.length > 0) {
+      return tasksLinkedContacts.map(c => ({
+        contact_id: c.contact_id,
+        first_name: c.first_name || '',
+        last_name: c.last_name || '',
+        email: null,
+        role: 'Contact',
+        completeness_score: c.completeness_score || 0,
+        show_missing: c.show_missing,
+        profile_image_url: c.profile_image_url,
+      }));
+    }
+
     // For notes - handled by its own component
     return [];
-  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember]);
+  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts]);
+
+  // Enrich contacts with completeness scores from DB (DRY - all tabs benefit)
+  const [enrichedRightPanelContacts, setEnrichedRightPanelContacts] = useState([]);
+
+  useEffect(() => {
+    const enrichContacts = async () => {
+      if (availableRightPanelContacts.length === 0) {
+        setEnrichedRightPanelContacts([]);
+        return;
+      }
+
+      const contactIds = availableRightPanelContacts.map(c => c.contact_id);
+
+      // Fetch completeness scores and show_missing from DB
+      const [completenessResult, contactsResult] = await Promise.all([
+        supabase
+          .from('contact_completeness')
+          .select('contact_id, completeness_score')
+          .in('contact_id', contactIds),
+        supabase
+          .from('contacts')
+          .select('contact_id, show_missing, profile_image_url')
+          .in('contact_id', contactIds)
+      ]);
+
+      const completenessMap = {};
+      (completenessResult.data || []).forEach(c => {
+        completenessMap[c.contact_id] = c.completeness_score;
+      });
+
+      const contactsMap = {};
+      (contactsResult.data || []).forEach(c => {
+        contactsMap[c.contact_id] = { show_missing: c.show_missing, profile_image_url: c.profile_image_url };
+      });
+
+      // Enrich contacts with DB data
+      const enriched = availableRightPanelContacts.map(c => ({
+        ...c,
+        completeness_score: completenessMap[c.contact_id] ?? c.completeness_score ?? 0,
+        show_missing: contactsMap[c.contact_id]?.show_missing ?? c.show_missing,
+        profile_image_url: contactsMap[c.contact_id]?.profile_image_url || c.profile_image_url,
+      }));
+
+      setEnrichedRightPanelContacts(enriched);
+    };
+
+    enrichContacts();
+  }, [availableRightPanelContacts]);
 
   // Auto-select contact when available contacts change
   // If only 1 contact, always select it; otherwise select first when none selected
@@ -2008,7 +2079,7 @@ internet businesses.`;
     if (activeTab === 'whatsapp') {
       fetchWhatsApp();
     }
-  }, [activeTab]);
+  }, [activeTab, whatsappRefreshTrigger]);
 
   // Check Baileys connection status periodically (when WhatsApp tab is active)
   useEffect(() => {
@@ -4588,14 +4659,14 @@ internet businesses.`;
       const companyId = domainData.company_id;
       const companyName = domainData.companies?.name || domain;
 
-      // Insert into contact_companies
+      // Insert into contact_companies (upsert to handle existing links)
       const { error: linkError } = await supabase
         .from('contact_companies')
-        .insert({
+        .upsert({
           contact_id: contact.contact_id,
           company_id: companyId,
           is_primary: true
-        });
+        }, { onConflict: 'contact_id,company_id' });
 
       if (linkError) throw linkError;
 
@@ -7020,6 +7091,10 @@ internet businesses.`;
       if (successfullySavedEmails.length > 0) {
         const processedIds = new Set(successfullySavedEmails);
 
+        // Find current thread index BEFORE modifying state
+        const currentThreadId = selectedThread[0]?.thread_id;
+        const currentThreadIndex = threads.findIndex(t => t.emails[0]?.thread_id === currentThreadId);
+
         if (keepStatus) {
           // Update status in local state instead of removing
           setEmails(prev => prev.map(e =>
@@ -7032,11 +7107,26 @@ internet businesses.`;
             ),
             status: t.emails.some(e => processedIds.has(e.id)) ? keepStatus : t.status
           })));
-          setSelectedThread(null);
+          // Select next thread (same position in updated list)
+          const nextIndex = Math.min(currentThreadIndex, threads.length - 2);
+          if (nextIndex >= 0 && threads[nextIndex + 1]) {
+            setSelectedThread(threads[nextIndex + 1].emails);
+          } else if (nextIndex > 0 && threads[nextIndex - 1]) {
+            setSelectedThread(threads[nextIndex - 1].emails);
+          } else {
+            setSelectedThread(null);
+          }
           log('STATE_UPDATE', `Updated status to '${keepStatus}' for ${successfullySavedEmails.length} emails in local state`);
         } else {
           // Normal flow - remove from local state
           setEmails(prev => prev.filter(e => !processedIds.has(e.id)));
+
+          // Calculate remaining threads to select next
+          const remainingThreads = threads.map(t => ({
+            ...t,
+            emails: t.emails.filter(e => !processedIds.has(e.id))
+          })).filter(t => t.emails.length > 0);
+
           setThreads(prev => {
             const updated = prev.map(t => ({
               ...t,
@@ -7048,7 +7138,14 @@ internet businesses.`;
               latestEmail: t.emails[0]
             }));
           });
-          setSelectedThread(null);
+
+          // Select next thread (the one that takes current position)
+          if (remainingThreads.length > 0) {
+            const nextIndex = Math.min(currentThreadIndex, remainingThreads.length - 1);
+            setSelectedThread(remainingThreads[nextIndex].emails);
+          } else {
+            setSelectedThread(null);
+          }
           log('STATE_UPDATE', `Removed ${successfullySavedEmails.length} emails from local state`);
         }
       } else {
@@ -7332,14 +7429,38 @@ internet businesses.`;
         }
       }
 
-      // 7. Update local state - remove processed chat
+      // 6b. Track this chat as "done" to prevent sent messages from reappearing
+      // Get the last message UID (most recent by date)
+      const sortedMessages = [...messages].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const lastMessageUid = sortedMessages[0]?.message_uid || null;
+
+      const { error: doneError } = await supabase
+        .from('whatsapp_chat_done')
+        .upsert({
+          chat_id: chatId,
+          done_at: new Date().toISOString(),
+          last_message_uid: lastMessageUid
+        }, { onConflict: 'chat_id' });
+
+      if (doneError) {
+        console.error('Error saving chat done status:', doneError);
+      } else {
+        console.log('Marked chat as done:', chatId, 'last_message_uid:', lastMessageUid);
+      }
+
+      // 7. Find current chat index BEFORE updating state
+      const currentIndex = whatsappChats.findIndex(c => c.chat_id === chatId);
+
+      // 8. Update local state - remove processed chat
       setWhatsappChats(prev => prev.filter(c => c.chat_id !== chatId));
       setWhatsappMessages(prev => prev.filter(m => m.chat_id !== chatId));
 
-      // 8. Select next chat if available
+      // 9. Select next chat if available (the one that takes current position)
       const remainingChats = whatsappChats.filter(c => c.chat_id !== chatId);
       if (remainingChats.length > 0) {
-        setSelectedWhatsappChat(remainingChats[0]);
+        // Select the chat at the same index (which was the next one), or last if at end
+        const nextIndex = Math.min(currentIndex, remainingChats.length - 1);
+        setSelectedWhatsappChat(remainingChats[nextIndex]);
       } else {
         setSelectedWhatsappChat(null);
       }
@@ -7445,14 +7566,18 @@ internet businesses.`;
           .in('id', messageIds);
       }
 
-      // 6. Update local state
+      // 6. Find current chat index BEFORE updating state
+      const currentIndex = whatsappChats.findIndex(c => c.chat_id === chatId);
+
+      // 7. Update local state
       setWhatsappChats(prev => prev.filter(c => c.chat_id !== chatId));
       setWhatsappMessages(prev => prev.filter(m => m.chat_id !== chatId));
 
-      // 7. Select next chat
+      // 8. Select next chat (the one that takes current position)
       const remainingChats = whatsappChats.filter(c => c.chat_id !== chatId);
       if (remainingChats.length > 0) {
-        setSelectedWhatsappChat(remainingChats[0]);
+        const nextIndex = Math.min(currentIndex, remainingChats.length - 1);
+        setSelectedWhatsappChat(remainingChats[nextIndex]);
       } else {
         setSelectedWhatsappChat(null);
       }
@@ -7593,7 +7718,6 @@ internet businesses.`;
             domain: domain,
             counter: 1,
             created_at: new Date().toISOString(),
-            last_modified_at: new Date().toISOString(),
           });
 
           if (spamError) {
@@ -7806,6 +7930,19 @@ internet businesses.`;
             {!listCollapsed && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span>Messages</span>
+                {activeTab === 'whatsapp' && (
+                  <FaSyncAlt
+                    size={12}
+                    onClick={() => setWhatsappRefreshTrigger(prev => prev + 1)}
+                    style={{
+                      cursor: 'pointer',
+                      opacity: whatsappLoading ? 0.5 : 0.6,
+                      animation: whatsappLoading ? 'spin 1s linear infinite' : 'none',
+                      transition: 'opacity 0.2s',
+                    }}
+                    title="Refresh WhatsApp"
+                  />
+                )}
                 {activeTab === 'whatsapp' && (
                   <div
                     onClick={() => baileysStatus.status !== 'connected' && setShowBaileysQRModal(true)}
@@ -11985,7 +12122,7 @@ internet businesses.`;
           ) : activeTab === 'lists' ? (
             <ListsTab theme={theme} profileImageModal={profileImageModal} onMemberSelect={setSelectedListMember} />
           ) : activeTab === 'tasks' ? (
-            <TasksFullTab theme={theme} />
+            <TasksFullTab theme={theme} onLinkedContactsChange={setTasksLinkedContacts} />
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
@@ -12560,8 +12697,8 @@ internet businesses.`;
           )}
         </EmailContentPanel>
 
-        {/* Right: Actions Panel - Hidden for Notes, Lists, and Tasks tabs */}
-        {activeTab !== 'notes' && activeTab !== 'lists' && activeTab !== 'tasks' && (
+        {/* Right: Actions Panel - Hidden for Notes and Lists tabs */}
+        {activeTab !== 'notes' && activeTab !== 'lists' && (
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
           {/* Data Integrity Warning Bar - show only for email/whatsapp/calendar when not collapsed */}
           {!rightPanelCollapsed && ['email', 'whatsapp', 'calendar'].includes(activeTab) && (
@@ -12614,10 +12751,10 @@ internet businesses.`;
             />
           )}
           {/* Contact Selector Dropdown - show only when not collapsed and has contacts */}
-          {!rightPanelCollapsed && availableRightPanelContacts.length > 0 && (
+          {!rightPanelCollapsed && enrichedRightPanelContacts.length > 0 && (
             <div style={{ padding: '8px 12px 0 12px' }}>
               <ContactSelector
-                contacts={availableRightPanelContacts}
+                contacts={enrichedRightPanelContacts}
                 selectedContactId={selectedRightPanelContactId}
                 onSelect={setSelectedRightPanelContactId}
                 onAddNew={() => setCreateContactModalOpen(true)}
@@ -12674,8 +12811,10 @@ internet businesses.`;
             {/* Content Area */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {/* Keep in Touch - Contact Details Panel */}
-          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && keepInTouchContactDetails && activeActionTab === 'crm' && (
+          {/* Keep in Touch uses the shared ContactDetailsTab below (DRY) */}
+
+          {/* KEEPINTOUCH_CUSTOM_PANEL_REMOVED_MARKER */}
+          {false && (
             <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
               {/* Enrich with Apollo Button */}
               <button
@@ -14160,7 +14299,7 @@ internet businesses.`;
             />
           )}
 
-          {!rightPanelCollapsed && activeTab !== 'keepintouch' && activeTab !== 'introductions' && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal) && (
+          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && tasksLinkedContacts.length > 0) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem)) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
@@ -14287,11 +14426,32 @@ internet businesses.`;
                   keepInTouch={rightPanelContactDetails?.keepInTouch}
                   loading={rightPanelContactDetails?.loading}
                   editable={false}
-                  onUpdateKeepInTouch={async (field, value) => {
+                  onUpdateField={async (field, value) => {
+                    const contactId = selectedRightPanelContactId;
+                    if (!contactId) return;
+                    try {
+                      const { error } = await supabase
+                        .from('contacts')
+                        .update({ [field]: value })
+                        .eq('contact_id', contactId);
+                      if (error) throw error;
+                      rightPanelContactDetails?.refetch?.();
+                      toast.success(`${field} updated`);
+                    } catch (err) {
+                      console.error('Error updating contact field:', err);
+                      toast.error('Failed to update');
+                    }
+                  }}
+                  onUpdateKeepInTouch={async (fieldOrUpdates, value) => {
                     const contactId = selectedRightPanelContactId;
                     if (!contactId) return;
 
                     try {
+                      // Support both (field, value) and ({ field1: val1, field2: val2 })
+                      const updates = typeof fieldOrUpdates === 'object'
+                        ? fieldOrUpdates
+                        : { [fieldOrUpdates]: value };
+
                       // Check if keep_in_touch record exists
                       const { data: existing } = await supabase
                         .from('keep_in_touch')
@@ -14303,28 +14463,29 @@ internet businesses.`;
                         // Update existing record
                         const { error } = await supabase
                           .from('keep_in_touch')
-                          .update({ [field]: value })
+                          .update(updates)
                           .eq('contact_id', contactId);
                         if (error) throw error;
                       } else {
                         // Create new record
                         const { error } = await supabase
                           .from('keep_in_touch')
-                          .insert({ contact_id: contactId, [field]: value });
+                          .insert({ contact_id: contactId, frequency: 'Not Set', ...updates });
                         if (error) throw error;
                       }
 
                       // Also update contacts table for frequency (trigger should do this but be safe)
-                      if (field === 'frequency') {
+                      if (updates.frequency) {
                         await supabase
                           .from('contacts')
-                          .update({ keep_in_touch_frequency: value })
+                          .update({ keep_in_touch_frequency: updates.frequency })
                           .eq('contact_id', contactId);
                       }
 
                       // Refetch to update UI
                       rightPanelContactDetails?.refetch?.();
-                      toast.success(`${field} updated`);
+                      const fieldNames = Object.keys(updates).join(', ');
+                      toast.success(`${fieldNames} updated`);
                     } catch (err) {
                       console.error('Error updating keep in touch:', err);
                       toast.error('Failed to update');
@@ -14350,6 +14511,18 @@ internet businesses.`;
                     if (rightPanelContactDetails?.contact?.contact_id) {
                       setDataIntegrityContactId(rightPanelContactDetails.contact.contact_id);
                       setDataIntegrityModalOpen(true);
+                    }
+                  }}
+                  onManageEmails={() => {
+                    if (rightPanelContactDetails?.contact) {
+                      setContactForManageModal(rightPanelContactDetails.contact);
+                      setManageEmailsModalOpen(true);
+                    }
+                  }}
+                  onManageMobiles={() => {
+                    if (rightPanelContactDetails?.contact) {
+                      setContactForManageModal(rightPanelContactDetails.contact);
+                      setManageMobilesModalOpen(true);
                     }
                   }}
                   onEnrich={() => {
@@ -14416,6 +14589,7 @@ internet businesses.`;
                       setKitCityModalOpen(true);
                     }
                   }}
+                  onRefresh={() => rightPanelContactDetails?.refetch?.()}
                 />
               )}
               {activeActionTab === 'company' && selectedRightPanelContactId && (
@@ -14433,7 +14607,10 @@ internet businesses.`;
                   editable={false}
                   loading={loadingRightPanelCompany || rightPanelContactDetails?.loading}
                   onCompanyNavigate={(companyId) => navigate(`/companies/${companyId}`)}
-                  onContactClick={(contactId) => navigate(`/contacts/${contactId}`)}
+                  onContactClick={(contactId) => {
+                    setSelectedRightPanelContactId(contactId);
+                    setActiveActionTab('crm');
+                  }}
                   onEdit={() => {
                     if (selectedRightPanelCompanyId) {
                       setCompanyDataIntegrityCompanyId(selectedRightPanelCompanyId);
@@ -14453,6 +14630,10 @@ internet businesses.`;
                       setCompanyMergeCompany({ ...rightPanelCompanyDetails.company, company_id: selectedRightPanelCompanyId });
                       setCompanyMergeModalOpen(true);
                     }
+                  }}
+                  onRefresh={() => {
+                    rightPanelContactDetails?.refetch?.();
+                    setRightPanelCompanyRefreshKey(k => k + 1);
                   }}
                 />
               )}
@@ -14499,13 +14680,46 @@ internet businesses.`;
                 />
               )}
               {activeActionTab === 'introductions' && (
-                <IntroductionsTab
+                <IntroductionsPanelTab
                   theme={theme}
-                  selectedThread={selectedThread}
-                  contactIntroductions={contactIntroductions}
+                  contactId={selectedRightPanelContactId}
+                  contactName={rightPanelContactDetails?.contact ? `${rightPanelContactDetails.contact.first_name || ''} ${rightPanelContactDetails.contact.last_name || ''}`.trim() : ''}
+                  contactIntroductions={rightPanelContactDetails?.introductions || []}
                   setIntroductionModalOpen={setIntroductionModalOpen}
-                  onEditIntroduction={handleEditIntroduction}
-                  onDeleteIntroduction={handleDeleteIntroduction}
+                  onEditIntroduction={async (intro) => {
+                    // Fetch full intro data with contacts before opening edit modal
+                    const { data: introContacts } = await supabase
+                      .from('introduction_contacts')
+                      .select(`
+                        contact_id,
+                        role,
+                        contacts(contact_id, first_name, last_name)
+                      `)
+                      .eq('introduction_id', intro.introduction_id);
+
+                    const contacts = (introContacts || []).map(ic => ({
+                      contact_id: ic.contact_id,
+                      first_name: ic.contacts?.first_name || '',
+                      last_name: ic.contacts?.last_name || '',
+                      name: `${ic.contacts?.first_name || ''} ${ic.contacts?.last_name || ''}`.trim(),
+                      role: ic.role,
+                    }));
+
+                    handleEditIntroduction({ ...intro, contacts });
+                  }}
+                  onDeleteIntroduction={async (introductionId) => {
+                    await handleDeleteIntroduction(introductionId);
+                    // Refetch contact details to update introductions list
+                    rightPanelContactDetails?.refetch?.();
+                  }}
+                  onIntroductionSelect={(intro) => {
+                    // When intro selected in panel, sync with parent state if needed
+                    if (intro) {
+                      setSelectedIntroductionItem(intro);
+                    }
+                  }}
+                  onRefresh={() => rightPanelContactDetails?.refetch?.()}
+                  currentChat={activeTab === 'whatsapp' ? selectedWhatsappChat : null}
                 />
               )}
               {activeActionTab === 'tasks' && (
@@ -15450,6 +15664,11 @@ internet businesses.`;
                   });
                   setContactIntroductions(Array.from(introMap.values()));
 
+                  // Also refresh the right panel if showing introductions for the same contact
+                  if (rightPanelContactDetails?.refetch) {
+                    rightPanelContactDetails.refetch();
+                  }
+
                   setCreatingIntroduction(false);
                   setIntroductionModalOpen(false);
                   setEditingIntroduction(null);
@@ -16064,10 +16283,16 @@ internet businesses.`;
           }
           // Refresh Keep in Touch contact data on close
           if (keepInTouchContactDetails?.contact_id) {
-            // Fetch updated contact data including christmas/easter wishes
+            // Fetch updated contact data
             const { data: contactData } = await supabase
               .from('contacts')
-              .select('christmas, easter, job_role, first_name, last_name')
+              .select('job_role, first_name, last_name')
+              .eq('contact_id', keepInTouchContactDetails.contact_id)
+              .maybeSingle();
+            // Fetch christmas/easter from keep_in_touch
+            const { data: kitData } = await supabase
+              .from('keep_in_touch')
+              .select('christmas, easter')
               .eq('contact_id', keepInTouchContactDetails.contact_id)
               .maybeSingle();
             // Fetch completeness score
@@ -16077,19 +16302,20 @@ internet businesses.`;
               .eq('contact_id', keepInTouchContactDetails.contact_id)
               .maybeSingle();
             // Update keepInTouchContactDetails
-            if (contactData || completenessData) {
+            if (contactData || completenessData || kitData) {
               setKeepInTouchContactDetails(prev => ({
                 ...prev,
                 ...(contactData || {}),
+                ...(kitData || {}),
                 completeness_score: completenessData ? Math.round(completenessData.completeness_score) : prev?.completeness_score
               }));
             }
             // Also update selectedKeepInTouchContact for the dropdowns
-            if (contactData) {
+            if (kitData) {
               setSelectedKeepInTouchContact(prev => ({
                 ...prev,
-                christmas: contactData.christmas,
-                easter: contactData.easter
+                christmas: kitData.christmas,
+                easter: kitData.easter
               }));
             }
           }
@@ -16649,6 +16875,28 @@ internet businesses.`;
               .order('is_primary', { ascending: false })
               .then(({ data }) => setKeepInTouchMobiles(data || []));
           }
+        }}
+      />
+
+      {/* Right Panel - Manage Emails Modal */}
+      <ManageContactEmailsModal
+        isOpen={manageEmailsModalOpen}
+        onClose={() => setManageEmailsModalOpen(false)}
+        contact={contactForManageModal}
+        theme={theme}
+        onEmailsUpdated={() => {
+          rightPanelContactDetails?.refetch?.();
+        }}
+      />
+
+      {/* Right Panel - Manage Mobiles Modal */}
+      <ManageContactMobilesModal
+        isOpen={manageMobilesModalOpen}
+        onClose={() => setManageMobilesModalOpen(false)}
+        contact={contactForManageModal}
+        theme={theme}
+        onMobilesUpdated={() => {
+          rightPanelContactDetails?.refetch?.();
         }}
       />
 

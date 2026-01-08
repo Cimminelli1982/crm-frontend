@@ -40,13 +40,13 @@ const DeleteContactModal = ({
           .eq('contact_id', contact.contact_id || contact.id)
           .order('interaction_date', { ascending: false })
           .limit(1),
-        supabase.from('contact_emails').select('id', { count: 'exact' })
+        supabase.from('contact_emails').select('email_id', { count: 'exact' })
           .eq('contact_id', contact.contact_id || contact.id),
-        supabase.from('contact_tags').select('id', { count: 'exact' })
+        supabase.from('contact_tags').select('entry_id', { count: 'exact' })
           .eq('contact_id', contact.contact_id || contact.id),
-        supabase.from('contact_companies').select('id', { count: 'exact' })
+        supabase.from('contact_companies').select('contact_companies_id', { count: 'exact' })
           .eq('contact_id', contact.contact_id || contact.id),
-        supabase.from('notes').select('id', { count: 'exact' })
+        supabase.from('notes').select('note_id', { count: 'exact' })
           .eq('contact_id', contact.contact_id || contact.id),
         supabase.from('keep_in_touch').select('id', { count: 'exact' })
           .eq('contact_id', contact.contact_id || contact.id)

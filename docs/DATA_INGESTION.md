@@ -604,3 +604,244 @@ SUPABASE_SERVICE_KEY=xxx
 | WhatsApp webhook | `crm-agent-service/app/main.py` (whatsapp_webhook) |
 | Database ops | `crm-agent-service/app/database.py` |
 | Frontend "Add to Cal" | `src/pages/CommandCenterPage.js` (handleImportCalendarInvitation) |
+| Todoist sync | `backend/src/index.js` (syncTodoist function) |
+| Todoist frontend | `src/components/command-center/TasksFullTab.js` |
+
+---
+
+# Tasks Sync: Todoist ↔ Supabase
+
+## Overview
+
+I task vengono gestiti su **Todoist** come source of truth e sincronizzati con **Supabase** per integrazione con il CRM.
+
+```
+┌─────────────┐         ┌─────────────────┐         ┌─────────────┐
+│   Todoist   │ ──────► │ Railway Backend │ ──────► │  Supabase   │
+│  (Source)   │ ◄────── │   (Sync Hub)    │ ◄────── │   (CRM DB)  │
+└─────────────┘         └─────────────────┘         └─────────────┘
+```
+
+---
+
+## Sync Automatico (Backend)
+
+**Dove**: `backend/src/index.js` → `syncTodoist()`
+**Frequenza**: Ogni 5 minuti
+**Trigger**: `setInterval(syncTodoist, 5 * 60 * 1000)`
+
+### Flusso
+
+```
+1. Fetch /tasks da Todoist API
+   ↓
+2. Filtra per INCLUDED_PROJECT_IDS (Inbox, Work, Personal, Birthdays)
+   ↓
+3. Per ogni task Todoist:
+   - Se esiste in Supabase → UPDATE
+   - Se non esiste → INSERT
+   ↓
+4. Orphan Detection:
+   - Trova task in Supabase (status=open) che NON sono nella lista Todoist
+   - DELETE da Supabase (task cancellato o completato in Todoist)
+```
+
+### Progetti Inclusi
+
+```javascript
+const INCLUDED_PROJECT_IDS = [
+  '2335921711', // Inbox
+  '2336453097', // Personal
+  '2336882454', // Work
+  '2360053180', // Birthdays 🎂
+];
+```
+
+---
+
+## Sync Manuale (Frontend)
+
+**Dove**: Frontend chiama `POST /todoist/sync`
+**Trigger**: Click su icona 🔄 o warning ⚠️
+
+```javascript
+// Frontend (TasksFullTab.js)
+const handleSyncFromTodoist = async () => {
+  await fetch(`${BACKEND_URL}/todoist/sync`, { method: 'POST' });
+  fetchTasks();        // Ricarica da Supabase
+  fetchTodoistCount(); // Aggiorna count per indicator
+};
+```
+
+```javascript
+// Backend (index.js)
+app.post('/todoist/sync', async (req, res) => {
+  await syncTodoist();
+  res.json({ success: true });
+});
+```
+
+---
+
+## Operazioni CRUD
+
+### Create Task (Frontend → Todoist → Supabase)
+
+```
+1. Frontend crea task in Todoist:
+   POST /todoist/tasks { content, project_id, due_string, priority }
+
+2. Todoist ritorna todoist_id
+
+3. Frontend crea in Supabase con todoist_id:
+   INSERT tasks { todoist_id, content, ... }
+```
+
+### Update Task (Frontend → Todoist + Supabase)
+
+```
+1. Frontend aggiorna Todoist:
+   PATCH /todoist/tasks/:id { content, due_string, priority }
+
+2. Frontend aggiorna Supabase:
+   UPDATE tasks SET ... WHERE task_id = ...
+```
+
+### Move Task to Different Project
+
+```
+1. Frontend chiama backend:
+   PATCH /todoist/tasks/:id { project_id: "new_project_id" }
+
+2. Backend usa Todoist Sync API:
+   POST /sync/v9/sync { commands: [{ type: "item_move", args: { id, project_id }}] }
+
+3. Frontend aggiorna Supabase:
+   UPDATE tasks SET todoist_project_id, todoist_project_name WHERE task_id = ...
+```
+
+### Complete Task
+
+```
+1. Frontend chiama:
+   POST /todoist/tasks/:id/close
+
+2. Frontend aggiorna Supabase:
+   UPDATE tasks SET status = 'completed', completed_at = now()
+```
+
+### Delete Task (Todoist → Supabase)
+
+```
+1. User cancella task in Todoist UI
+
+2. Al prossimo sync (≤5 min):
+   - Backend fetch /tasks da Todoist
+   - Task non è nella lista
+   - Backend DELETE da Supabase
+```
+
+---
+
+## Mismatch Indicator
+
+Il frontend mostra ⚠️ giallo se i count non corrispondono:
+
+```javascript
+// Fetch count da Todoist
+const { tasks } = await fetch('/todoist/tasks').then(r => r.json());
+const todoistCount = tasks.length;
+
+// Count da Supabase (già in memoria)
+const supabaseCount = tasks.filter(t => t.status === 'open').length;
+
+// Mostra warning se diversi
+const syncMismatch = todoistCount !== supabaseCount;
+```
+
+---
+
+## Schema Supabase: tasks
+
+```sql
+CREATE TABLE tasks (
+  task_id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  todoist_id           TEXT UNIQUE,
+  content              TEXT NOT NULL,
+  description          TEXT,
+  due_date             DATE,
+  due_datetime         TIMESTAMPTZ,
+  due_string           TEXT,
+  priority             INTEGER DEFAULT 1,
+  status               TEXT DEFAULT 'open',  -- 'open' | 'completed'
+  todoist_project_id   TEXT,
+  todoist_project_name TEXT,
+  todoist_section_id   TEXT,
+  todoist_section_name TEXT,
+  todoist_url          TEXT,
+  todoist_parent_id    TEXT,
+  parent_id            UUID REFERENCES tasks(task_id),
+  task_order           INTEGER DEFAULT 0,
+  completed_at         TIMESTAMPTZ,
+  created_at           TIMESTAMPTZ DEFAULT now(),
+  updated_at           TIMESTAMPTZ,
+  synced_at            TIMESTAMPTZ,
+  created_by           TEXT DEFAULT 'User'
+);
+```
+
+---
+
+## Tabelle Correlate
+
+```
+tasks
+  ├── task_contacts (link a contacts)
+  ├── task_companies (link a companies)
+  └── task_deals (link a deals)
+```
+
+---
+
+## Endpoints Backend Todoist
+
+| Method | Endpoint | Descrizione |
+|--------|----------|-------------|
+| GET | `/todoist/projects` | Lista progetti (filtrati) |
+| GET | `/todoist/tasks` | Lista task attivi (filtrati) |
+| GET | `/todoist/tasks/:id` | Singolo task |
+| POST | `/todoist/tasks` | Crea task |
+| PATCH | `/todoist/tasks/:id` | Aggiorna task (content, due, priority) |
+| PATCH | `/todoist/tasks/:id` + `project_id` | Muove task (usa Sync API) |
+| POST | `/todoist/tasks/:id/close` | Completa task |
+| DELETE | `/todoist/tasks/:id` | Cancella task |
+| POST | `/todoist/sync` | Triggera sync manuale |
+
+---
+
+## Troubleshooting Tasks
+
+### Task non si sincronizza
+1. Verifica che il progetto sia in `INCLUDED_PROJECT_IDS`
+2. Controlla Railway logs: `railway logs -s command-center-backend | grep Todoist`
+
+### Task cancellato in Todoist ma ancora in Supabase
+- Aspetta il prossimo sync (max 5 min)
+- Oppure click su 🔄 per sync manuale
+
+### Warning ⚠️ persiste dopo sync
+- Potrebbe esserci un task in una sezione eliminata
+- Verifica con: `SELECT * FROM tasks WHERE status = 'open' AND todoist_id NOT IN (...)`
+
+### Task in sezione eliminata
+- Il task esiste in Todoist ma non appare nella lista `/tasks`
+- Soluzione: Ricrea il task o muovilo fuori dalla sezione
+
+---
+
+## Note Importanti Tasks
+
+1. **Todoist è source of truth** - Se c'è conflitto, Todoist vince
+2. **Sync è one-way per delete** - Cancellare in Supabase NON cancella in Todoist
+3. **No safety net** - Task non in lista Todoist viene cancellato immediatamente
+4. **Recurring tasks** - Quando completi un recurring, Todoist crea nuova istanza automaticamente

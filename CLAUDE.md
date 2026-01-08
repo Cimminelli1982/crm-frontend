@@ -1,5 +1,18 @@
 # CRM Frontend - Claude Project Memory
 
+## Come Avviare il Frontend
+
+**IMPORTANTE: Usa SEMPRE questo comando per il nuovo CRM:**
+```bash
+PORT=3002 npm run new-crm:dev
+```
+
+**NON usare `npm start`** - quello avvia il vecchio CRM che fa redirect a `/contacts/interactions`.
+
+URL: **http://localhost:3002/new-crm/command-center**
+
+---
+
 ## Entity Relationship Overview
 
 ```

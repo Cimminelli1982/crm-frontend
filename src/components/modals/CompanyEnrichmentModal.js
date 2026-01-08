@@ -906,7 +906,7 @@ const CompanyEnrichmentModal = ({
             .select('entry_id')
             .eq('company_id', company.company_id)
             .eq('tag_id', tag.tag_id)
-            .single();
+            .maybeSingle();
 
           if (!existing) {
             await supabase

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   FaRocket, FaBuilding, FaLinkedin, FaGlobe, FaTag,
-  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaClone
+  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaClone, FaSyncAlt
 } from 'react-icons/fa';
 
 // Company category options
@@ -52,7 +52,8 @@ const CompanyDetailsTab = ({
   loading = false,
   onEdit,
   onAssociateCompany,
-  onDuplicates
+  onDuplicates,
+  onRefresh
 }) => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
@@ -318,7 +319,7 @@ const CompanyDetailsTab = ({
       )}
 
       {/* Read-only mode: Action buttons */}
-      {!editable && (onEnrich || onEdit || onDuplicates) && (
+      {!editable && (onEnrich || onEdit || onDuplicates || onRefresh) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
           {onEnrich && (
             <button
@@ -384,6 +385,27 @@ const CompanyDetailsTab = ({
             >
               <FaClone size={9} />
               Duplicates
+            </button>
+          )}
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              title="Refresh"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <FaSyncAlt size={9} />
             </button>
           )}
         </div>

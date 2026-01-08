@@ -1433,11 +1433,53 @@ async def whatsapp_webhook(request: Request):
                     if message_timestamp:
                         try:
                             msg_time = datetime.fromisoformat(message_timestamp.replace('Z', '+00:00'))
-                            # If message is within 5 minutes of done_at, skip it (it's the same message from CRM)
+                            # If message is within 5 minutes of done_at, skip inbox but save to CRM
                             if msg_time <= done_at + timedelta(minutes=5):
-                                logger.info("whatsapp_sent_skipped", chat_id=chat_id_str,
+                                logger.info("whatsapp_sent_skip_inbox", chat_id=chat_id_str,
                                            reason="recent_crm_message", msg_time=str(msg_time), done_at=str(done_at))
-                                return {"success": True, "skipped": "recent sent message from CRM"}
+
+                                # Save directly to CRM (interactions) even though we skip inbox
+                                try:
+                                    # Find chat in CRM
+                                    chat_result = db.client.table('chats').select('id').eq(
+                                        'external_chat_id', chat_id_str
+                                    ).maybeSingle().execute()
+                                    crm_chat_id = chat_result.data['id'] if chat_result.data else None
+
+                                    # Find contact by phone
+                                    contact_id = None
+                                    if contact_phone:
+                                        normalized = contact_phone.replace(' ', '').replace('-', '')
+                                        mobile_result = db.client.table('contact_mobiles').select(
+                                            'contact_id'
+                                        ).ilike('mobile', f'%{normalized[-10:]}%').limit(1).execute()
+                                        if mobile_result.data:
+                                            contact_id = mobile_result.data[0]['contact_id']
+
+                                    # Save interaction
+                                    if contact_id:
+                                        message_uid = message.get('message_uid')
+                                        # Check if interaction already exists
+                                        existing = db.client.table('interactions').select('interaction_id').eq(
+                                            'external_interaction_id', message_uid
+                                        ).maybeSingle().execute()
+
+                                        if not existing.data:
+                                            db.client.table('interactions').insert({
+                                                'contact_id': contact_id,
+                                                'interaction_type': 'whatsapp',
+                                                'direction': 'sent',
+                                                'interaction_date': message_timestamp,
+                                                'summary': message.get('text'),
+                                                'chat_id': crm_chat_id,
+                                                'external_interaction_id': message_uid
+                                            }).execute()
+                                            logger.info("whatsapp_sent_saved_to_crm", contact_id=contact_id,
+                                                       message_uid=message_uid)
+                                except Exception as crm_err:
+                                    logger.warning("whatsapp_sent_crm_save_error", error=str(crm_err))
+
+                                return {"success": True, "skipped": "inbox only, saved to CRM"}
                             else:
                                 # Message is older than 5 min after done - probably from phone, allow it
                                 await db.delete_whatsapp_chat_done(chat_id_str)

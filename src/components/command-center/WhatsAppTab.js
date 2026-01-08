@@ -840,6 +840,43 @@ const WhatsAppTab = ({
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // Global keyboard shortcuts (work when chat is selected, even without textarea focus)
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    const handleGlobalKeyDown = (e) => {
+      // Ignore if typing in an input/textarea (let textarea handler work)
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      // Option/Alt+1: mark as need_actions
+      if (e.code === 'Digit1' && e.altKey) {
+        e.preventDefault();
+        onStatusChange?.('need_actions');
+        return;
+      }
+      // Option/Alt+2: mark as waiting_input
+      if (e.code === 'Digit2' && e.altKey) {
+        e.preventDefault();
+        onStatusChange?.('waiting_input');
+        return;
+      }
+      // Option/Alt+3: mark as done
+      if (e.code === 'Digit3' && e.altKey) {
+        e.preventDefault();
+        onDone?.();
+        return;
+      }
+      // Shift+Enter: mark as done
+      if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        onDone?.();
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [selectedChat, onDone, onStatusChange]);
+
   // Fetch attachments for current chat messages (staging + archived)
   useEffect(() => {
     const fetchAttachments = async () => {
@@ -1136,11 +1173,63 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
     }
   };
 
-  // Handle Enter key (Shift+Enter for new line)
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  // Handle keyboard shortcuts in textarea:
+  // - Enter: just send (if has content)
+  // - Shift+Enter: send (if has content) and mark done
+  // - Option/Alt+1: mark need_actions (send if has content)
+  // - Option/Alt+2: mark waiting_input (send if has content)
+  // - Option/Alt+3: mark done (send if has content)
+  const handleKeyDown = async (e) => {
+    // Option/Alt+1: mark as need_actions
+    if (e.code === 'Digit1' && e.altKey) {
       e.preventDefault();
-      handleSendMessage();
+      if (replyText.trim()) {
+        await handleSendMessage();
+        setTimeout(() => onStatusChange?.('need_actions'), 100);
+      } else {
+        onStatusChange?.('need_actions');
+      }
+      return;
+    }
+    // Option/Alt+2: mark as waiting_input
+    if (e.code === 'Digit2' && e.altKey) {
+      e.preventDefault();
+      if (replyText.trim()) {
+        await handleSendMessage();
+        setTimeout(() => onStatusChange?.('waiting_input'), 100);
+      } else {
+        onStatusChange?.('waiting_input');
+      }
+      return;
+    }
+    // Option/Alt+3: mark as done
+    if (e.code === 'Digit3' && e.altKey) {
+      e.preventDefault();
+      if (replyText.trim()) {
+        await handleSendMessage();
+        setTimeout(() => onDone?.(), 100);
+      } else {
+        onDone?.();
+      }
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        // Shift+Enter: send (if content) and mark done
+        if (replyText.trim()) {
+          await handleSendMessage();
+          setTimeout(() => onDone?.(), 100);
+        } else {
+          onDone?.();
+        }
+      } else {
+        // Enter: just send (if has content)
+        if (replyText.trim()) {
+          handleSendMessage();
+        }
+      }
     }
   };
 
