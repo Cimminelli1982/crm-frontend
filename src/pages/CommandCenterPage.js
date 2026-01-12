@@ -393,6 +393,9 @@ const CommandCenterPage = ({ theme }) => {
   const [contactDeals, setContactDeals] = useState([]); // Deals linked to email contacts
   const [companyDeals, setCompanyDeals] = useState([]); // Deals linked to companies of email contacts
   const [refreshDealsCounter, setRefreshDealsCounter] = useState(0); // Trigger to refresh deals
+
+  // Tasks from contacts (for compose modal)
+  const [contactTasks, setContactTasks] = useState([]); // Tasks linked to email contacts
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [createDealAIOpen, setCreateDealAIOpen] = useState(false); // AI Deal creation modal
   const [dealSearchQuery, setDealSearchQuery] = useState('');
@@ -5367,6 +5370,41 @@ internet businesses.`;
     setContactDeals(prev => prev.filter(deal => deal.deal_id !== dealId));
   };
 
+  // Handler for completing a contact task (used by ComposeEmailModal)
+  const handleCompleteContactTask = async (taskId, todoistId) => {
+    try {
+      // Update in Supabase
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
+        .eq('task_id', taskId);
+
+      if (error) throw error;
+
+      // Sync to Todoist if has todoist_id
+      if (todoistId) {
+        try {
+          await fetch(`${BACKEND_URL}/todoist/tasks/${todoistId}/close`, {
+            method: 'POST'
+          });
+        } catch (syncError) {
+          console.warn('Failed to sync completion to Todoist:', syncError);
+        }
+      }
+
+      toast.success('Task completed!');
+
+      // Update local state to remove the task from list
+      setContactTasks(prev => prev.filter(task => task.task_id !== taskId));
+    } catch (error) {
+      console.error('Error completing task:', error);
+      toast.error('Failed to complete task');
+    }
+  };
+
   // Handler for editing introduction (used by IntroductionsTab)
   const handleEditIntroduction = (intro) => {
     setEditingIntroduction(intro);
@@ -5774,6 +5812,80 @@ internet businesses.`;
 
     fetchDeals();
   }, [emailContacts, emailCompanies, refreshDealsCounter]);
+
+  // Fetch tasks linked to contacts (for compose modal)
+  useEffect(() => {
+    const fetchTasks = async () => {
+      // Reset tasks when no contacts
+      if (emailContacts.length === 0) {
+        setContactTasks([]);
+        return;
+      }
+
+      // Get contact IDs
+      const contactIds = emailContacts
+        .filter(p => p.contact?.contact_id)
+        .map(p => p.contact.contact_id);
+
+      if (contactIds.length === 0) {
+        setContactTasks([]);
+        return;
+      }
+
+      // Fetch tasks linked to contacts via task_contacts
+      const { data: taskContactsData, error: tcError } = await supabase
+        .from('task_contacts')
+        .select(`
+          task_id,
+          contact_id,
+          tasks(
+            task_id,
+            content,
+            description,
+            status,
+            priority,
+            due_date,
+            due_string,
+            todoist_id,
+            todoist_url,
+            todoist_project_name
+          )
+        `)
+        .in('contact_id', contactIds);
+
+      if (tcError) {
+        console.error('Error fetching task_contacts:', tcError);
+        return;
+      }
+
+      // Build contact tasks - only open tasks, excluding Birthdays project
+      const contactTasksMap = new Map();
+      if (taskContactsData) {
+        taskContactsData.forEach(tc => {
+          if (!tc.tasks || tc.tasks.status !== 'open') return;
+          // Skip Birthdays tasks (project name may include emoji)
+          if (tc.tasks.todoist_project_name?.includes('Birthdays')) return;
+          const taskId = tc.tasks.task_id;
+          if (!contactTasksMap.has(taskId)) {
+            contactTasksMap.set(taskId, {
+              ...tc.tasks,
+              contacts: []
+            });
+          }
+          const contact = emailContacts.find(p => p.contact?.contact_id === tc.contact_id);
+          if (contact) {
+            contactTasksMap.get(taskId).contacts.push({
+              contact_id: tc.contact_id,
+              name: contact.contact ? `${contact.contact.first_name} ${contact.contact.last_name}` : contact.name
+            });
+          }
+        });
+      }
+      setContactTasks(Array.from(contactTasksMap.values()));
+    };
+
+    fetchTasks();
+  }, [emailContacts]);
 
   // Fetch introductions linked to contacts
   useEffect(() => {
@@ -14673,6 +14785,7 @@ internet businesses.`;
                   contactDeals={contactDeals}
                   companyDeals={companyDeals}
                   setCreateDealAIOpen={setCreateDealAIOpen}
+                  setCreateDealModalOpen={setCreateDealModalOpen}
                   onDeleteDealContact={handleDeleteDealContact}
                   onUpdateDealStage={handleUpdateDealStage}
                   contactId={selectedRightPanelContactId}
@@ -14812,6 +14925,9 @@ internet businesses.`;
         // Deals props
         contactDeals={contactDeals}
         onUpdateDealStage={handleUpdateDealStage}
+        // Tasks props
+        contactTasks={contactTasks}
+        onCompleteTask={handleCompleteContactTask}
         // Task: switch to tasks tab
         setTaskModalOpen={() => setActiveActionTab('tasks')}
         // Create Deal AI modal
@@ -17376,6 +17492,28 @@ internet businesses.`;
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                  <button
+                    onClick={() => {
+                      setCreateDealModalOpen(false);
+                      setCreateDealAIOpen(true);
+                    }}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'light' ? '#8B5CF6' : '#8B5CF6'}`,
+                      background: 'transparent',
+                      color: '#8B5CF6',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 500,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <FaRobot size={14} />
+                    Crea con AI
+                  </button>
                   <button
                     onClick={() => setCreateDealModalOpen(false)}
                     style={{

@@ -260,6 +260,7 @@ const DealsTab = ({
   contactDeals,
   companyDeals,
   setCreateDealAIOpen,
+  setCreateDealModalOpen,
   onDeleteDealContact,
   onUpdateDealStage,
   contactId, // The contact to associate deals with
@@ -367,7 +368,7 @@ const DealsTab = ({
         </MenuButton>
         <MenuButton
           theme={theme}
-          onClick={() => setCreateDealAIOpen(true)}
+          onClick={() => setCreateDealModalOpen(true)}
         >
           <FaPlus size={12} /> Create New
         </MenuButton>

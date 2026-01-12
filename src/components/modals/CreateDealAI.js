@@ -580,7 +580,7 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
         if (contactData.phone) {
           await supabase.from('contact_mobiles').insert({
             contact_id: contactId,
-            mobile_number: contactData.phone,
+            mobile: contactData.phone,
             is_primary: true
           });
         }

@@ -676,6 +676,105 @@ const DealActionBtn = styled.button`
   }
 `;
 
+// Tasks section styles (similar to deals)
+const TasksSection = styled.div`
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const TasksSectionTitle = styled.div`
+  font-size: 12px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+`;
+
+const TaskCard = styled.div`
+  padding: 10px 12px;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  margin-bottom: 8px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const TaskCardHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+`;
+
+const TaskContent = styled.div`
+  font-size: 13px;
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  flex: 1;
+  line-height: 1.4;
+`;
+
+const TaskMeta = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+`;
+
+const TaskDueBadge = styled.span`
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  background: ${props => props.$overdue
+    ? '#FEE2E2'
+    : (props.theme === 'light' ? '#F3F4F6' : '#374151')};
+  color: ${props => props.$overdue
+    ? '#DC2626'
+    : (props.theme === 'light' ? '#374151' : '#D1D5DB')};
+`;
+
+const TaskProjectBadge = styled.span`
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  background: ${props => props.theme === 'light' ? '#EFF6FF' : '#1E3A5F'};
+  color: ${props => props.theme === 'light' ? '#1D4ED8' : '#93C5FD'};
+`;
+
+const TaskCompleteBtn = styled.button`
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #D1FAE5;
+  color: #059669;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: #A7F3D0;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
 // Helper to format file size
 const formatFileSize = (bytes) => {
   if (bytes === 0) return '0 B';
@@ -730,6 +829,9 @@ const ComposeEmailModal = ({
   // Deals props
   contactDeals = [],
   onUpdateDealStage = async () => {},
+  // Tasks props
+  contactTasks = [],
+  onCompleteTask = async () => {},
   // Task modal
   setTaskModalOpen = () => {},
   // Create Deal AI modal
@@ -742,6 +844,8 @@ const ComposeEmailModal = ({
 
   // Track which deals are being updated
   const [updatingDeals, setUpdatingDeals] = useState({});
+  // Track which tasks are being completed
+  const [completingTasks, setCompletingTasks] = useState({});
 
   // Status checkbox state (mutually exclusive: null, 'need_actions', 'waiting_input')
   // Using both state (for visual) and ref (for reliable access in callbacks)
@@ -765,6 +869,18 @@ const ComposeEmailModal = ({
   const [newTemplateText, setNewTemplateText] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
   const templateDropdownRef = useRef(null);
+
+  // Task association modal state
+  const [taskAssociateModalOpen, setTaskAssociateModalOpen] = useState(false);
+  const [taskSearch, setTaskSearch] = useState('');
+  const [availableTasks, setAvailableTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [selectedTaskToAssociate, setSelectedTaskToAssociate] = useState(null);
+  const [associatingTask, setAssociatingTask] = useState(false);
+  const [createTaskMode, setCreateTaskMode] = useState(false);
+  const [newTaskContent, setNewTaskContent] = useState('');
+  const [newTaskDueString, setNewTaskDueString] = useState('');
+  const [creatingTask, setCreatingTask] = useState(false);
 
   // Fetch templates from Supabase
   const fetchTemplates = useCallback(async (searchTerm = '') => {
@@ -870,6 +986,190 @@ const ComposeEmailModal = ({
     setNewTemplateText(draftPart || '');
     setAddTemplateModalOpen(true);
     setTemplateDropdownOpen(false);
+  };
+
+  // === Task Association Modal Functions ===
+
+  // Get contact IDs from composeTo
+  const getToContactIds = useCallback(() => {
+    return composeTo
+      .filter(recipient => recipient.contact_id)
+      .map(recipient => recipient.contact_id);
+  }, [composeTo]);
+
+  // Fetch available tasks (open tasks, excluding Birthdays)
+  const fetchAvailableTasks = useCallback(async (searchTerm = '') => {
+    setTasksLoading(true);
+    try {
+      let query = supabase
+        .from('tasks')
+        .select('task_id, content, description, due_date, due_string, priority, todoist_project_name, todoist_id')
+        .eq('status', 'open')
+        .order('due_date', { ascending: true, nullsFirst: false });
+
+      if (searchTerm.trim()) {
+        query = query.or(`content.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      }
+
+      const { data, error } = await query.limit(50);
+
+      if (error) throw error;
+
+      // Filter out Birthdays tasks
+      const filtered = (data || []).filter(t => !t.todoist_project_name?.includes('Birthdays'));
+      setAvailableTasks(filtered);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+      toast.error('Failed to load tasks');
+    }
+    setTasksLoading(false);
+  }, []);
+
+  // Search tasks with debounce
+  useEffect(() => {
+    if (taskAssociateModalOpen) {
+      const debounce = setTimeout(() => {
+        fetchAvailableTasks(taskSearch);
+      }, 200);
+      return () => clearTimeout(debounce);
+    }
+  }, [taskSearch, taskAssociateModalOpen, fetchAvailableTasks]);
+
+  // Open task association modal
+  const openTaskAssociateModal = () => {
+    setTaskAssociateModalOpen(true);
+    setTaskSearch('');
+    setSelectedTaskToAssociate(null);
+    setCreateTaskMode(false);
+    setNewTaskContent('');
+    setNewTaskDueString('');
+    fetchAvailableTasks();
+  };
+
+  // Associate selected task with TO contacts
+  const handleAssociateTaskWithContacts = async () => {
+    if (!selectedTaskToAssociate) {
+      toast.error('Please select a task');
+      return;
+    }
+
+    const contactIds = getToContactIds();
+    if (contactIds.length === 0) {
+      toast.error('No contacts with CRM records in TO field');
+      return;
+    }
+
+    setAssociatingTask(true);
+    try {
+      // Get existing links
+      const { data: existingLinks } = await supabase
+        .from('task_contacts')
+        .select('contact_id')
+        .eq('task_id', selectedTaskToAssociate.task_id);
+
+      const existingContactIds = existingLinks?.map(l => l.contact_id) || [];
+
+      // Only insert new links
+      const newContactIds = contactIds.filter(id => !existingContactIds.includes(id));
+
+      if (newContactIds.length === 0) {
+        toast.success('Contacts already linked to this task');
+        setTaskAssociateModalOpen(false);
+        return;
+      }
+
+      const links = newContactIds.map(contactId => ({
+        task_id: selectedTaskToAssociate.task_id,
+        contact_id: contactId
+      }));
+
+      const { error } = await supabase
+        .from('task_contacts')
+        .insert(links);
+
+      if (error) throw error;
+
+      toast.success(`${newContactIds.length} contact(s) linked to task`);
+      setTaskAssociateModalOpen(false);
+    } catch (error) {
+      console.error('Error associating task:', error);
+      toast.error('Failed to associate task');
+    }
+    setAssociatingTask(false);
+  };
+
+  // Create new task and associate with TO contacts
+  const handleCreateAndAssociateTask = async () => {
+    if (!newTaskContent.trim()) {
+      toast.error('Task content is required');
+      return;
+    }
+
+    const contactIds = getToContactIds();
+    if (contactIds.length === 0) {
+      toast.error('No contacts with CRM records in TO field');
+      return;
+    }
+
+    setCreatingTask(true);
+    try {
+      // Create task in Supabase
+      const taskData = {
+        content: newTaskContent.trim(),
+        due_string: newTaskDueString || null,
+        status: 'open',
+        priority: 1,
+        created_at: new Date().toISOString()
+      };
+
+      // Parse due_string to due_date if it looks like a date
+      if (newTaskDueString) {
+        const dateMatch = newTaskDueString.match(/^\d{4}-\d{2}-\d{2}$/);
+        if (dateMatch) {
+          taskData.due_date = newTaskDueString;
+        }
+      }
+
+      const { data: newTask, error: taskError } = await supabase
+        .from('tasks')
+        .insert(taskData)
+        .select()
+        .single();
+
+      if (taskError) throw taskError;
+
+      // Link to contacts
+      const links = contactIds.map(contactId => ({
+        task_id: newTask.task_id,
+        contact_id: contactId
+      }));
+
+      const { error: linkError } = await supabase
+        .from('task_contacts')
+        .insert(links);
+
+      if (linkError) throw linkError;
+
+      toast.success(`Task created and linked to ${contactIds.length} contact(s)`);
+      setTaskAssociateModalOpen(false);
+      setCreateTaskMode(false);
+      setNewTaskContent('');
+      setNewTaskDueString('');
+    } catch (error) {
+      console.error('Error creating task:', error);
+      toast.error('Failed to create task');
+    }
+    setCreatingTask(false);
+  };
+
+  // Get priority color
+  const getPriorityColor = (p) => {
+    switch (p) {
+      case 4: return '#dc3545';
+      case 3: return '#fd7e14';
+      case 2: return '#ffc107';
+      default: return '#6c757d';
+    }
   };
 
   // Scroll chat to bottom when new messages arrive
@@ -1276,7 +1576,7 @@ ${draftPart}`;
                 {/* Tasks Button */}
                 <button
                   type="button"
-                  onClick={() => setTaskModalOpen(true)}
+                  onClick={openTaskAssociateModal}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1442,6 +1742,67 @@ ${draftPart}`;
                   </DealsSection>
                 );
               })()}
+
+              {/* Related Open Tasks Section */}
+              {contactTasks.length > 0 && (
+                <TasksSection theme={theme}>
+                  <TasksSectionTitle theme={theme}>
+                    <FaTasks size={12} style={{ color: '#3B82F6' }} />
+                    Related Open Tasks ({contactTasks.length})
+                  </TasksSectionTitle>
+                  {contactTasks.map(task => {
+                    // Check if task is overdue
+                    const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+                    // Format due date
+                    const formatDueDate = (dateStr) => {
+                      if (!dateStr) return null;
+                      const date = new Date(dateStr);
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const tomorrow = new Date(today);
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      const taskDate = new Date(date);
+                      taskDate.setHours(0, 0, 0, 0);
+
+                      if (taskDate.getTime() === today.getTime()) return 'Today';
+                      if (taskDate.getTime() === tomorrow.getTime()) return 'Tomorrow';
+                      return date.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
+                    };
+
+                    return (
+                      <TaskCard key={task.task_id} theme={theme}>
+                        <TaskCardHeader>
+                          <TaskContent theme={theme}>
+                            {task.content}
+                          </TaskContent>
+                          <TaskCompleteBtn
+                            disabled={completingTasks[task.task_id]}
+                            onClick={async () => {
+                              setCompletingTasks(prev => ({ ...prev, [task.task_id]: true }));
+                              await onCompleteTask(task.task_id, task.todoist_id);
+                              setCompletingTasks(prev => ({ ...prev, [task.task_id]: false }));
+                            }}
+                          >
+                            {completingTasks[task.task_id] ? '...' : 'Mark as Done'}
+                          </TaskCompleteBtn>
+                        </TaskCardHeader>
+                        <TaskMeta>
+                          {(task.due_date || task.due_string) && (
+                            <TaskDueBadge theme={theme} $overdue={isOverdue}>
+                              {task.due_string || formatDueDate(task.due_date)}
+                            </TaskDueBadge>
+                          )}
+                          {task.todoist_project_name && (
+                            <TaskProjectBadge theme={theme}>
+                              {task.todoist_project_name}
+                            </TaskProjectBadge>
+                          )}
+                        </TaskMeta>
+                      </TaskCard>
+                    );
+                  })}
+                </TasksSection>
+              )}
             </FormField>
           </ComposeColumn>
 
@@ -1669,6 +2030,389 @@ ${draftPart}`;
             </AddTemplateFooter>
           </AddTemplateModalContent>
         </AddTemplateModalOverlay>
+      )}
+
+      {/* Task Association Modal */}
+      {taskAssociateModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+          }}
+          onClick={() => setTaskAssociateModalOpen(false)}
+        >
+          <div
+            style={{
+              background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+              borderRadius: '12px',
+              width: '550px',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '12px',
+              }}>
+                <div>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                  }}>
+                    {createTaskMode ? 'Create New Task' : 'Link Task to Contacts'}
+                  </h3>
+                  <p style={{
+                    margin: '4px 0 0 0',
+                    fontSize: '12px',
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                  }}>
+                    {createTaskMode
+                      ? `Task will be linked to: ${composeTo.map(r => r.name || r.email).join(', ')}`
+                      : `Select a task to link with: ${composeTo.map(r => r.name || r.email).join(', ')}`
+                    }
+                  </p>
+                </div>
+                <button
+                  onClick={() => setTaskAssociateModalOpen(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '20px',
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                    cursor: 'pointer',
+                    padding: '4px',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {!createTaskMode && (
+                <input
+                  type="text"
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  placeholder="Search tasks..."
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '13px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              )}
+            </div>
+
+            {/* Modal Body */}
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+              padding: '12px 20px',
+              minHeight: '200px',
+              maxHeight: '400px',
+            }}>
+              {createTaskMode ? (
+                /* Create Task Form */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      marginBottom: '6px',
+                    }}>
+                      Task Content *
+                    </label>
+                    <input
+                      type="text"
+                      value={newTaskContent}
+                      onChange={(e) => setNewTaskContent(e.target.value)}
+                      placeholder="What needs to be done?"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '14px',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      marginBottom: '6px',
+                    }}>
+                      Due Date
+                    </label>
+                    <input
+                      type="text"
+                      value={newTaskDueString}
+                      onChange={(e) => setNewTaskDueString(e.target.value)}
+                      placeholder="e.g., tomorrow, next monday, 2024-12-31"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      {['today', 'tomorrow', 'friday', 'next week'].map(date => (
+                        <button
+                          key={date}
+                          type="button"
+                          onClick={() => setNewTaskDueString(date)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '4px',
+                            border: `1px solid ${newTaskDueString === date ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
+                            background: newTaskDueString === date
+                              ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
+                              : (theme === 'dark' ? '#374151' : '#F9FAFB'),
+                            color: newTaskDueString === date
+                              ? '#3B82F6'
+                              : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {date}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : tasksLoading ? (
+                <div style={{
+                  padding: '40px',
+                  textAlign: 'center',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                }}>
+                  Loading tasks...
+                </div>
+              ) : availableTasks.length === 0 ? (
+                <div style={{
+                  padding: '40px',
+                  textAlign: 'center',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                }}>
+                  {taskSearch ? `No tasks match "${taskSearch}"` : 'No open tasks available'}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {availableTasks.map(task => (
+                    <div
+                      key={task.task_id}
+                      onClick={() => setSelectedTaskToAssociate(task)}
+                      style={{
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: `2px solid ${selectedTaskToAssociate?.task_id === task.task_id ? '#10B981' : (theme === 'dark' ? '#374151' : '#E5E7EB')}`,
+                        background: selectedTaskToAssociate?.task_id === task.task_id
+                          ? (theme === 'dark' ? '#064E3B' : '#D1FAE5')
+                          : (theme === 'dark' ? '#374151' : '#F9FAFB'),
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{
+                        fontWeight: 500,
+                        fontSize: '13px',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      }}>
+                        {task.content}
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        gap: '8px',
+                        marginTop: '6px',
+                        flexWrap: 'wrap',
+                      }}>
+                        {task.due_string && (
+                          <span style={{
+                            fontSize: '11px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: task.due_date && new Date(task.due_date) < new Date()
+                              ? '#FEE2E2'
+                              : (theme === 'dark' ? '#1F2937' : '#E5E7EB'),
+                            color: task.due_date && new Date(task.due_date) < new Date()
+                              ? '#DC2626'
+                              : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                          }}>
+                            {task.due_string}
+                          </span>
+                        )}
+                        {task.todoist_project_name && (
+                          <span style={{
+                            fontSize: '11px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: theme === 'dark' ? '#1F2937' : '#E5E7EB',
+                            color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                          }}>
+                            {task.todoist_project_name}
+                          </span>
+                        )}
+                        <span style={{
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: `${getPriorityColor(task.priority)}20`,
+                          color: getPriorityColor(task.priority),
+                        }}>
+                          P{task.priority}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '16px 20px',
+              borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div>
+                {!createTaskMode && (
+                  <button
+                    onClick={() => setCreateTaskMode(true)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: 'transparent',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <FaPlus size={10} />
+                    Create New Task
+                  </button>
+                )}
+                {createTaskMode && (
+                  <button
+                    onClick={() => setCreateTaskMode(false)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: 'transparent',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ← Back to Search
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setTaskAssociateModalOpen(false)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: 'transparent',
+                    color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                {createTaskMode ? (
+                  <button
+                    onClick={handleCreateAndAssociateTask}
+                    disabled={creatingTask || !newTaskContent.trim()}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: (creatingTask || !newTaskContent.trim()) ? (theme === 'dark' ? '#374151' : '#E5E7EB') : '#10B981',
+                      color: (creatingTask || !newTaskContent.trim()) ? (theme === 'dark' ? '#6B7280' : '#9CA3AF') : '#FFFFFF',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: (creatingTask || !newTaskContent.trim()) ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {creatingTask ? 'Creating...' : 'Create & Link'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleAssociateTaskWithContacts}
+                    disabled={associatingTask || !selectedTaskToAssociate}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: (associatingTask || !selectedTaskToAssociate) ? (theme === 'dark' ? '#374151' : '#E5E7EB') : '#10B981',
+                      color: (associatingTask || !selectedTaskToAssociate) ? (theme === 'dark' ? '#6B7280' : '#9CA3AF') : '#FFFFFF',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: (associatingTask || !selectedTaskToAssociate) ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {associatingTask ? 'Linking...' : 'Link Task'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </ModalOverlay>
   );

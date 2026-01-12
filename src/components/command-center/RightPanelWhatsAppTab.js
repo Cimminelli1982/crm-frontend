@@ -188,9 +188,13 @@ const RightPanelWhatsAppTab = ({
           source: 'inbox'
         }));
 
-        // 2. Archived messages from interactions (if chat_id exists)
+        // 2. Archived messages from interactions (only for linked chats with real UUID)
+        // Inbox chats have external IDs (not UUIDs), so skip interaction query for them
         let archivedMessages = [];
-        if (selectedChat.chat_id) {
+        const isValidUUID = selectedChat.chat_id &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedChat.chat_id);
+
+        if (isValidUUID) {
           const { data } = await supabase
             .from('interactions')
             .select('interaction_id, direction, interaction_date, summary')
@@ -273,8 +277,9 @@ ${input.trim()}`
   const handleSend = async () => {
     if (!input.trim() || sending) return;
 
-    // Use baileys_jid or chat_jid (from inbox)
-    let jid = selectedChat?.baileys_jid || selectedChat?.chat_jid;
+    // Only use baileys_jid from linked chats (which have real WhatsApp JIDs)
+    // chat_jid from inbox contains TimelinesAI external IDs, not real JIDs
+    let jid = selectedChat?.baileys_jid;
     const isGroup = selectedChat?.is_group_chat;
     // For phone, prefer contact_number from chat, fallback to mobiles
     const phone = selectedChat?.contact_number || (mobiles.length > 0 ? mobiles[0].mobile : null);
@@ -296,10 +301,10 @@ ${input.trim()}`
 
         if (searchData.success && searchData.jid) {
           jid = searchData.jid;
-          // Update local state for future sends
-          setSelectedChat(prev => ({ ...prev, baileys_jid: jid, chat_jid: jid }));
+          // Update local state for future sends (only baileys_jid, not chat_jid)
+          setSelectedChat(prev => ({ ...prev, baileys_jid: jid }));
           setChats(prev => prev.map(c =>
-            c.id === selectedChat.id ? { ...c, baileys_jid: jid, chat_jid: jid } : c
+            c.id === selectedChat.id ? { ...c, baileys_jid: jid } : c
           ));
         } else {
           toast.error('Could not find group in WhatsApp');
