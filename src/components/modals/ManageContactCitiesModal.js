@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
+import { getCountryFlag } from '../../utils/countryFlags';
 
 // Styled Components
 const ModalHeader = styled.div`
@@ -458,7 +459,7 @@ const ManageContactCitiesModal = ({
           <ItemsList>
             {contactCities.map((cityRelation, index) => (
               <ItemTag key={index} theme={theme}>
-                <span>{cityRelation.cities?.name || 'Unknown City'}</span>
+                <span>{getCountryFlag(cityRelation.cities?.country)} {cityRelation.cities?.name || 'Unknown City'}</span>
                 <RemoveButton
                   theme={theme}
                   onClick={() => handleRemoveCity(cityRelation)}
@@ -495,10 +496,7 @@ const ManageContactCitiesModal = ({
                   onClick={() => handleAddCity(suggestion)}
                   disabled={loading}
                 >
-                  {suggestion.name}
-                  {suggestion.country && suggestion.country !== 'Unknown' && (
-                    <span style={{ opacity: 0.7 }}> • {suggestion.country}</span>
-                  )}
+                  {getCountryFlag(suggestion.country)} {suggestion.name}
                 </SuggestionItem>
               ))}
               {suggestions.length === 0 && searchTerm.length >= 2 && (

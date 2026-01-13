@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
   FaRocket, FaBuilding, FaLinkedin, FaGlobe, FaTag,
-  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaClone, FaSyncAlt, FaUnlink
+  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaClone, FaSyncAlt, FaUnlink, FaCheck
 } from 'react-icons/fa';
+import { getCountryFlag } from '../../utils/countryFlags';
 
 // Company category options
 const COMPANY_CATEGORIES = [
@@ -54,7 +55,8 @@ const CompanyDetailsTab = ({
   onAssociateCompany,
   onDuplicates,
   onRefresh,
-  onRemoveAssociation
+  onRemoveAssociation,
+  onMarkComplete
 }) => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
@@ -366,6 +368,28 @@ const CompanyDetailsTab = ({
               Edit
             </button>
           )}
+          {onMarkComplete && (
+            <button
+              onClick={onMarkComplete}
+              title="Mark company as complete"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: 'none',
+                background: theme === 'dark' ? '#059669' : '#10B981',
+                color: '#FFFFFF',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaCheck size={9} />
+              Complete!
+            </button>
+          )}
           {onRemoveAssociation && (
             <button
               onClick={onRemoveAssociation}
@@ -666,7 +690,7 @@ const CompanyDetailsTab = ({
                       color: theme === 'dark' ? '#FCD34D' : '#92400E'
                     }}
                   >
-                    {c.name || c.cities?.name || 'Unknown'}{(c.country || c.cities?.country) ? `, ${c.country || c.cities?.country}` : ''}
+                    {getCountryFlag(c.country || c.cities?.country)} {c.name || c.cities?.name || 'Unknown'}
                   </span>
                 ))
               )}

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
   FaRocket, FaEnvelope, FaWhatsapp, FaBuilding, FaTag,
   FaLinkedin, FaSearch, FaEdit, FaMapMarkerAlt, FaChevronDown, FaChevronUp, FaList, FaPlus,
-  FaShieldAlt, FaSyncAlt
+  FaShieldAlt, FaSyncAlt, FaCheck
 } from 'react-icons/fa';
+import { getCountryFlag } from '../../utils/countryFlags';
 
 // Contact category options
 const CONTACT_CATEGORIES = [
@@ -78,6 +79,7 @@ const ContactDetailsTab = ({
   loading = false,
   completenessScore,
   onEdit,
+  onMarkComplete,
   onCheck,
   onRefresh,
   onOpenProfileImageModal,
@@ -262,6 +264,28 @@ const ContactDetailsTab = ({
             >
               <FaEdit size={9} />
               Edit
+            </button>
+          )}
+          {onMarkComplete && (
+            <button
+              onClick={onMarkComplete}
+              title="Mark contact as complete"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: 'none',
+                background: theme === 'dark' ? '#059669' : '#10B981',
+                color: '#FFFFFF',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaCheck size={9} />
+              Complete!
             </button>
           )}
           {onCheck && (
@@ -914,7 +938,7 @@ const ContactDetailsTab = ({
                     color: theme === 'dark' ? '#F9FAFB' : '#111827'
                   }}
                 >
-                  {c.name || c.cities?.name}{(c.country || c.cities?.country) ? `, ${c.country || c.cities?.country}` : ''}
+                  {getCountryFlag(c.country || c.cities?.country)} {c.name || c.cities?.name}
                 </span>
               ))}
             </div>

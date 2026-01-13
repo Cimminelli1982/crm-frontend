@@ -14709,6 +14709,27 @@ internet businesses.`;
                       setDataIntegrityModalOpen(true);
                     }
                   }}
+                  onMarkComplete={async () => {
+                    if (!selectedRightPanelContactId) return;
+
+                    try {
+                      const { error } = await supabase
+                        .from('contacts')
+                        .update({ show_missing: false })
+                        .eq('contact_id', selectedRightPanelContactId);
+
+                      if (error) throw error;
+
+                      const contactName = `${rightPanelContactDetails?.contact?.first_name || ''} ${rightPanelContactDetails?.contact?.last_name || ''}`.trim() || 'Contact';
+                      toast.success(`${contactName} marked as complete!`);
+
+                      // Refresh
+                      rightPanelContactDetails?.refetch?.();
+                    } catch (err) {
+                      console.error('Error marking contact as complete:', err);
+                      toast.error('Failed to mark contact as complete');
+                    }
+                  }}
                   onManageEmails={() => {
                     if (rightPanelContactDetails?.contact) {
                       setContactForManageModal(rightPanelContactDetails.contact);
@@ -14825,6 +14846,28 @@ internet businesses.`;
                     if (rightPanelCompanyDetails?.company && selectedRightPanelCompanyId) {
                       setCompanyMergeCompany({ ...rightPanelCompanyDetails.company, company_id: selectedRightPanelCompanyId });
                       setCompanyMergeModalOpen(true);
+                    }
+                  }}
+                  onMarkComplete={async () => {
+                    if (!selectedRightPanelCompanyId) return;
+
+                    try {
+                      const { error } = await supabase
+                        .from('companies')
+                        .update({ show_missing: false })
+                        .eq('company_id', selectedRightPanelCompanyId);
+
+                      if (error) throw error;
+
+                      const companyName = rightPanelCompanyDetails?.company?.name || 'Company';
+                      toast.success(`${companyName} marked as complete!`);
+
+                      // Refresh
+                      rightPanelContactDetails?.refetch?.();
+                      setRightPanelCompanyRefreshKey(k => k + 1);
+                    } catch (err) {
+                      console.error('Error marking company as complete:', err);
+                      toast.error('Failed to mark company as complete');
                     }
                   }}
                   onRemoveAssociation={async () => {
@@ -15044,6 +15087,8 @@ internet businesses.`;
         setTaskModalOpen={() => setActiveActionTab('tasks')}
         // Create Deal AI modal
         setCreateDealAIOpen={setCreateDealAIOpen}
+        // Create Deal manual modal
+        setCreateDealModalOpen={setCreateDealModalOpen}
       />
 
       {/* Quick Edit Modal */}
@@ -16586,6 +16631,14 @@ internet businesses.`;
           }
           // Also refresh data integrity lists
           fetchDataIntegrity();
+          // Refresh right panel company details if this company is currently displayed
+          if (companyDataIntegrityCompanyId && companyDataIntegrityCompanyId === selectedRightPanelCompanyId) {
+            setRightPanelCompanyRefreshKey(k => k + 1);
+          }
+          // Also refresh contact details to update company info
+          if (rightPanelContactDetails?.refetch) {
+            rightPanelContactDetails.refetch();
+          }
         }}
       />
 

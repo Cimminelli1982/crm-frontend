@@ -11,6 +11,7 @@ import {
 } from 'react-icons/fa';
 import { FiRefreshCw } from 'react-icons/fi';
 import CompanyEnrichmentModal from './CompanyEnrichmentModal';
+import { getCountryFlag } from '../../utils/countryFlags';
 
 // Styled Components
 const Overlay = styled.div`
@@ -1966,6 +1967,8 @@ const CompanyDataIntegrityModal = ({
                             const cityData = c.cities || c;
                             const cityId = cityData.city_id;
                             const cityName = cityData.name || 'Unknown';
+                            const cityCountry = cityData.country;
+                            const flag = getCountryFlag(cityCountry);
                             return (
                               <div
                                 key={cityId}
@@ -1981,7 +1984,7 @@ const CompanyDataIntegrityModal = ({
                                   color: theme === 'light' ? '#92400E' : '#FDE68A'
                                 }}
                               >
-                                <FaMapMarkerAlt size={10} />
+                                {flag || <FaMapMarkerAlt size={10} />}
                                 {cityName}
                                 <button
                                   onClick={() => handleRemoveCity(cityId)}
@@ -2050,7 +2053,7 @@ const CompanyDataIntegrityModal = ({
                                 onMouseEnter={e => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#4B5563'}
                                 onMouseLeave={e => e.target.style.background = 'transparent'}
                               >
-                                {suggestion.name}{suggestion.country && ` (${suggestion.country})`}
+                                {getCountryFlag(suggestion.country)} {suggestion.name}
                               </div>
                             ))}
                           </div>
