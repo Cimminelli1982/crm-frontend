@@ -271,7 +271,7 @@ const DealsTab = ({
   const [allDeals, setAllDeals] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDeal, setSelectedDeal] = useState(null);
-  const [relationship, setRelationship] = useState('founder');
+  const [relationship, setRelationship] = useState('proposer');
   const [associating, setAssociating] = useState(false);
   const [loadingDeals, setLoadingDeals] = useState(false);
 
@@ -445,10 +445,10 @@ const DealsTab = ({
                 value={relationship}
                 onChange={(e) => setRelationship(e.target.value)}
               >
-                <option value="founder">Founder</option>
-                <option value="investor">Investor</option>
+                <option value="proposer">Proposer</option>
+                <option value="introducer">Introducer</option>
+                <option value="co-investor">Co-investor</option>
                 <option value="advisor">Advisor</option>
-                <option value="employee">Employee</option>
                 <option value="other">Other</option>
               </RelationshipSelect>
 
