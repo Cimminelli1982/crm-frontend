@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   FaRocket, FaBuilding, FaLinkedin, FaGlobe, FaTag,
-  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaClone, FaSyncAlt
+  FaMapMarkerAlt, FaUsers, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaClone, FaSyncAlt, FaUnlink
 } from 'react-icons/fa';
 
 // Company category options
@@ -53,7 +53,8 @@ const CompanyDetailsTab = ({
   onEdit,
   onAssociateCompany,
   onDuplicates,
-  onRefresh
+  onRefresh,
+  onRemoveAssociation
 }) => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
@@ -363,6 +364,28 @@ const CompanyDetailsTab = ({
             >
               <FaEdit size={9} />
               Edit
+            </button>
+          )}
+          {onRemoveAssociation && (
+            <button
+              onClick={onRemoveAssociation}
+              title="Remove association with this company"
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                color: theme === 'dark' ? '#EF4444' : '#DC2626',
+                fontSize: '10px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <FaUnlink size={9} />
+              Remove
             </button>
           )}
           {onDuplicates && (
