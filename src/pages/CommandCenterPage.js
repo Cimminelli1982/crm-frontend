@@ -86,7 +86,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList, FaSyncAlt } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarAlt, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList, FaSyncAlt } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -146,18 +146,20 @@ import RightPanelWhatsAppTab from '../components/command-center/RightPanelWhatsA
 import RightPanelEmailTab from '../components/command-center/RightPanelEmailTab';
 import RelatedTab from '../components/command-center/RelatedTab';
 import FilesTab from '../components/command-center/FilesTab';
+import CalendarPanelTab from '../components/command-center/CalendarPanelTab';
 import useContactDetails from '../hooks/useContactDetails';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
 
 
-// Helper to sanitize email HTML - removes cid: image references that can't be displayed
+/// Helper to sanitize email HTML - removes cid: image references and opens links in new tab
 const sanitizeEmailHtml = (html) => {
   if (!html) return html;
   return html
     .replace(/<img[^>]*src=["']cid:[^"']*["'][^>]*>/gi, '')
-    .replace(/src=["']cid:[^"']*["']/gi, 'src=""');
+    .replace(/src=["']cid:[^"']*["']/gi, 'src=""')
+    .replace(/<a\s+(?![^>]*target=)/gi, '<a target="_blank" rel="noopener noreferrer" ');
 };
 
 // Main Component
@@ -8262,12 +8264,12 @@ internet businesses.`;
     { id: 'email', label: 'Email', icon: FaEnvelope, count: filterByStatus(threads, 'inbox').length + filterByStatus(threads, 'need_actions').length, hasUnread: hasInboxEmails },
     { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: filterByStatus(whatsappChats, 'inbox').length + filterByStatus(whatsappChats, 'need_actions').length, hasUnread: hasInboxWhatsapp },
     { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'needReview').length, hasUnread: hasInboxCalendar },
+    { id: 'tasks', label: 'Tasks', icon: FaTasks, count: 0, hasUnread: false },
     { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
     { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
     { id: 'introductions', label: 'Introductions', icon: FaHandshake, count: filterIntroductionsBySection(introductionsList, 'inbox').length, hasUnread: filterIntroductionsBySection(introductionsList, 'inbox').length > 0 },
     { id: 'notes', label: 'Notes', icon: FaStickyNote, count: 0, hasUnread: false },
     { id: 'lists', label: 'Lists', icon: FaList, count: 0, hasUnread: false },
-    { id: 'tasks', label: 'Tasks', icon: FaTasks, count: 0, hasUnread: false },
   ];
 
   return (
@@ -8305,6 +8307,19 @@ internet businesses.`;
             {!listCollapsed && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span>Messages</span>
+                {activeTab === 'email' && (
+                  <FaSyncAlt
+                    size={12}
+                    onClick={() => refreshThreads()}
+                    style={{
+                      cursor: 'pointer',
+                      opacity: threadsLoading ? 0.5 : 0.6,
+                      animation: threadsLoading ? 'spin 1s linear infinite' : 'none',
+                      transition: 'opacity 0.2s',
+                    }}
+                    title="Refresh Emails"
+                  />
+                )}
                 {activeTab === 'whatsapp' && (
                   <FaSyncAlt
                     size={12}
@@ -12856,6 +12871,7 @@ internet businesses.`;
                           <!DOCTYPE html>
                           <html>
                           <head>
+                            <base target="_blank">
                             <style>
                               body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: ${theme === 'light' ? '#374151' : '#D1D5DB'}; background: transparent; }
                               img { max-width: 100%; height: auto; }
@@ -13067,6 +13083,26 @@ internet businesses.`;
                 style={{ maxWidth: '200px', maxHeight: '200px' }}
               />
               <div style={{ fontSize: '18px', fontWeight: 600, color: '#10B981' }}>Inbox Zero!</div>
+              <button
+                onClick={openNewCompose}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: theme === 'light' ? '#10B981' : '#059669',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <FaEnvelope size={14} />
+                New Email
+              </button>
             </EmptyState>
           ) : (
             <EmptyState theme={theme}>Select a thread to view</EmptyState>
@@ -13158,6 +13194,9 @@ internet businesses.`;
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'email'} onClick={() => setActiveActionTab('email')} title="Send Email" style={{ color: activeActionTab === 'email' ? '#3B82F6' : undefined }}>
                     <FaEnvelope />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'calendarPanel'} onClick={() => setActiveActionTab('calendarPanel')} title="Calendar View" style={{ color: activeActionTab === 'calendarPanel' ? '#F59E0B' : undefined }}>
+                    <FaCalendarAlt />
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
                     <FaRobot />
@@ -15212,6 +15251,10 @@ internet businesses.`;
                   contactId={selectedRightPanelContactId}
                   contact={rightPanelContactDetails}
                 />
+              )}
+
+              {activeActionTab === 'calendarPanel' && (
+                <CalendarPanelTab theme={theme} />
               )}
 
             </>
