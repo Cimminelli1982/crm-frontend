@@ -349,6 +349,12 @@ const CommandCenterPage = ({ theme }) => {
   const [selectedRightPanelContactId, setSelectedRightPanelContactId] = useState(null);
   const [selectedListMember, setSelectedListMember] = useState(null); // From ListsTab
   const [tasksLinkedContacts, setTasksLinkedContacts] = useState([]); // From TasksFullTab
+  const [tasksLinkedChats, setTasksLinkedChats] = useState([]); // From TasksFullTab - linked WhatsApp chats
+  const [tasksLinkedCompanies, setTasksLinkedCompanies] = useState([]); // From TasksFullTab - linked companies
+  const [tasksLinkedDeals, setTasksLinkedDeals] = useState([]); // From TasksFullTab - linked deals
+  const [tasksChatContacts, setTasksChatContacts] = useState([]); // Contacts from linked chats
+  const [tasksCompanyContacts, setTasksCompanyContacts] = useState([]); // Contacts from linked companies
+  const [tasksDealsContacts, setTasksDealsContacts] = useState([]); // Contacts from linked deals
 
   // Right panel company selector state (for CompanyDetailsTab)
   const [selectedRightPanelCompanyId, setSelectedRightPanelCompanyId] = useState(null);
@@ -706,6 +712,117 @@ const CommandCenterPage = ({ theme }) => {
     fetchCompanyDetails();
   }, [selectedRightPanelCompanyId, rightPanelCompanyRefreshKey]);
 
+  // Fetch contacts from task-linked chats
+  useEffect(() => {
+    const fetchChatContacts = async () => {
+      if (activeTab !== 'tasks' || tasksLinkedChats.length === 0) {
+        setTasksChatContacts([]);
+        return;
+      }
+
+      try {
+        const chatIds = tasksLinkedChats.map(c => c.id);
+        const { data, error } = await supabase
+          .from('contact_chats')
+          .select('contact_id, contacts(contact_id, first_name, last_name, profile_image_url, show_missing)')
+          .in('chat_id', chatIds);
+
+        if (error) throw error;
+
+        // Deduplicate contacts
+        const uniqueContacts = [];
+        const seen = new Set();
+        (data || []).forEach(cc => {
+          if (cc.contacts && !seen.has(cc.contacts.contact_id)) {
+            seen.add(cc.contacts.contact_id);
+            uniqueContacts.push(cc.contacts);
+          }
+        });
+
+        setTasksChatContacts(uniqueContacts);
+      } catch (err) {
+        console.error('Error fetching chat contacts:', err);
+        setTasksChatContacts([]);
+      }
+    };
+
+    fetchChatContacts();
+  }, [activeTab, tasksLinkedChats]);
+
+  // Fetch contacts from task-linked companies
+  useEffect(() => {
+    const fetchCompanyContacts = async () => {
+      if (activeTab !== 'tasks' || tasksLinkedCompanies.length === 0) {
+        setTasksCompanyContacts([]);
+        return;
+      }
+
+      try {
+        const companyIds = tasksLinkedCompanies.map(c => c.company_id);
+        const { data, error } = await supabase
+          .from('contact_companies')
+          .select('contact_id, contacts(contact_id, first_name, last_name, profile_image_url, show_missing)')
+          .in('company_id', companyIds);
+
+        if (error) throw error;
+
+        // Deduplicate contacts
+        const uniqueContacts = [];
+        const seen = new Set();
+        (data || []).forEach(cc => {
+          if (cc.contacts && !seen.has(cc.contacts.contact_id)) {
+            seen.add(cc.contacts.contact_id);
+            uniqueContacts.push(cc.contacts);
+          }
+        });
+
+        setTasksCompanyContacts(uniqueContacts);
+      } catch (err) {
+        console.error('Error fetching company contacts:', err);
+        setTasksCompanyContacts([]);
+      }
+    };
+
+    fetchCompanyContacts();
+  }, [activeTab, tasksLinkedCompanies]);
+
+  // Fetch contacts from task-linked deals
+  useEffect(() => {
+    const fetchDealsContacts = async () => {
+      if (activeTab !== 'tasks' || tasksLinkedDeals.length === 0) {
+        setTasksDealsContacts([]);
+        return;
+      }
+
+      try {
+        const dealIds = tasksLinkedDeals.map(d => d.deal_id);
+        const { data, error } = await supabase
+          .from('deals_contacts')
+          .select('contact_id, contacts(contact_id, first_name, last_name, profile_image_url, show_missing)')
+          .in('deal_id', dealIds);
+
+        if (error) throw error;
+
+        // Deduplicate contacts
+        const uniqueContacts = [];
+        const seen = new Set();
+        (data || []).forEach(dc => {
+          if (dc.contacts && !seen.has(dc.contacts.contact_id)) {
+            seen.add(dc.contacts.contact_id);
+            uniqueContacts.push(dc.contacts);
+          }
+        });
+
+        setTasksDealsContacts(uniqueContacts);
+      } catch (err) {
+        console.error('Error fetching deals contacts:', err);
+        setTasksDealsContacts([]);
+      }
+    };
+
+    fetchDealsContacts();
+  }, [activeTab, tasksLinkedDeals]);
+
   // Compute available contacts for ContactSelector based on active tab
   const availableRightPanelContacts = useMemo(() => {
     // For email, whatsapp, calendar, deals - use emailContacts from contextContactsHook
@@ -768,23 +885,86 @@ const CommandCenterPage = ({ theme }) => {
       }];
     }
 
-    // For tasks - use linked contacts from TasksFullTab
-    if (activeTab === 'tasks' && tasksLinkedContacts.length > 0) {
-      return tasksLinkedContacts.map(c => ({
-        contact_id: c.contact_id,
-        first_name: c.first_name || '',
-        last_name: c.last_name || '',
-        email: null,
-        role: 'Contact',
-        completeness_score: c.completeness_score || 0,
-        show_missing: c.show_missing,
-        profile_image_url: c.profile_image_url,
-      }));
+    // For tasks - use linked contacts from TasksFullTab + contacts from linked chats/companies/deals
+    if (activeTab === 'tasks' && (tasksLinkedContacts.length > 0 || tasksChatContacts.length > 0 || tasksCompanyContacts.length > 0 || tasksDealsContacts.length > 0)) {
+      // Combine and deduplicate contacts from all sources
+      const allContacts = [];
+      const seen = new Set();
+
+      // First add directly linked contacts
+      tasksLinkedContacts.forEach(c => {
+        if (!seen.has(c.contact_id)) {
+          seen.add(c.contact_id);
+          allContacts.push({
+            contact_id: c.contact_id,
+            first_name: c.first_name || '',
+            last_name: c.last_name || '',
+            email: null,
+            role: 'Contact',
+            completeness_score: c.completeness_score || 0,
+            show_missing: c.show_missing,
+            profile_image_url: c.profile_image_url,
+          });
+        }
+      });
+
+      // Add contacts from linked companies
+      tasksCompanyContacts.forEach(c => {
+        if (!seen.has(c.contact_id)) {
+          seen.add(c.contact_id);
+          allContacts.push({
+            contact_id: c.contact_id,
+            first_name: c.first_name || '',
+            last_name: c.last_name || '',
+            email: null,
+            role: 'Company Contact',
+            completeness_score: c.completeness_score || 0,
+            show_missing: c.show_missing,
+            profile_image_url: c.profile_image_url,
+          });
+        }
+      });
+
+      // Add contacts from linked deals
+      tasksDealsContacts.forEach(c => {
+        if (!seen.has(c.contact_id)) {
+          seen.add(c.contact_id);
+          allContacts.push({
+            contact_id: c.contact_id,
+            first_name: c.first_name || '',
+            last_name: c.last_name || '',
+            email: null,
+            role: 'Deal Contact',
+            completeness_score: c.completeness_score || 0,
+            show_missing: c.show_missing,
+            profile_image_url: c.profile_image_url,
+          });
+        }
+      });
+
+      // Add contacts from linked chats
+      tasksChatContacts.forEach(c => {
+        if (!seen.has(c.contact_id)) {
+          seen.add(c.contact_id);
+          allContacts.push({
+            contact_id: c.contact_id,
+            first_name: c.first_name || '',
+            last_name: c.last_name || '',
+            email: null,
+            role: 'Chat Contact',
+            completeness_score: c.completeness_score || 0,
+            show_missing: c.show_missing,
+            profile_image_url: c.profile_image_url,
+          });
+        }
+      });
+
+      return allContacts;
     }
 
     // For notes - handled by its own component
     return [];
-  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts]);
+  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts, tasksChatContacts, tasksCompanyContacts, tasksDealsContacts]);
 
   // Enrich contacts with completeness scores from DB (DRY - all tabs benefit)
   const [enrichedRightPanelContacts, setEnrichedRightPanelContacts] = useState([]);
@@ -12318,7 +12498,7 @@ internet businesses.`;
           ) : activeTab === 'lists' ? (
             <ListsTab theme={theme} profileImageModal={profileImageModal} onMemberSelect={setSelectedListMember} />
           ) : activeTab === 'tasks' ? (
-            <TasksFullTab theme={theme} onLinkedContactsChange={setTasksLinkedContacts} />
+            <TasksFullTab theme={theme} onLinkedContactsChange={setTasksLinkedContacts} onLinkedChatsChange={setTasksLinkedChats} onLinkedCompaniesChange={setTasksLinkedCompanies} onLinkedDealsChange={setTasksLinkedDeals} />
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
@@ -14495,7 +14675,7 @@ internet businesses.`;
             />
           )}
 
-          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && tasksLinkedContacts.length > 0) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem)) && (
+          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && (tasksLinkedContacts.length > 0 || tasksLinkedChats.length > 0)) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem)) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
@@ -14910,6 +15090,7 @@ internet businesses.`;
                   contactId={selectedRightPanelContactId}
                   mobiles={rightPanelContactDetails?.mobiles || []}
                   initialSelectedMobile={initialSelectedMobile}
+                  directChats={activeTab === 'tasks' ? tasksLinkedChats : undefined}
                   onMessageSent={(contactId) => {
                     // Refresh contact details after message sent
                     if (contactId) {

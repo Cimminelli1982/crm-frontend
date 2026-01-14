@@ -3,12 +3,43 @@ import {
   FaTasks, FaSave, FaTrash, FaCheck, FaSync, FaExternalLinkAlt,
   FaUser, FaBuilding, FaDollarSign, FaLink, FaCalendarAlt, FaFlag,
   FaList, FaEdit, FaChevronDown, FaChevronRight, FaPlus,
-  FaInbox, FaBirthdayCake, FaHome, FaBriefcase, FaTimes, FaSearch
+  FaHome, FaBriefcase, FaTimes, FaSearch, FaPaperclip, FaFileImage, FaFilePdf, FaFile
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
+
+// Section ID mapping (Todoist section IDs by project)
+const SECTION_IDS = {
+  'Personal': {
+    'This Week': '212234199',
+    'Next Week': '212234187',
+    'This Month': '212234192',
+    'This Sprint': '212234194',
+    'This Year': '212234189',
+    'Next Year': '212234193',
+    'Someday': '212234190',
+  },
+  'Work': {
+    'This Week': '212234191',
+    'Next Week': '212234200',
+    'This Month': '212234196',
+    'This Sprint': '212234188',
+    'This Year': '212234195',
+    'Next Year': '212234198',
+    'Someday': '212234197',
+  },
+  'Birthdays 🎂': {
+    'This Week': '212234230',
+    'Next Week': '212234232',
+    'This Month': '212234228',
+    'This Sprint': '212234233',
+    'This Year': '212234231',
+    'Next Year': '212234227',
+    'Someday': '212234229',
+  },
+};
 
 /**
  * TasksTab - Task editor following NotesTab UI pattern
@@ -53,7 +84,8 @@ const TasksTab = ({
   const [description, setDescription] = useState('');
   const [dueString, setDueString] = useState('');
   const [priority, setPriority] = useState(1);
-  const [projectName, setProjectName] = useState('Inbox');
+  const [projectName, setProjectName] = useState('Personal');
+  const [sectionName, setSectionName] = useState('This Week');
   const [saving, setSaving] = useState(false);
 
   // Linking state
@@ -61,6 +93,9 @@ const TasksTab = ({
   const [linkedContacts, setLinkedContacts] = useState([]);
   const [linkedCompanies, setLinkedCompanies] = useState([]);
   const [linkedDeals, setLinkedDeals] = useState([]);
+  const [linkedFiles, setLinkedFiles] = useState([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   // Contact search modal state
   const [showContactSearchModal, setShowContactSearchModal] = useState(false);
@@ -179,7 +214,8 @@ const TasksTab = ({
         setDescription(task.description || '');
         setDueString(task.due_string || task.due_date || '');
         setPriority(task.priority || 1);
-        setProjectName(task.todoist_project_name || 'Inbox');
+        setProjectName(task.todoist_project_name || 'Personal');
+        setSectionName(task.todoist_section_name || 'This Week');
         loadTaskLinks(task.task_id);
       }
     }
@@ -188,10 +224,11 @@ const TasksTab = ({
   // Load task links
   const loadTaskLinks = async (taskId) => {
     try {
-      const [contactsRes, companiesRes, dealsRes] = await Promise.all([
+      const [contactsRes, companiesRes, dealsRes, filesRes] = await Promise.all([
         supabase.from('task_contacts').select('contact_id, contacts(first_name, last_name)').eq('task_id', taskId),
         supabase.from('task_companies').select('company_id').eq('task_id', taskId),
         supabase.from('task_deals').select('deal_id').eq('task_id', taskId),
+        supabase.from('task_files').select('*').eq('task_id', taskId),
       ]);
 
       const contactIds = contactsRes.data?.map(r => r.contact_id) || [];
@@ -204,9 +241,161 @@ const TasksTab = ({
       setLinkedContactsInfo(contactInfos);
       setLinkedCompanies(companiesRes.data?.map(r => r.company_id) || []);
       setLinkedDeals(dealsRes.data?.map(r => r.deal_id) || []);
+      setLinkedFiles(filesRes.data || []);
     } catch (err) {
       console.error('Error loading task links:', err);
     }
+  };
+
+  // Fetch image from URL and convert to File
+  const fetchImageAsFile = async (imageUrl) => {
+    try {
+      // Try to fetch the image
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error('Failed to fetch image');
+
+      const blob = await response.blob();
+
+      // Extract filename from URL or generate one
+      let fileName = imageUrl.split('/').pop().split('?')[0];
+      if (!fileName || fileName.length > 100) {
+        const ext = blob.type.split('/')[1] || 'png';
+        fileName = `image-${Date.now()}.${ext}`;
+      }
+
+      return new File([blob], fileName, { type: blob.type });
+    } catch (err) {
+      console.error('Error fetching image from URL:', err);
+      throw err;
+    }
+  };
+
+  // Handle drop event - supports both files and image URLs
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+
+    if (!selectedTaskId) {
+      toast.error('Save task first to add files');
+      return;
+    }
+
+    // First try to get files directly
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileUpload(files);
+      return;
+    }
+
+    // If no files, try to get image URL from HTML or URI
+    const html = e.dataTransfer.getData('text/html');
+    const uri = e.dataTransfer.getData('text/uri-list');
+
+    let imageUrl = null;
+
+    // Try to extract URL from HTML (img src)
+    if (html) {
+      const match = html.match(/src="([^"]+)"/);
+      if (match && match[1]) {
+        imageUrl = match[1];
+      }
+    }
+
+    // Fallback to URI list
+    if (!imageUrl && uri) {
+      imageUrl = uri.split('\n')[0];
+    }
+
+    if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+      setUploadingFile(true);
+      try {
+        const file = await fetchImageAsFile(imageUrl);
+        await handleFileUpload([file]);
+      } catch (err) {
+        toast.error('Could not fetch image. Try downloading and uploading manually.');
+      } finally {
+        setUploadingFile(false);
+      }
+    }
+  };
+
+  // File upload handler
+  const handleFileUpload = async (files) => {
+    if (!selectedTaskId || files.length === 0) return;
+
+    setUploadingFile(true);
+    try {
+      for (const file of files) {
+        const fileName = `${selectedTaskId}/${Date.now()}-${file.name}`;
+
+        // Upload to storage
+        const { error: uploadError } = await supabase.storage
+          .from('task-attachments')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('task-attachments')
+          .getPublicUrl(fileName);
+
+        // Insert into task_files
+        const { data: fileData, error: fileError } = await supabase
+          .from('task_files')
+          .insert({
+            task_id: selectedTaskId,
+            file_name: file.name,
+            file_path: urlData.publicUrl,
+            file_type: file.type,
+            file_size: file.size,
+          })
+          .select()
+          .single();
+
+        if (fileError) throw fileError;
+
+        setLinkedFiles(prev => [...prev, fileData]);
+      }
+      toast.success(`${files.length} file${files.length > 1 ? 's' : ''} uploaded`);
+    } catch (err) {
+      console.error('Error uploading file:', err);
+      toast.error('Failed to upload file');
+    } finally {
+      setUploadingFile(false);
+      setIsDraggingFile(false);
+    }
+  };
+
+  // Delete file handler
+  const handleDeleteFile = async (fileId, filePath) => {
+    try {
+      const storagePath = filePath.split('/task-attachments/')[1];
+
+      if (storagePath) {
+        await supabase.storage
+          .from('task-attachments')
+          .remove([storagePath]);
+      }
+
+      await supabase
+        .from('task_files')
+        .delete()
+        .eq('file_id', fileId);
+
+      setLinkedFiles(prev => prev.filter(f => f.file_id !== fileId));
+      toast.success('File deleted');
+    } catch (err) {
+      console.error('Error deleting file:', err);
+      toast.error('Failed to delete file');
+    }
+  };
+
+  // Get file icon based on type
+  const getFileIcon = (fileType) => {
+    if (fileType?.startsWith('image/')) return FaFileImage;
+    if (fileType === 'application/pdf') return FaFilePdf;
+    return FaFile;
   };
 
   // Search contacts for linking
@@ -305,12 +494,15 @@ const TasksTab = ({
 
     setSaving(true);
     try {
+      const sectionId = SECTION_IDS[projectName]?.[sectionName];
       const taskData = {
         content: content.trim(),
         description: description.trim() || null,
         due_string: dueString || null,
         priority: priority,
         todoist_project_name: projectName,
+        todoist_section_name: sectionName,
+        todoist_section_id: sectionId,
         updated_at: new Date().toISOString(),
       };
 
@@ -387,6 +579,7 @@ const TasksTab = ({
                 description: taskData.description,
                 due_string: taskData.due_string,
                 priority: taskData.priority,
+                section_id: sectionId,
               }),
             });
           } catch (syncErr) {
@@ -1266,10 +1459,13 @@ const TasksTab = ({
                         setDescription('');
                         setDueString('');
                         setPriority(4);
+                        setProjectName('Personal');
+                        setSectionName('This Week');
                         setLinkedContacts(contactId ? [contactId] : []);
                         setLinkedContactsInfo(contactId ? [{ contact_id: contactId, name: contactName || 'Current Contact' }] : []);
                         setLinkedCompanies([]);
                         setLinkedDeals([]);
+                        setLinkedFiles([]);
                       }}
                       style={{
                         padding: '10px 12px',
@@ -1479,35 +1675,41 @@ const TasksTab = ({
                 placeholder="e.g., tomorrow, next monday, 2024-12-31"
                 style={inputStyle}
               />
-              {/* Quick Date Buttons */}
+              {/* Section Buttons */}
               <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                 {[
-                  { label: 'This Week', value: 'friday' },
-                  { label: 'This Month', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-20`; })() },
-                  { label: 'This Sprint', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 2).padStart(2, '0')}-15`; })() },
-                  { label: 'Someday', value: '' },
-                ].map(opt => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setDueString(opt.value)}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      border: `1px solid ${dueString === opt.value ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
-                      background: dueString === opt.value
-                        ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
-                        : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
-                      color: dueString === opt.value
-                        ? '#3B82F6'
-                        : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
-                      fontSize: '10px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                  { name: 'This Week', color: '#EF4444' },
+                  { name: 'Next Week', color: '#F97316' },
+                  { name: 'This Month', color: '#F59E0B' },
+                  { name: 'This Sprint', color: '#8B5CF6' },
+                  { name: 'This Year', color: '#3B82F6' },
+                  { name: 'Next Year', color: '#6366F1' },
+                  { name: 'Someday', color: '#6B7280' },
+                ].map(section => {
+                  const isSelected = sectionName === section.name;
+                  return (
+                    <button
+                      key={section.name}
+                      onClick={() => setSectionName(section.name)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${isSelected ? section.color : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
+                        background: isSelected
+                          ? `${section.color}20`
+                          : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
+                        color: isSelected
+                          ? section.color
+                          : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                        fontSize: '10px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {section.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1552,6 +1754,169 @@ const TasksTab = ({
               </div>
             </div>
 
+            {/* Files Section */}
+            {!isCreating && selectedTaskId && (
+              <div
+                style={{
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: `2px dashed ${isDraggingFile ? '#3B82F6' : (theme === 'dark' ? '#374151' : '#E5E7EB')}`,
+                  background: isDraggingFile ? (theme === 'dark' ? '#1E3A5F20' : '#EFF6FF') : 'transparent',
+                  transition: 'all 0.2s',
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingFile(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDraggingFile(false);
+                }}
+                onDrop={handleDrop}
+              >
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: linkedFiles.length > 0 ? '8px' : '0',
+                }}>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}>
+                    <FaPaperclip size={10} /> Files ({linkedFiles.length})
+                  </span>
+                  <label style={{
+                    color: '#3B82F6',
+                    cursor: 'pointer',
+                    fontSize: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                  }}>
+                    <FaPlus size={8} /> Add
+                    <input
+                      type="file"
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={(e) => handleFileUpload(Array.from(e.target.files))}
+                    />
+                  </label>
+                </div>
+
+                {uploadingFile && (
+                  <div style={{
+                    padding: '6px',
+                    textAlign: 'center',
+                    color: '#3B82F6',
+                    fontSize: '11px',
+                  }}>
+                    Uploading...
+                  </div>
+                )}
+
+                {linkedFiles.length === 0 && !uploadingFile && (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '8px',
+                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                    fontSize: '10px',
+                  }}>
+                    {isDraggingFile ? 'Drop files here' : 'Drag & drop files'}
+                  </div>
+                )}
+
+                {linkedFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {linkedFiles.map(file => {
+                      const FileIcon = getFileIcon(file.file_type);
+                      const isImage = file.file_type?.startsWith('image/');
+                      return (
+                        <div
+                          key={file.file_id}
+                          style={{
+                            position: 'relative',
+                            borderRadius: '6px',
+                            overflow: 'hidden',
+                            border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                            background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                          }}
+                        >
+                          {isImage ? (
+                            <a href={file.file_path} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={file.file_path}
+                                alt={file.file_name}
+                                style={{
+                                  width: '60px',
+                                  height: '60px',
+                                  objectFit: 'cover',
+                                  display: 'block',
+                                }}
+                              />
+                            </a>
+                          ) : (
+                            <a
+                              href={file.file_path}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                width: '60px',
+                                height: '60px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                textDecoration: 'none',
+                                color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                                padding: '6px',
+                              }}
+                            >
+                              <FileIcon size={18} style={{ marginBottom: '3px' }} />
+                              <span style={{
+                                fontSize: '8px',
+                                textAlign: 'center',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: '54px',
+                              }}>
+                                {file.file_name}
+                              </span>
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleDeleteFile(file.file_id, file.file_path)}
+                            style={{
+                              position: 'absolute',
+                              top: '2px',
+                              right: '2px',
+                              background: 'rgba(239, 68, 68, 0.9)',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '14px',
+                              height: '14px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              color: 'white',
+                            }}
+                          >
+                            <FaTimes size={8} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Project */}
             <div>
               <label style={{
@@ -1565,8 +1930,6 @@ const TasksTab = ({
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                 {[
-                  { name: 'Inbox', icon: FaInbox },
-                  { name: 'Birthday', icon: FaBirthdayCake },
                   { name: 'Personal', icon: FaHome },
                   { name: 'Work', icon: FaBriefcase },
                 ].map(proj => {

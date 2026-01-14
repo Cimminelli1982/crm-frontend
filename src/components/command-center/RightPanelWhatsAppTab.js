@@ -14,6 +14,7 @@ const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
  * @param {Array} props.mobiles - Contact's phone numbers (fallback for sending)
  * @param {Function} props.onMessageSent - Callback when a message is sent
  * @param {string} props.initialSelectedMobile - Pre-selected mobile number to find matching chat
+ * @param {Array} props.directChats - Direct list of chats to display (bypasses contactId fetch)
  */
 const RightPanelWhatsAppTab = ({
   theme,
@@ -21,6 +22,7 @@ const RightPanelWhatsAppTab = ({
   mobiles = [],
   onMessageSent,
   initialSelectedMobile,
+  directChats,
 }) => {
   const [chats, setChats] = useState([]);
   const [selectedChatId, setSelectedChatId] = useState(null);
@@ -52,8 +54,30 @@ const RightPanelWhatsAppTab = ({
   const getLast9Digits = (phone) => (phone || '').replace(/\D/g, '').slice(-9);
 
   // Fetch contact's chats: COMBINE contact_chats + command_center_inbox by phone
+  // OR use directChats if provided (for task-linked chats)
   useEffect(() => {
     const fetchChats = async () => {
+      // If directChats provided, use them directly
+      if (directChats && directChats.length > 0) {
+        const chatList = directChats.map(c => ({
+          id: c.id,
+          chat_id: c.id,
+          chat_name: c.chat_name || 'Unknown Chat',
+          is_group_chat: c.is_group_chat || false,
+          baileys_jid: c.baileys_jid,
+          external_chat_id: c.external_chat_id,
+          messages: [],
+          latestDate: null,
+          source: 'direct'
+        }));
+        setChats(chatList);
+        if (chatList.length > 0) {
+          setSelectedChatId(chatList[0].id);
+          setSelectedChat(chatList[0]);
+        }
+        return;
+      }
+
       if (!contactId) {
         setChats([]);
         setSelectedChatId(null);
@@ -167,7 +191,7 @@ const RightPanelWhatsAppTab = ({
     };
 
     fetchChats();
-  }, [contactId, mobiles, initialSelectedMobile]);
+  }, [contactId, mobiles, initialSelectedMobile, directChats]);
 
   // Show messages when chat is selected (from inbox + archived)
   useEffect(() => {

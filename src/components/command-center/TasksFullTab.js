@@ -4,7 +4,7 @@ import {
   FaLink, FaUser, FaBuilding, FaDollarSign, FaSync, FaExternalLinkAlt,
   FaChevronRight, FaChevronDown, FaCalendarAlt, FaFlag, FaFilter,
   FaClock, FaCheckCircle, FaCircle, FaInbox, FaBirthdayCake, FaHome, FaBriefcase,
-  FaExclamationTriangle
+  FaExclamationTriangle, FaWhatsapp, FaPaperclip, FaFileImage, FaFilePdf, FaFile, FaTimes
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -26,68 +26,46 @@ const STATUS_SECTIONS = [
   { id: 'completed', label: 'Completed', icon: FaCheckCircle, color: '#6B7280' },
 ];
 
-// Date categorization helpers
-const getQuarterEndMonth = (date) => {
-  const month = date.getMonth();
-  if (month < 3) return 2; // Q1: Jan-Mar, ends in March (index 2)
-  if (month < 6) return 5; // Q2: Apr-Jun, ends in June (index 5)
-  if (month < 9) return 8; // Q3: Jul-Sep, ends in September (index 8)
-  return 11; // Q4: Oct-Dec, ends in December (index 11)
-};
+// Section definitions with colors and icons
+const SECTIONS = [
+  { id: 'thisWeek', name: 'This Week', color: '#EF4444', icon: FaClock },
+  { id: 'nextWeek', name: 'Next Week', color: '#F97316', icon: FaClock },
+  { id: 'thisMonth', name: 'This Month', color: '#F59E0B', icon: FaCalendarAlt },
+  { id: 'thisSprint', name: 'This Sprint', color: '#8B5CF6', icon: FaFlag },
+  { id: 'thisYear', name: 'This Year', color: '#3B82F6', icon: FaCalendarAlt },
+  { id: 'nextYear', name: 'Next Year', color: '#6366F1', icon: FaCalendarAlt },
+  { id: 'someday', name: 'Someday', color: '#6B7280', icon: FaCircle },
+];
 
-const isThisWeek = (dateStr) => {
-  if (!dateStr) return false;
-  const date = new Date(dateStr);
-  const now = new Date();
-  // Start of week (Monday)
-  const startOfWeek = new Date(now);
-  const day = now.getDay();
-  const diff = day === 0 ? 6 : day - 1; // Adjust for Monday start
-  startOfWeek.setDate(now.getDate() - diff);
-  startOfWeek.setHours(0, 0, 0, 0);
-  // End of week (Sunday)
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 7);
-  return date >= startOfWeek && date < endOfWeek;
-};
-
-const isThisMonth = (dateStr) => {
-  if (!dateStr) return false;
-  const date = new Date(dateStr);
-  const now = new Date();
-  // Same month and year, but NOT this week
-  return date.getMonth() === now.getMonth() &&
-         date.getFullYear() === now.getFullYear() &&
-         !isThisWeek(dateStr);
-};
-
-const isThisSprint = (dateStr) => {
-  if (!dateStr) return false;
-  const date = new Date(dateStr);
-  const now = new Date();
-
-  // Not this week and not this month
-  if (isThisWeek(dateStr) || isThisMonth(dateStr)) return false;
-
-  // Check if in current quarter
-  const quarterEndMonth = getQuarterEndMonth(now);
-  const quarterEndDate = new Date(now.getFullYear(), quarterEndMonth + 1, 0); // Last day of quarter
-
-  // Must be after this month but within the quarter
-  const endOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return date > endOfThisMonth && date <= quarterEndDate;
-};
-
-const isSomeday = (task) => {
-  // No due date OR due date beyond current quarter
-  if (!task.due_date) return true;
-
-  const date = new Date(task.due_date);
-  const now = new Date();
-  const quarterEndMonth = getQuarterEndMonth(now);
-  const quarterEndDate = new Date(now.getFullYear(), quarterEndMonth + 1, 0);
-
-  return date > quarterEndDate;
+// Section ID mapping (Todoist section IDs by project)
+const SECTION_IDS = {
+  'Personal': {
+    'This Week': '212234199',
+    'Next Week': '212234187',
+    'This Month': '212234192',
+    'This Sprint': '212234194',
+    'This Year': '212234189',
+    'Next Year': '212234193',
+    'Someday': '212234190',
+  },
+  'Work': {
+    'This Week': '212234191',
+    'Next Week': '212234200',
+    'This Month': '212234196',
+    'This Sprint': '212234188',
+    'This Year': '212234195',
+    'Next Year': '212234198',
+    'Someday': '212234197',
+  },
+  'Birthdays 🎂': {
+    'This Week': '212234230',
+    'Next Week': '212234232',
+    'This Month': '212234228',
+    'This Sprint': '212234233',
+    'This Year': '212234231',
+    'Next Year': '212234227',
+    'Someday': '212234229',
+  },
 };
 
 // Task Item Component
@@ -241,7 +219,7 @@ const TaskItem = ({ task, theme, selectedTask, loadTask, handleComplete, getPrio
   );
 };
 
-const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
+const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLinkedCompaniesChange, onLinkedDealsChange }) => {
   // Tasks list state
   const [tasks, setTasks] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
@@ -251,8 +229,11 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
   const [expandedSections, setExpandedSections] = useState({
     open: true,
     thisWeek: true,
+    nextWeek: true,
     thisMonth: true,
     thisSprint: true,
+    thisYear: false,
+    nextYear: false,
     someday: false,
     completed: false
   });
@@ -279,6 +260,10 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
   const [linkedContacts, setLinkedContacts] = useState([]);
   const [linkedCompanies, setLinkedCompanies] = useState([]);
   const [linkedDeals, setLinkedDeals] = useState([]);
+  const [linkedChats, setLinkedChats] = useState([]);
+  const [linkedFiles, setLinkedFiles] = useState([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   // Link modal state
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -286,6 +271,10 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [linkSearchResults, setLinkSearchResults] = useState([]);
   const [linkSearching, setLinkSearching] = useState(false);
+
+  // Section selection modal (for moving from Inbox to Personal/Work)
+  const [showSectionModal, setShowSectionModal] = useState(false);
+  const [pendingProjectName, setPendingProjectName] = useState(null);
 
   // Fetch all tasks
   const fetchTasks = useCallback(async () => {
@@ -298,7 +287,9 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
           *,
           task_contacts(contact:contacts(contact_id, first_name, last_name, profile_image_url, show_missing)),
           task_companies(company:companies(company_id, name)),
-          task_deals(deal:deals(deal_id, opportunity))
+          task_deals(deal:deals(deal_id, opportunity)),
+          task_chats(chat:chats(id, chat_name, is_group_chat)),
+          task_files(*)
         `)
         .eq('status', 'open')
         .order('due_date', { ascending: true, nullsFirst: false });
@@ -312,7 +303,9 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
           *,
           task_contacts(contact:contacts(contact_id, first_name, last_name, profile_image_url, show_missing)),
           task_companies(company:companies(company_id, name)),
-          task_deals(deal:deals(deal_id, opportunity))
+          task_deals(deal:deals(deal_id, opportunity)),
+          task_chats(chat:chats(id, chat_name, is_group_chat)),
+          task_files(*)
         `)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false })
@@ -361,6 +354,21 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
     onLinkedContactsChange?.(linkedContacts);
   }, [linkedContacts, onLinkedContactsChange]);
 
+  // Notify parent when linkedChats changes (for WhatsApp panel)
+  useEffect(() => {
+    onLinkedChatsChange?.(linkedChats);
+  }, [linkedChats, onLinkedChatsChange]);
+
+  // Notify parent of linked companies changes
+  useEffect(() => {
+    onLinkedCompaniesChange?.(linkedCompanies);
+  }, [linkedCompanies, onLinkedCompaniesChange]);
+
+  // Notify parent of linked deals changes
+  useEffect(() => {
+    onLinkedDealsChange?.(linkedDeals);
+  }, [linkedDeals, onLinkedDealsChange]);
+
   // Load task into editor
   const loadTask = useCallback((task) => {
     setSelectedTask(task);
@@ -376,6 +384,8 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
     setLinkedContacts(task.task_contacts?.map(tc => tc.contact).filter(Boolean) || []);
     setLinkedCompanies(task.task_companies?.map(tc => tc.company).filter(Boolean) || []);
     setLinkedDeals(task.task_deals?.map(td => td.deal).filter(Boolean) || []);
+    setLinkedChats(task.task_chats?.map(tc => tc.chat).filter(Boolean) || []);
+    setLinkedFiles(task.task_files || []);
   }, []);
 
   // Start new task
@@ -391,6 +401,162 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
     setLinkedContacts([]);
     setLinkedCompanies([]);
     setLinkedDeals([]);
+    setLinkedChats([]);
+    setLinkedFiles([]);
+  };
+
+  // Fetch image from URL and convert to File
+  const fetchImageAsFile = async (imageUrl) => {
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error('Failed to fetch image');
+
+      const blob = await response.blob();
+
+      // Extract filename from URL or generate one
+      let fileName = imageUrl.split('/').pop().split('?')[0];
+      if (!fileName || fileName.length > 100) {
+        const ext = blob.type.split('/')[1] || 'png';
+        fileName = `image-${Date.now()}.${ext}`;
+      }
+
+      return new File([blob], fileName, { type: blob.type });
+    } catch (err) {
+      console.error('Error fetching image from URL:', err);
+      throw err;
+    }
+  };
+
+  // Handle file drop event - supports both files and image URLs
+  const handleFileDrop = async (e) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+
+    if (!selectedTask?.task_id) {
+      toast.error('Save task first to add files');
+      return;
+    }
+
+    // First try to get files directly
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileUpload(files);
+      return;
+    }
+
+    // If no files, try to get image URL from HTML or URI
+    const html = e.dataTransfer.getData('text/html');
+    const uri = e.dataTransfer.getData('text/uri-list');
+
+    let imageUrl = null;
+
+    // Try to extract URL from HTML (img src)
+    if (html) {
+      const match = html.match(/src="([^"]+)"/);
+      if (match && match[1]) {
+        imageUrl = match[1];
+      }
+    }
+
+    // Fallback to URI list
+    if (!imageUrl && uri) {
+      imageUrl = uri.split('\n')[0];
+    }
+
+    if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+      setUploadingFile(true);
+      try {
+        const file = await fetchImageAsFile(imageUrl);
+        await handleFileUpload([file]);
+      } catch (err) {
+        toast.error('Could not fetch image. Try downloading and uploading manually.');
+      } finally {
+        setUploadingFile(false);
+      }
+    }
+  };
+
+  // File upload handler
+  const handleFileUpload = async (files) => {
+    if (!selectedTask?.task_id || files.length === 0) return;
+
+    setUploadingFile(true);
+    try {
+      for (const file of files) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${selectedTask.task_id}/${Date.now()}-${file.name}`;
+
+        // Upload to storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('task-attachments')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('task-attachments')
+          .getPublicUrl(fileName);
+
+        // Insert into task_files
+        const { data: fileData, error: fileError } = await supabase
+          .from('task_files')
+          .insert({
+            task_id: selectedTask.task_id,
+            file_name: file.name,
+            file_path: urlData.publicUrl,
+            file_type: file.type,
+            file_size: file.size,
+          })
+          .select()
+          .single();
+
+        if (fileError) throw fileError;
+
+        setLinkedFiles(prev => [...prev, fileData]);
+      }
+      toast.success(`${files.length} file${files.length > 1 ? 's' : ''} uploaded`);
+    } catch (err) {
+      console.error('Error uploading file:', err);
+      toast.error('Failed to upload file');
+    } finally {
+      setUploadingFile(false);
+      setIsDraggingFile(false);
+    }
+  };
+
+  // Delete file handler
+  const handleDeleteFile = async (fileId, filePath) => {
+    try {
+      // Extract storage path from URL
+      const storagePath = filePath.split('/task-attachments/')[1];
+
+      // Delete from storage
+      if (storagePath) {
+        await supabase.storage
+          .from('task-attachments')
+          .remove([storagePath]);
+      }
+
+      // Delete from database
+      await supabase
+        .from('task_files')
+        .delete()
+        .eq('file_id', fileId);
+
+      setLinkedFiles(prev => prev.filter(f => f.file_id !== fileId));
+      toast.success('File deleted');
+    } catch (err) {
+      console.error('Error deleting file:', err);
+      toast.error('Failed to delete file');
+    }
+  };
+
+  // Get file icon based on type
+  const getFileIcon = (fileType) => {
+    if (fileType?.startsWith('image/')) return FaFileImage;
+    if (fileType === 'application/pdf') return FaFilePdf;
+    return FaFile;
   };
 
   // Save task
@@ -644,6 +810,13 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
           .ilike('opportunity', `%${query}%`)
           .limit(10);
         results = data || [];
+      } else if (type === 'chat') {
+        const { data } = await supabase
+          .from('chats')
+          .select('id, chat_name, is_group_chat')
+          .ilike('chat_name', `%${query}%`)
+          .limit(10);
+        results = data || [];
       }
       setLinkSearchResults(results);
     } catch (error) {
@@ -676,6 +849,12 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
           deal_id: entity.deal_id,
         });
         setLinkedDeals(prev => [...prev, entity]);
+      } else if (linkType === 'chat') {
+        await supabase.from('task_chats').insert({
+          task_id: selectedTask.task_id,
+          chat_id: entity.id,
+        });
+        setLinkedChats(prev => [...prev, entity]);
       }
       toast.success('Link added');
       setShowLinkModal(false);
@@ -708,6 +887,11 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
           .eq('task_id', selectedTask.task_id)
           .eq('deal_id', id);
         setLinkedDeals(prev => prev.filter(d => d.deal_id !== id));
+      } else if (type === 'chat') {
+        await supabase.from('task_chats').delete()
+          .eq('task_id', selectedTask.task_id)
+          .eq('chat_id', id);
+        setLinkedChats(prev => prev.filter(c => c.id !== id));
       }
       toast.success('Link removed');
       fetchTasks(); // Refresh to see updated links
@@ -882,88 +1066,49 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
 
     if (!draggedTask) return;
 
-    // Calculate new due_date based on target category
-    const now = new Date();
-    let newDueDate = null;
-    let newDueString = null;
+    // Map category ID to section name
+    const sectionNameMap = {
+      'thisWeek': 'This Week',
+      'nextWeek': 'Next Week',
+      'thisMonth': 'This Month',
+      'thisSprint': 'This Sprint',
+      'thisYear': 'This Year',
+      'nextYear': 'Next Year',
+      'someday': 'Someday',
+    };
 
-    switch (targetCategory) {
-      case 'thisWeek': {
-        // Set to Friday of this week (avoids timezone edge cases)
-        const day = now.getDay();
-        // Days until Friday: Sun=5, Mon=4, Tue=3, Wed=2, Thu=1, Fri=0, Sat=6 (next Fri)
-        const daysUntilFriday = day === 0 ? 5 : (day <= 5 ? 5 - day : 6);
-        const targetDate = new Date(now);
-        targetDate.setDate(now.getDate() + daysUntilFriday);
-        // Use local date format to avoid UTC timezone issues
-        newDueDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
-        newDueString = 'friday';
-        break;
-      }
-      case 'thisMonth': {
-        // Set to 15th of this month (middle of month, after this week)
-        const targetDate = new Date(now.getFullYear(), now.getMonth(), 20);
-        // Use local date format to avoid UTC timezone issues
-        newDueDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
-        newDueString = newDueDate;
-        break;
-      }
-      case 'thisSprint': {
-        // Set to 15th of next month within the quarter
-        const quarterEndMonth = getQuarterEndMonth(now);
-        let targetDate;
-        if (now.getMonth() < quarterEndMonth) {
-          // Set to next month
-          targetDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
-        } else {
-          // Already in last month of quarter, set to end of quarter
-          targetDate = new Date(now.getFullYear(), quarterEndMonth + 1, 0);
-        }
-        // Use local date format to avoid UTC timezone issues
-        newDueDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
-        newDueString = newDueDate;
-        break;
-      }
-      case 'someday': {
-        // Remove due date
-        newDueDate = null;
-        newDueString = null;
-        break;
-      }
-      default:
-        return;
-    }
+    const newSectionName = sectionNameMap[targetCategory];
+    if (!newSectionName) return;
+
+    // Get the section ID for this project
+    const projectName = draggedTask.todoist_project_name || 'Personal';
+    const newSectionId = SECTION_IDS[projectName]?.[newSectionName];
 
     try {
       // Update in Supabase
       await supabase
         .from('tasks')
         .update({
-          due_date: newDueDate,
-          due_string: newDueString,
+          todoist_section_name: newSectionName,
+          todoist_section_id: newSectionId,
           updated_at: new Date().toISOString(),
         })
         .eq('task_id', draggedTask.task_id);
 
-      // Sync to Todoist if linked
-      if (draggedTask.todoist_id) {
+      // Sync to Todoist if linked and we have a section ID
+      if (draggedTask.todoist_id && newSectionId) {
         try {
-          // Use due_date (ISO format) for Todoist, not due_string
-          const todoistPayload = newDueDate
-            ? { due_date: newDueDate }
-            : { due_date: null };
-
           await fetch(`${BACKEND_URL}/todoist/tasks/${draggedTask.todoist_id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(todoistPayload),
+            body: JSON.stringify({ section_id: newSectionId }),
           });
         } catch (syncErr) {
           console.warn('Failed to sync to Todoist:', syncErr);
         }
       }
 
-      toast.success(`Moved to ${targetCategory.replace(/([A-Z])/g, ' $1').toLowerCase()}`);
+      toast.success(`Moved to ${newSectionName}`);
       fetchTasks();
     } catch (error) {
       console.error('Error moving task:', error);
@@ -983,11 +1128,14 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
     return matchesSearch && matchesProject;
   });
 
-  // Categorize open tasks by due date
-  const thisWeekTasks = filteredTasks.filter(t => isThisWeek(t.due_date));
-  const thisMonthTasks = filteredTasks.filter(t => isThisMonth(t.due_date));
-  const thisSprintTasks = filteredTasks.filter(t => isThisSprint(t.due_date));
-  const somedayTasks = filteredTasks.filter(t => isSomeday(t));
+  // Categorize open tasks by todoist_section_name
+  const thisWeekTasks = filteredTasks.filter(t => t.todoist_section_name === 'This Week');
+  const nextWeekTasks = filteredTasks.filter(t => t.todoist_section_name === 'Next Week');
+  const thisMonthTasks = filteredTasks.filter(t => t.todoist_section_name === 'This Month');
+  const thisSprintTasks = filteredTasks.filter(t => t.todoist_section_name === 'This Sprint');
+  const thisYearTasks = filteredTasks.filter(t => t.todoist_section_name === 'This Year');
+  const nextYearTasks = filteredTasks.filter(t => t.todoist_section_name === 'Next Year');
+  const somedayTasks = filteredTasks.filter(t => t.todoist_section_name === 'Someday' || !t.todoist_section_name);
 
   const filteredCompletedTasks = completedTasks.filter(task => {
     const matchesSearch = !searchQuery ||
@@ -1218,209 +1366,67 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                       </div>
                     ) : (
                       <>
-                    {/* This Week */}
-                    <div
-                      style={{ marginBottom: '12px' }}
-                      onDragOver={(e) => handleDragOver(e, 'thisWeek')}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, 'thisWeek')}
-                    >
+                    {/* Render all sections dynamically */}
+                    {[
+                      { id: 'thisWeek', name: 'This Week', tasks: thisWeekTasks, color: '#EF4444', Icon: FaClock },
+                      { id: 'nextWeek', name: 'Next Week', tasks: nextWeekTasks, color: '#F97316', Icon: FaClock },
+                      { id: 'thisMonth', name: 'This Month', tasks: thisMonthTasks, color: '#F59E0B', Icon: FaCalendarAlt },
+                      { id: 'thisSprint', name: 'This Sprint', tasks: thisSprintTasks, color: '#8B5CF6', Icon: FaFlag },
+                      { id: 'thisYear', name: 'This Year', tasks: thisYearTasks, color: '#3B82F6', Icon: FaCalendarAlt },
+                      { id: 'nextYear', name: 'Next Year', tasks: nextYearTasks, color: '#6366F1', Icon: FaCalendarAlt },
+                      { id: 'someday', name: 'Someday', tasks: somedayTasks, color: '#6B7280', Icon: FaCircle },
+                    ].map(section => (
                       <div
-                        onClick={() => setExpandedSections(prev => ({ ...prev, thisWeek: !prev.thisWeek }))}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: dragOverCategory === 'thisWeek'
-                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
-                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-                          border: dragOverCategory === 'thisWeek' ? '2px dashed #EF4444' : '2px solid transparent',
-                          cursor: 'pointer',
-                          marginBottom: '6px',
-                          transition: 'all 0.2s',
-                        }}
+                        key={section.id}
+                        style={{ marginBottom: '12px' }}
+                        onDragOver={(e) => handleDragOver(e, section.id)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, section.id)}
                       >
-                        {expandedSections.thisWeek ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
-                        <FaClock size={10} style={{ color: '#EF4444' }} />
-                        <span style={{
-                          fontWeight: 500,
-                          fontSize: '12px',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        }}>
-                          This Week
-                        </span>
-                        <span style={{
-                          marginLeft: 'auto',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: '#EF4444',
-                        }}>
-                          {thisWeekTasks.length}
-                        </span>
-                      </div>
-                      {expandedSections.thisWeek && thisWeekTasks.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {thisWeekTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
-                          ))}
+                        <div
+                          onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            background: dragOverCategory === section.id
+                              ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
+                              : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                            border: dragOverCategory === section.id ? `2px dashed ${section.color}` : '2px solid transparent',
+                            cursor: 'pointer',
+                            marginBottom: '6px',
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          {expandedSections[section.id] ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
+                          <section.Icon size={10} style={{ color: section.color }} />
+                          <span style={{
+                            fontWeight: 500,
+                            fontSize: '12px',
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          }}>
+                            {section.name}
+                          </span>
+                          <span style={{
+                            marginLeft: 'auto',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: section.color,
+                          }}>
+                            {section.tasks.length}
+                          </span>
                         </div>
-                      )}
-                    </div>
-
-                    {/* This Month */}
-                    <div
-                      style={{ marginBottom: '12px' }}
-                      onDragOver={(e) => handleDragOver(e, 'thisMonth')}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, 'thisMonth')}
-                    >
-                      <div
-                        onClick={() => setExpandedSections(prev => ({ ...prev, thisMonth: !prev.thisMonth }))}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: dragOverCategory === 'thisMonth'
-                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
-                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-                          border: dragOverCategory === 'thisMonth' ? '2px dashed #F59E0B' : '2px solid transparent',
-                          cursor: 'pointer',
-                          marginBottom: '6px',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        {expandedSections.thisMonth ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
-                        <FaCalendarAlt size={10} style={{ color: '#F59E0B' }} />
-                        <span style={{
-                          fontWeight: 500,
-                          fontSize: '12px',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        }}>
-                          This Month
-                        </span>
-                        <span style={{
-                          marginLeft: 'auto',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: '#F59E0B',
-                        }}>
-                          {thisMonthTasks.length}
-                        </span>
+                        {expandedSections[section.id] && section.tasks.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {section.tasks.map(task => (
+                              <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      {expandedSections.thisMonth && thisMonthTasks.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {thisMonthTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* This Sprint */}
-                    <div
-                      style={{ marginBottom: '12px' }}
-                      onDragOver={(e) => handleDragOver(e, 'thisSprint')}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, 'thisSprint')}
-                    >
-                      <div
-                        onClick={() => setExpandedSections(prev => ({ ...prev, thisSprint: !prev.thisSprint }))}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: dragOverCategory === 'thisSprint'
-                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
-                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-                          border: dragOverCategory === 'thisSprint' ? '2px dashed #8B5CF6' : '2px solid transparent',
-                          cursor: 'pointer',
-                          marginBottom: '6px',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        {expandedSections.thisSprint ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
-                        <FaFlag size={10} style={{ color: '#8B5CF6' }} />
-                        <span style={{
-                          fontWeight: 500,
-                          fontSize: '12px',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        }}>
-                          This Sprint
-                        </span>
-                        <span style={{
-                          marginLeft: 'auto',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: '#8B5CF6',
-                        }}>
-                          {thisSprintTasks.length}
-                        </span>
-                      </div>
-                      {expandedSections.thisSprint && thisSprintTasks.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {thisSprintTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Someday */}
-                    <div
-                      style={{ marginBottom: '12px' }}
-                      onDragOver={(e) => handleDragOver(e, 'someday')}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, 'someday')}
-                    >
-                      <div
-                        onClick={() => setExpandedSections(prev => ({ ...prev, someday: !prev.someday }))}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: dragOverCategory === 'someday'
-                            ? (theme === 'dark' ? '#4B5563' : '#D1D5DB')
-                            : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-                          border: dragOverCategory === 'someday' ? '2px dashed #6B7280' : '2px solid transparent',
-                          cursor: 'pointer',
-                          marginBottom: '6px',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        {expandedSections.someday ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
-                        <FaCircle size={10} style={{ color: '#6B7280' }} />
-                        <span style={{
-                          fontWeight: 500,
-                          fontSize: '12px',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        }}>
-                          Someday
-                        </span>
-                        <span style={{
-                          marginLeft: 'auto',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: '#6B7280',
-                        }}>
-                          {somedayTasks.length}
-                        </span>
-                      </div>
-                      {expandedSections.someday && somedayTasks.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {somedayTasks.map(task => (
-                            <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    ))}
                       </>
                     )}
                   </div>
@@ -1620,74 +1626,100 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                 />
               </div>
 
-              {/* Due Date */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                  marginBottom: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}>
-                  <FaCalendarAlt size={11} /> Due Date
-                </label>
-                <input
-                  type="text"
-                  value={editDueString}
-                  onChange={(e) => setEditDueString(e.target.value)}
-                  onBlur={() => {
-                    if (editDueString !== (selectedTask?.due_string || '')) {
-                      saveField('due_string', editDueString || null);
-                    }
-                  }}
-                  placeholder="e.g., tomorrow, next monday, 2024-12-31"
-                  style={inputStyle}
-                />
-                {/* Quick Date Buttons */}
-                <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  {[
-                    { label: 'This Week', value: 'friday', getDate: () => {
-                      const now = new Date();
-                      const day = now.getDay();
-                      const daysUntilFriday = day === 0 ? 5 : (day <= 5 ? 5 - day : 6);
-                      const friday = new Date(now);
-                      friday.setDate(now.getDate() + daysUntilFriday);
-                      return `${friday.getFullYear()}-${String(friday.getMonth() + 1).padStart(2, '0')}-${String(friday.getDate()).padStart(2, '0')}`;
-                    }},
-                    { label: 'This Month', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-20`; })() },
-                    { label: 'This Sprint', value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 2).padStart(2, '0')}-15`; })() },
-                    { label: 'Someday', value: '' },
-                  ].map(opt => (
-                    <button
-                      key={opt.label}
-                      onClick={async () => {
-                        const dateValue = opt.getDate ? opt.getDate() : opt.value;
-                        setEditDueString(opt.value || dateValue);
-                        await saveField('due_string', dateValue || null);
-                        fetchTasks(); // Refresh to update categories
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        border: `1px solid ${editDueString === opt.value ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
-                        background: editDueString === opt.value
-                          ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
-                          : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
-                        color: editDueString === opt.value
-                          ? '#3B82F6'
-                          : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
-                        fontSize: '11px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+              {/* Due Date - Only show when NOT in Inbox */}
+              {editProjectName !== 'Inbox' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                    marginBottom: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    <FaCalendarAlt size={11} /> Due Date
+                  </label>
+                  <input
+                    type="text"
+                    value={editDueString}
+                    onChange={(e) => setEditDueString(e.target.value)}
+                    onBlur={() => {
+                      if (editDueString !== (selectedTask?.due_string || '')) {
+                        saveField('due_string', editDueString || null);
+                      }
+                    }}
+                    placeholder="e.g., tomorrow, next monday, 2024-12-31"
+                    style={inputStyle}
+                  />
+                  {/* Section Buttons */}
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                    {[
+                      { name: 'This Week', color: '#EF4444' },
+                      { name: 'Next Week', color: '#F97316' },
+                      { name: 'This Month', color: '#F59E0B' },
+                      { name: 'This Sprint', color: '#8B5CF6' },
+                      { name: 'This Year', color: '#3B82F6' },
+                      { name: 'Next Year', color: '#6366F1' },
+                      { name: 'Someday', color: '#6B7280' },
+                    ].map(section => {
+                      const isSelected = selectedTask?.todoist_section_name === section.name;
+                      return (
+                        <button
+                          key={section.name}
+                          onClick={async () => {
+                            if (!selectedTask || isCreating) return;
+                            const projectName = selectedTask.todoist_project_name || editProjectName || 'Personal';
+                            const sectionId = SECTION_IDS[projectName]?.[section.name];
+
+                            // Update Supabase
+                            await supabase
+                              .from('tasks')
+                              .update({
+                                todoist_section_name: section.name,
+                                todoist_section_id: sectionId,
+                                updated_at: new Date().toISOString(),
+                              })
+                              .eq('task_id', selectedTask.task_id);
+
+                            // Sync to Todoist
+                            if (selectedTask.todoist_id && sectionId) {
+                              try {
+                                await fetch(`${BACKEND_URL}/todoist/tasks/${selectedTask.todoist_id}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ section_id: sectionId }),
+                                });
+                              } catch (err) {
+                                console.warn('Failed to sync section to Todoist:', err);
+                              }
+                            }
+
+                            toast.success(`Moved to ${section.name}`);
+                            fetchTasks();
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            border: `1px solid ${isSelected ? section.color : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
+                            background: isSelected
+                              ? `${section.color}20`
+                              : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
+                            color: isSelected
+                              ? section.color
+                              : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {section.name}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Priority */}
               <div style={{ marginBottom: '16px' }}>
@@ -1867,7 +1899,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                   </div>
 
                   {/* Deals */}
-                  <div>
+                  <div style={{ marginBottom: '12px' }}>
                     <span style={{
                       fontSize: '11px',
                       fontWeight: 500,
@@ -1924,10 +1956,237 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                       )}
                     </div>
                   </div>
+
+                  {/* WhatsApp Chats */}
+                  <div>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginBottom: '6px',
+                    }}>
+                      <FaWhatsapp size={9} style={{ color: '#25D366' }} /> WhatsApp Chats
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => { setLinkType('chat'); setShowLinkModal(true); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3B82F6',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                        }}
+                      >
+                        + Add
+                      </button>
+                      {linkedChats.length === 0 ? (
+                        <span style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
+                          No chats linked
+                        </span>
+                      ) : (
+                        linkedChats.map(chat => (
+                          <div
+                            key={chat.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                              fontSize: '12px',
+                              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            }}
+                          >
+                            <FaWhatsapp size={10} style={{ color: '#25D366' }} />
+                            {chat.chat_name}
+                            {chat.is_group_chat && (
+                              <span style={{ fontSize: '9px', color: '#6B7280' }}>(group)</span>
+                            )}
+                            <button
+                              onClick={() => removeLink('chat', chat.id)}
+                              style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0', display: 'flex' }}
+                            >
+                              <FaTrash size={9} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* Project */}
+              {/* Files Section */}
+              {!isCreating && (
+                <div
+                  style={{
+                    marginBottom: '16px',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: `2px dashed ${isDraggingFile ? '#3B82F6' : (theme === 'dark' ? '#374151' : '#E5E7EB')}`,
+                    background: isDraggingFile ? (theme === 'dark' ? '#1E3A5F20' : '#EFF6FF') : 'transparent',
+                    transition: 'all 0.2s',
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingFile(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setIsDraggingFile(false);
+                  }}
+                  onDrop={handleFileDrop}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: linkedFiles.length > 0 ? '10px' : '0',
+                  }}>
+                    <span style={{
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}>
+                      <FaPaperclip size={11} /> Files ({linkedFiles.length})
+                    </span>
+                    <label style={{
+                      color: '#3B82F6',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}>
+                      <FaPlus size={9} /> Add
+                      <input
+                        type="file"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleFileUpload(Array.from(e.target.files))}
+                      />
+                    </label>
+                  </div>
+
+                  {uploadingFile && (
+                    <div style={{
+                      padding: '8px',
+                      textAlign: 'center',
+                      color: '#3B82F6',
+                      fontSize: '12px',
+                    }}>
+                      Uploading...
+                    </div>
+                  )}
+
+                  {linkedFiles.length === 0 && !uploadingFile && (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '12px',
+                      color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                      fontSize: '11px',
+                    }}>
+                      {isDraggingFile ? 'Drop files here' : 'Drag & drop files or click Add'}
+                    </div>
+                  )}
+
+                  {linkedFiles.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {linkedFiles.map(file => {
+                        const FileIcon = getFileIcon(file.file_type);
+                        const isImage = file.file_type?.startsWith('image/');
+                        return (
+                          <div
+                            key={file.file_id}
+                            style={{
+                              position: 'relative',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                              background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                            }}
+                          >
+                            {isImage ? (
+                              <a href={file.file_path} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={file.file_path}
+                                  alt={file.file_name}
+                                  style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                  }}
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                href={file.file_path}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  width: '80px',
+                                  height: '80px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  textDecoration: 'none',
+                                  color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                                  padding: '8px',
+                                }}
+                              >
+                                <FileIcon size={24} style={{ marginBottom: '4px' }} />
+                                <span style={{
+                                  fontSize: '9px',
+                                  textAlign: 'center',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  maxWidth: '70px',
+                                }}>
+                                  {file.file_name}
+                                </span>
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleDeleteFile(file.file_id, file.file_path)}
+                              style={{
+                                position: 'absolute',
+                                top: '4px',
+                                right: '4px',
+                                background: 'rgba(239, 68, 68, 0.9)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '18px',
+                                height: '18px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: 'white',
+                              }}
+                            >
+                              <FaTimes size={10} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Project - Only Personal and Work */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{
                   fontSize: '12px',
@@ -1936,12 +2195,10 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                   marginBottom: '6px',
                   display: 'block',
                 }}>
-                  Project
+                  Move to Project
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   {[
-                    { name: 'Inbox', icon: FaInbox },
-                    { name: 'Birthdays 🎂', icon: FaBirthdayCake },
                     { name: 'Personal', icon: FaHome },
                     { name: 'Work', icon: FaBriefcase },
                   ].map(proj => {
@@ -1951,15 +2208,14 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                       <button
                         key={proj.name}
                         onClick={() => {
-                          setEditProjectName(proj.name);
-                          saveField('todoist_project_name', proj.name);
-                          // Select next task in list
-                          const currentIndex = filteredTasks.findIndex(t => t.task_id === selectedTask?.task_id);
-                          if (currentIndex !== -1 && filteredTasks.length > 1) {
-                            const nextTask = filteredTasks[currentIndex + 1] || filteredTasks[currentIndex - 1];
-                            if (nextTask) {
-                              setTimeout(() => loadTask(nextTask), 100);
-                            }
+                          // If coming from Inbox, show section modal
+                          if (editProjectName === 'Inbox' || editProjectName === 'Birthdays 🎂') {
+                            setPendingProjectName(proj.name);
+                            setShowSectionModal(true);
+                          } else {
+                            // Already in Personal/Work, just switch project
+                            setEditProjectName(proj.name);
+                            saveField('todoist_project_name', proj.name);
                           }
                         }}
                         style={{
@@ -2121,7 +2377,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                 fontWeight: 600,
                 color: theme === 'dark' ? '#F9FAFB' : '#111827',
               }}>
-                Link {linkType === 'contact' ? 'Contact' : linkType === 'company' ? 'Company' : 'Deal'}
+                Link {linkType === 'contact' ? 'Contact' : linkType === 'company' ? 'Company' : linkType === 'deal' ? 'Deal' : 'WhatsApp Chat'}
               </h3>
               <button
                 onClick={() => {
@@ -2176,7 +2432,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {linkSearchResults.map(entity => (
                     <div
-                      key={entity.contact_id || entity.company_id || entity.deal_id}
+                      key={entity.contact_id || entity.company_id || entity.deal_id || entity.id}
                       onClick={() => addLink(entity)}
                       style={{
                         padding: '10px 12px',
@@ -2185,17 +2441,177 @@ const TasksFullTab = ({ theme, onLinkedContactsChange }) => {
                         cursor: 'pointer',
                         fontSize: '13px',
                         color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
                       }}
                     >
+                      {linkType === 'chat' && <FaWhatsapp size={14} style={{ color: '#25D366' }} />}
                       {linkType === 'contact'
                         ? `${entity.first_name} ${entity.last_name}`
                         : linkType === 'company'
                         ? entity.name
-                        : entity.opportunity}
+                        : linkType === 'deal'
+                        ? entity.opportunity
+                        : entity.chat_name}
+                      {linkType === 'chat' && entity.is_group_chat && (
+                        <span style={{ fontSize: '11px', color: '#6B7280' }}>(group)</span>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section Selection Modal */}
+      {showSectionModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+            borderRadius: '12px',
+            width: '350px',
+            maxHeight: '500px',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '16px',
+                fontWeight: 600,
+                color: theme === 'dark' ? '#F9FAFB' : '#111827',
+              }}>
+                Move to {pendingProjectName}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowSectionModal(false);
+                  setPendingProjectName(null);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                  cursor: 'pointer',
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 20px' }}>
+              <p style={{
+                margin: '0 0 16px 0',
+                fontSize: '13px',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+              }}>
+                Select a section:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  { name: 'This Week', color: '#EF4444' },
+                  { name: 'Next Week', color: '#F97316' },
+                  { name: 'This Month', color: '#F59E0B' },
+                  { name: 'This Sprint', color: '#8B5CF6' },
+                  { name: 'This Year', color: '#3B82F6' },
+                  { name: 'Next Year', color: '#6366F1' },
+                  { name: 'Someday', color: '#6B7280' },
+                ].map(section => (
+                  <button
+                    key={section.name}
+                    onClick={async () => {
+                      if (!selectedTask || !pendingProjectName) return;
+
+                      const sectionId = SECTION_IDS[pendingProjectName]?.[section.name];
+
+                      // Update Supabase with project and section
+                      await supabase
+                        .from('tasks')
+                        .update({
+                          todoist_project_name: pendingProjectName,
+                          todoist_section_name: section.name,
+                          todoist_section_id: sectionId,
+                          updated_at: new Date().toISOString(),
+                        })
+                        .eq('task_id', selectedTask.task_id);
+
+                      // Sync to Todoist
+                      if (selectedTask.todoist_id && sectionId) {
+                        try {
+                          await fetch(`${BACKEND_URL}/todoist/tasks/${selectedTask.todoist_id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ section_id: sectionId }),
+                          });
+                        } catch (err) {
+                          console.warn('Failed to sync to Todoist:', err);
+                        }
+                      }
+
+                      toast.success(`Moved to ${pendingProjectName} → ${section.name}`);
+                      setShowSectionModal(false);
+                      setPendingProjectName(null);
+
+                      // Refresh and reload the same task to see the changes
+                      await fetchTasks();
+
+                      // Reload the task to show updated data
+                      const { data: updatedTask } = await supabase
+                        .from('tasks')
+                        .select('*')
+                        .eq('task_id', selectedTask.task_id)
+                        .single();
+
+                      if (updatedTask) {
+                        loadTask(updatedTask);
+                      }
+                    }}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      border: `2px solid ${section.color}40`,
+                      background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: section.color,
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = `${section.color}20`;
+                      e.target.style.borderColor = section.color;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = theme === 'dark' ? '#374151' : '#F9FAFB';
+                      e.target.style.borderColor = `${section.color}40`;
+                    }}
+                  >
+                    {section.name}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
