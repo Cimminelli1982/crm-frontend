@@ -912,7 +912,7 @@ const INCLUDED_PROJECT_IDS = [
   '2335921711', // Inbox
   '2336453097', // Personal
   '2336882454', // Work
-  '2344002643', // Team
+  '2365787050', // Team
   '2360053180', // Birthdays
 ];
 
@@ -953,7 +953,12 @@ async function syncTodoist() {
     const projectMap = {};
     projects.forEach(p => { projectMap[p.id] = p.name; });
 
-    // 3. Upsert tasks into Supabase
+    // 3. Fetch sections for name lookup
+    const sections = await todoistRequest('/sections');
+    const sectionMap = {};
+    sections.forEach(s => { sectionMap[s.id] = s.name; });
+
+    // 4. Upsert tasks into Supabase
     const todoistIds = filteredTasks.map(t => t.id);
 
     for (const tt of filteredTasks) {
@@ -974,6 +979,8 @@ async function syncTodoist() {
         status: tt.is_completed ? 'completed' : 'open',
         todoist_project_id: tt.project_id,
         todoist_project_name: projectMap[tt.project_id] || null,
+        todoist_section_id: tt.section_id || null,
+        todoist_section_name: tt.section_id ? sectionMap[tt.section_id] : null,
         todoist_parent_id: tt.parent_id || null,
         task_order: tt.order || 0,
         todoist_url: tt.url,
@@ -993,7 +1000,7 @@ async function syncTodoist() {
       }
     }
 
-    // 4. Orphan detection - delete tasks in Supabase that are not in Todoist active list
+    // 5. Orphan detection - delete tasks in Supabase that are not in Todoist active list
     const { data: orphanTasks } = await supabase
       .from('tasks')
       .select('task_id, todoist_id, content')
@@ -1015,7 +1022,72 @@ async function syncTodoist() {
       }
     }
 
-    console.log(`[Todoist] Sync complete: ${filteredTasks.length} active tasks, ${orphans.length} orphans deleted`);
+    // 6. Safety net - push orphan tasks (no todoist_id) from Supabase to Todoist
+    const { data: localOnlyTasks } = await supabase
+      .from('tasks')
+      .select('task_id, content, description, due_string, priority, todoist_project_name, todoist_section_id')
+      .eq('status', 'open')
+      .is('todoist_id', null);
+
+    if (localOnlyTasks && localOnlyTasks.length > 0) {
+      console.log(`[Todoist] Found ${localOnlyTasks.length} local-only tasks to push to Todoist`);
+
+      for (const task of localOnlyTasks) {
+        try {
+          // Find project_id from project name
+          let targetProjectId = null;
+          if (task.todoist_project_name) {
+            const proj = projects.find(p => p.name === task.todoist_project_name);
+            if (proj) targetProjectId = proj.id;
+          }
+
+          const todoistPayload = {
+            content: task.content,
+            description: task.description || undefined,
+            due_string: task.due_string || undefined,
+            priority: task.priority || 1,
+          };
+          if (targetProjectId) {
+            todoistPayload.project_id = targetProjectId;
+          }
+          if (task.todoist_section_id) {
+            todoistPayload.section_id = task.todoist_section_id;
+          }
+
+          const response = await fetch(`${TODOIST_API_URL}/tasks`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${TODOIST_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(todoistPayload),
+          });
+
+          if (response.ok) {
+            const newTodoistTask = await response.json();
+            // Update Supabase with todoist_id
+            await supabase
+              .from('tasks')
+              .update({
+                todoist_id: newTodoistTask.id,
+                todoist_url: newTodoistTask.url,
+                todoist_project_id: newTodoistTask.project_id,
+                todoist_project_name: projectMap[newTodoistTask.project_id] || task.todoist_project_name,
+                synced_at: new Date().toISOString(),
+              })
+              .eq('task_id', task.task_id);
+
+            console.log(`[Todoist] Pushed to Todoist: "${task.content}" → ${newTodoistTask.id}`);
+          } else {
+            console.error(`[Todoist] Failed to push "${task.content}":`, await response.text());
+          }
+        } catch (pushErr) {
+          console.error(`[Todoist] Error pushing "${task.content}":`, pushErr.message);
+        }
+      }
+    }
+
+    console.log(`[Todoist] Sync complete: ${filteredTasks.length} active tasks, ${orphans.length} orphans deleted, ${localOnlyTasks?.length || 0} pushed to Todoist`);
   } catch (error) {
     console.error('[Todoist] Sync error:', error.message);
   }

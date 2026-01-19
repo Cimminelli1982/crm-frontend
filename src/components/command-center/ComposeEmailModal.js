@@ -26,6 +26,8 @@ import {
   AutocompleteEmail,
 } from '../../pages/CommandCenterPage.styles';
 
+const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
+
 // Wide modal content for 2-column layout
 const WideModalContent = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
@@ -1114,12 +1116,41 @@ const ComposeEmailModal = ({
 
     setCreatingTask(true);
     try {
-      // Create task in Supabase
+      // 1. Create in Todoist FIRST
+      const todoistPayload = {
+        content: newTaskContent.trim(),
+        due_string: newTaskDueString || undefined,
+        priority: 1,
+      };
+
+      const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(todoistPayload),
+      });
+
+      if (!todoistResponse.ok) {
+        const errText = await todoistResponse.text();
+        console.error('Todoist create failed:', errText);
+        toast.error('Failed to create in Todoist');
+        setCreatingTask(false);
+        return; // Don't create orphan task in Supabase
+      }
+
+      const todoistTask = await todoistResponse.json();
+      const todoistId = todoistTask.task?.id || todoistTask.id;
+      const todoistUrl = todoistTask.task?.url || todoistTask.url;
+      const todoistProjectId = todoistTask.task?.project_id || todoistTask.project_id;
+
+      // 2. Then create in Supabase with todoist_id
       const taskData = {
         content: newTaskContent.trim(),
         due_string: newTaskDueString || null,
         status: 'open',
         priority: 1,
+        todoist_id: todoistId,
+        todoist_url: todoistUrl,
+        todoist_project_id: todoistProjectId,
         created_at: new Date().toISOString()
       };
 

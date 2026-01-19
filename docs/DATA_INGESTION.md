@@ -653,6 +653,7 @@ const INCLUDED_PROJECT_IDS = [
   '2335921711', // Inbox
   '2336453097', // Personal
   '2336882454', // Work
+  '2365787050', // Team
   '2360053180', // Birthdays 🎂
 ];
 ```

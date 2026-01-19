@@ -13189,29 +13189,29 @@ internet businesses.`;
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'company'} onClick={() => setActiveActionTab('company')} title="Company Details">
                     <FaBuilding />
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'whatsapp'} onClick={() => setActiveActionTab('whatsapp')} title="WhatsApp Chat" style={{ color: activeActionTab === 'whatsapp' ? '#22C55E' : undefined }}>
-                    <FaWhatsapp />
-                  </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'email'} onClick={() => setActiveActionTab('email')} title="Send Email" style={{ color: activeActionTab === 'email' ? '#3B82F6' : undefined }}>
                     <FaEnvelope />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'whatsapp'} onClick={() => setActiveActionTab('whatsapp')} title="WhatsApp Chat" style={{ color: activeActionTab === 'whatsapp' ? '#22C55E' : undefined }}>
+                    <FaWhatsapp />
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'calendarPanel'} onClick={() => setActiveActionTab('calendarPanel')} title="Calendar View" style={{ color: activeActionTab === 'calendarPanel' ? '#F59E0B' : undefined }}>
                     <FaCalendarAlt />
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
-                    <FaRobot />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks" style={{ color: activeActionTab === 'tasks' ? '#10B981' : undefined }}>
+                    <FaTasks />
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals" style={{ color: activeActionTab === 'deals' ? '#10B981' : undefined }}>
                     <FaDollarSign />
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes" style={{ color: activeActionTab === 'notes' ? '#F59E0B' : undefined }}>
-                    <FaStickyNote />
-                  </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions" style={{ color: activeActionTab === 'introductions' ? '#EC4899' : undefined }}>
                     <FaHandshake />
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks" style={{ color: activeActionTab === 'tasks' ? '#10B981' : undefined }}>
-                    <FaTasks />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes" style={{ color: activeActionTab === 'notes' ? '#F59E0B' : undefined }}>
+                    <FaStickyNote />
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
+                    <FaRobot />
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'files'} onClick={() => setActiveActionTab('files')} title="Files" style={{ color: activeActionTab === 'files' ? '#3B82F6' : undefined }}>
                     <FaPaperclip />

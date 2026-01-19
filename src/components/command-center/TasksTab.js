@@ -517,12 +517,62 @@ const TasksTab = ({
       let taskId = selectedTaskId;
 
       if (isCreating) {
-        // Create new task
+        // 1. Get project_id from project name
+        let todoistProjectId = null;
+        try {
+          const projectsRes = await fetch(`${BACKEND_URL}/todoist/projects`);
+          if (projectsRes.ok) {
+            const { projects } = await projectsRes.json();
+            const proj = projects.find(p => p.name === projectName);
+            if (proj) todoistProjectId = proj.id;
+          }
+        } catch (e) {
+          console.warn('Failed to fetch projects:', e);
+        }
+
+        // 2. Create in Todoist FIRST
+        const todoistPayload = {
+          content: taskData.content,
+          description: taskData.description,
+          due_string: taskData.due_string,
+          priority: taskData.priority,
+        };
+        if (todoistProjectId) {
+          todoistPayload.project_id = todoistProjectId;
+        }
+        const sectionId = SECTION_IDS[projectName]?.[sectionName];
+        if (sectionId) {
+          todoistPayload.section_id = sectionId;
+        }
+
+        const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(todoistPayload),
+        });
+
+        if (!todoistResponse.ok) {
+          const errText = await todoistResponse.text();
+          console.error('Todoist create failed:', errText);
+          toast.error('Failed to create in Todoist');
+          setSaving(false);
+          return; // Don't create orphan task in Supabase
+        }
+
+        const todoistTask = await todoistResponse.json();
+        const todoistId = todoistTask.task?.id || todoistTask.id;
+        const todoistUrl = todoistTask.task?.url || todoistTask.url;
+        const actualProjectId = todoistTask.task?.project_id || todoistTask.project_id;
+
+        // 3. Then save to Supabase with todoist_id
         const { data: newTask, error } = await supabase
           .from('tasks')
           .insert({
             ...taskData,
             status: 'open',
+            todoist_id: todoistId,
+            todoist_url: todoistUrl,
+            todoist_project_id: actualProjectId,
             created_at: new Date().toISOString(),
           })
           .select()

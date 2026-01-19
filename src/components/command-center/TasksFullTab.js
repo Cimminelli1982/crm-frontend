@@ -13,10 +13,12 @@ const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 
 // Project options for filtering
 const PROJECTS = [
+  { id: 'Today', label: 'Today', color: '#10B981' },
   { id: 'all', label: 'All Projects', color: '#6B7280' },
   { id: 'Inbox', label: 'Inbox', color: '#808080' },
   { id: 'Work', label: 'Work', color: '#4073ff' },
   { id: 'Personal', label: 'Personal', color: '#b8255f' },
+  { id: 'Team', label: 'Team', color: '#808080' },
   { id: 'Birthdays 🎂', label: 'Birthdays', color: '#db4035' },
 ];
 
@@ -65,6 +67,9 @@ const SECTION_IDS = {
     'This Year': '212234231',
     'Next Year': '212234227',
     'Someday': '212234229',
+  },
+  'Team': {
+    'Rosaria': '212756755',
   },
 };
 
@@ -225,7 +230,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
   const [completedTasks, setCompletedTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProject, setSelectedProject] = useState('Inbox');
+  const [selectedProject, setSelectedProject] = useState('Today');
   const [expandedSections, setExpandedSections] = useState({
     open: true,
     thisWeek: true,
@@ -235,7 +240,14 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
     thisYear: false,
     nextYear: false,
     someday: false,
-    completed: false
+    completed: false,
+    rosaria: true,
+    // Today view sections
+    todayInbox: true,
+    todayDue: true,
+    todayThisWeek: true,
+    todayDelegated: true,
+    todayRecentlyCompleted: false,
   });
 
   // Selected task state
@@ -1075,6 +1087,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
       'thisYear': 'This Year',
       'nextYear': 'Next Year',
       'someday': 'Someday',
+      'rosaria': 'Rosaria',
     };
 
     const newSectionName = sectionNameMap[targetCategory];
@@ -1136,6 +1149,24 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
   const thisYearTasks = filteredTasks.filter(t => t.todoist_section_name === 'This Year');
   const nextYearTasks = filteredTasks.filter(t => t.todoist_section_name === 'Next Year');
   const somedayTasks = filteredTasks.filter(t => t.todoist_section_name === 'Someday' || !t.todoist_section_name);
+
+  // Team project sections
+  const rosariaTasks = filteredTasks.filter(t => t.todoist_section_name === 'Rosaria');
+
+  // Today view sections (work on all open tasks, not filtered by project)
+  const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  const todayInboxTasks = tasks.filter(t => t.todoist_project_name === 'Inbox');
+  const todayDueTasks = tasks.filter(t => {
+    if (!t.due_date) return false;
+    const taskDate = t.due_date.split('T')[0];
+    return taskDate === todayDate;
+  });
+  const todayThisWeekTasks = tasks.filter(t =>
+    t.todoist_section_name === 'This Week' &&
+    (t.todoist_project_name === 'Work' || t.todoist_project_name === 'Personal')
+  );
+  const todayDelegatedTasks = tasks.filter(t => t.todoist_project_name === 'Team');
+  const todayRecentlyCompletedTasks = completedTasks.slice(0, 10);
 
   const filteredCompletedTasks = completedTasks.filter(task => {
     const matchesSearch = !searchQuery ||
@@ -1294,6 +1325,202 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
             }}>
               Loading...
             </div>
+          ) : selectedProject === 'Today' ? (
+            /* TODAY VIEW - Special layout with 5 top-level sections */
+            <>
+              {/* Inbox Section */}
+              <div style={{ marginBottom: '16px' }}>
+                <div
+                  onClick={() => setExpandedSections(prev => ({ ...prev, todayInbox: !prev.todayInbox }))}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                    cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {expandedSections.todayInbox ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+                  <FaInbox size={12} style={{ color: '#808080' }} />
+                  <span style={{ fontWeight: 600, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                    Inbox
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 600, color: todayInboxTasks.length > 0 ? '#EF4444' : '#6B7280' }}>
+                    {todayInboxTasks.length}
+                  </span>
+                </div>
+                {expandedSections.todayInbox && todayInboxTasks.length > 0 && (
+                  <div style={{ paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {todayInboxTasks.map(task => (
+                      <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Due Today Section */}
+              <div style={{ marginBottom: '16px' }}>
+                <div
+                  onClick={() => setExpandedSections(prev => ({ ...prev, todayDue: !prev.todayDue }))}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                    cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {expandedSections.todayDue ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+                  <FaCalendarAlt size={12} style={{ color: '#EF4444' }} />
+                  <span style={{ fontWeight: 600, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                    Due Today
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 600, color: todayDueTasks.length > 0 ? '#EF4444' : '#6B7280' }}>
+                    {todayDueTasks.length}
+                  </span>
+                </div>
+                {expandedSections.todayDue && todayDueTasks.length > 0 && (
+                  <div style={{ paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {todayDueTasks.map(task => (
+                      <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* This Week Section */}
+              <div style={{ marginBottom: '16px' }}>
+                <div
+                  onClick={() => setExpandedSections(prev => ({ ...prev, todayThisWeek: !prev.todayThisWeek }))}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                    cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {expandedSections.todayThisWeek ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+                  <FaClock size={12} style={{ color: '#F97316' }} />
+                  <span style={{ fontWeight: 600, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                    This Week
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 600, color: '#F97316' }}>
+                    {todayThisWeekTasks.length}
+                  </span>
+                </div>
+                {expandedSections.todayThisWeek && todayThisWeekTasks.length > 0 && (
+                  <div style={{ paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {todayThisWeekTasks.map(task => (
+                      <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Delegated Section */}
+              <div style={{ marginBottom: '16px' }}>
+                <div
+                  onClick={() => setExpandedSections(prev => ({ ...prev, todayDelegated: !prev.todayDelegated }))}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                    cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {expandedSections.todayDelegated ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+                  <FaUser size={12} style={{ color: '#8B5CF6' }} />
+                  <span style={{ fontWeight: 600, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                    Delegated
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 600, color: '#8B5CF6' }}>
+                    {todayDelegatedTasks.length}
+                  </span>
+                </div>
+                {expandedSections.todayDelegated && todayDelegatedTasks.length > 0 && (
+                  <div style={{ paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {todayDelegatedTasks.map(task => (
+                      <TaskItem key={task.task_id} task={task} theme={theme} selectedTask={selectedTask} loadTask={loadTask} handleComplete={handleComplete} getPriorityColor={getPriorityColor} onDragStart={handleDragStart} onInlineEdit={handleInlineEdit} editingTaskId={editingTaskId} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recently Completed Section */}
+              <div style={{ marginBottom: '16px' }}>
+                <div
+                  onClick={() => setExpandedSections(prev => ({ ...prev, todayRecentlyCompleted: !prev.todayRecentlyCompleted }))}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                    cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {expandedSections.todayRecentlyCompleted ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+                  <FaCheckCircle size={12} style={{ color: '#10B981' }} />
+                  <span style={{ fontWeight: 600, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                    Recently Completed
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 600, color: '#6B7280' }}>
+                    {todayRecentlyCompletedTasks.length}
+                  </span>
+                </div>
+                {expandedSections.todayRecentlyCompleted && todayRecentlyCompletedTasks.length > 0 && (
+                  <div style={{ paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {todayRecentlyCompletedTasks.map(task => (
+                      <div
+                        key={task.task_id}
+                        onClick={() => loadTask(task)}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          background: selectedTask?.task_id === task.task_id
+                            ? (theme === 'dark' ? '#374151' : '#E5E7EB')
+                            : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
+                          border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <FaCheck size={12} style={{ color: '#10B981', flexShrink: 0 }} />
+                          <div style={{
+                            fontWeight: 500,
+                            fontSize: '13px',
+                            color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                            textDecoration: 'line-through',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {task.content}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <>
               {/* Open Tasks Header */}
@@ -1367,7 +1594,9 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
                     ) : (
                       <>
                     {/* Render all sections dynamically */}
-                    {[
+                    {(selectedProject === 'Team' ? [
+                      { id: 'rosaria', name: 'Rosaria', tasks: rosariaTasks, color: '#808080', Icon: FaUser },
+                    ] : [
                       { id: 'thisWeek', name: 'This Week', tasks: thisWeekTasks, color: '#EF4444', Icon: FaClock },
                       { id: 'nextWeek', name: 'Next Week', tasks: nextWeekTasks, color: '#F97316', Icon: FaClock },
                       { id: 'thisMonth', name: 'This Month', tasks: thisMonthTasks, color: '#F59E0B', Icon: FaCalendarAlt },
@@ -1375,7 +1604,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
                       { id: 'thisYear', name: 'This Year', tasks: thisYearTasks, color: '#3B82F6', Icon: FaCalendarAlt },
                       { id: 'nextYear', name: 'Next Year', tasks: nextYearTasks, color: '#6366F1', Icon: FaCalendarAlt },
                       { id: 'someday', name: 'Someday', tasks: somedayTasks, color: '#6B7280', Icon: FaCircle },
-                    ].map(section => (
+                    ]).map(section => (
                       <div
                         key={section.id}
                         style={{ marginBottom: '12px' }}
