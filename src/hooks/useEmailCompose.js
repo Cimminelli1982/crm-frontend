@@ -345,6 +345,76 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
     setComposeModal({ open: true, mode: 'forward' });
   }, [getLatestEmail, formatRecipients]);
 
+  // Open compose modal for assigning email to Rosaria
+  const openAssign = useCallback(async () => {
+    const latestEmail = getLatestEmail();
+    if (!latestEmail) return;
+
+    // Rosaria's config
+    const ROSARIA_EMAIL = 'rosaria.marano@investimentiesviluppo.eu';
+    const ROSARIA_NAME = 'Rosaria Marano';
+
+    // Subject with [TASK] prefix
+    const originalSubject = latestEmail.subject?.replace(/^(Fwd:\s*)+/i, '').replace(/^(Re:\s*)+/i, '');
+    const subject = `[TASK] Fwd: ${originalSubject}`;
+
+    setComposeTo([{ email: ROSARIA_EMAIL, name: ROSARIA_NAME }]);
+    setComposeCc([]);
+    setComposeToInput('');
+    setComposeCcInput('');
+    setComposeSubject(subject);
+
+    // Body with instructions section
+    setComposeBody(
+      '--- ISTRUZIONI ---\n\n\n\n' +
+      '--- EMAIL ORIGINALE ---\n\n' +
+      EMAIL_SIGNATURE + '\n\n' + '─'.repeat(40) + '\n' +
+      `---------- Forwarded message ----------\n` +
+      `From: ${latestEmail.from_name || ''} <${latestEmail.from_email}>\n` +
+      `Date: ${new Date(latestEmail.date).toLocaleString()}\n` +
+      `Subject: ${latestEmail.subject}\n` +
+      `To: ${formatRecipients(latestEmail.to_recipients) || ''}\n\n` +
+      (latestEmail.body_text || latestEmail.snippet || '')
+    );
+
+    // Include original attachments (same as forward)
+    if (latestEmail.attachments && latestEmail.attachments.length > 0) {
+      const downloadedAttachments = await Promise.all(
+        latestEmail.attachments.map(async (att) => {
+          try {
+            const downloadUrl = `${BACKEND_URL}/attachment/${encodeURIComponent(att.blobId)}?name=${encodeURIComponent(att.name)}&type=${encodeURIComponent(att.type)}`;
+            const response = await fetch(downloadUrl);
+            if (!response.ok) return null;
+
+            const blob = await response.blob();
+            const base64 = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result.split(',')[1]);
+              reader.readAsDataURL(blob);
+            });
+
+            return {
+              name: att.name,
+              type: att.type || 'application/octet-stream',
+              size: att.size || blob.size,
+              data: base64,
+            };
+          } catch (error) {
+            console.error('Failed to download attachment for assign:', att.name, error);
+            return null;
+          }
+        })
+      );
+
+      const validAttachments = downloadedAttachments.filter(a => a !== null);
+      setComposeAttachments(validAttachments);
+    } else {
+      setComposeAttachments([]);
+    }
+
+    setComposeModal({ open: true, mode: 'assign' });
+  }, [getLatestEmail, formatRecipients]);
+
   // Open compose modal for new email (no pre-populated recipients)
   const openNewCompose = useCallback(() => {
     setComposeTo([]);
@@ -549,6 +619,7 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
     openReply,
     openReplyWithDraft,
     openForward,
+    openAssign,
     openNewCompose,
     closeCompose,
     handleSend,

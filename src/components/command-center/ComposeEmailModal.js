@@ -1402,6 +1402,27 @@ Il mio impegno è:`
     }
   }, [composeModal.open]);
 
+  // Handle 'assign' mode - auto-open task modal with pre-filled data
+  useEffect(() => {
+    if (composeModal.open && composeModal.mode === 'assign') {
+      // Extract task title from subject (remove [TASK] Fwd: prefix)
+      const taskTitle = composeSubject
+        .replace(/^\[TASK\]\s*/i, '')
+        .replace(/^Fwd:\s*/i, '')
+        .trim();
+
+      // Open task modal and pre-configure for Rosaria
+      setTaskAssociateModalOpen(true);
+      setCreateTaskMode(true);
+      setNewTaskContent(taskTitle);
+      setNewTaskDueString('next week');
+      setNewTaskProject('Team');
+      setNewTaskSection('Rosaria');
+      setTaskLinkedContacts([]);
+      fetchContactSuggestionsFromEmails();
+    }
+  }, [composeModal.open, composeModal.mode, composeSubject]);
+
   // Auto-apply proofread result when it arrives
   useEffect(() => {
     if (waitingForProofreadRef.current && chatMessages.length > lastMessageCountRef.current) {
@@ -1519,7 +1540,7 @@ ${draftPart}`;
       <WideModalContent theme={theme} onClick={e => e.stopPropagation()}>
         <ModalHeader theme={theme}>
           <ModalTitle theme={theme}>
-            {composeModal.mode === 'new' ? 'New Email' : composeModal.mode === 'forward' ? 'Forward' : composeModal.mode === 'replyAll' ? 'Reply All' : 'Reply'}
+            {composeModal.mode === 'new' ? 'New Email' : composeModal.mode === 'forward' ? 'Forward' : composeModal.mode === 'assign' ? 'Assign to Rosaria' : composeModal.mode === 'replyAll' ? 'Reply All' : 'Reply'}
           </ModalTitle>
           <CloseButton theme={theme} onClick={closeCompose}>
             <FaTimes size={18} />

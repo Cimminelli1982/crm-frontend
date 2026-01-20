@@ -18,6 +18,12 @@ import {
   EmailUnreadDot,
   EmailSubject,
   EmailSnippet,
+  SearchContainer,
+  SearchInputWrapper,
+  SearchInput,
+  ClearSearchButton,
+  SearchResultsHeader,
+  SearchResultDate,
   EmailContentPanel,
   EmailHeader,
   EmailFrom,
@@ -214,6 +220,12 @@ const CommandCenterPage = ({ theme }) => {
     return items.filter(item => item.status === status);
   };
 
+  // Email search state (for searching saved/archived emails)
+  const [emailSearchQuery, setEmailSearchQuery] = useState('');
+  const [emailSearchResults, setEmailSearchResults] = useState([]);
+  const [emailSearchLoading, setEmailSearchLoading] = useState(false);
+  const [isSearchingEmails, setIsSearchingEmails] = useState(false);
+
   // Calendar sections state (needReview, thisWeek, thisMonth, upcoming)
   const [calendarSections, setCalendarSections] = useState({
     needReview: true,
@@ -318,6 +330,7 @@ const CommandCenterPage = ({ theme }) => {
     openReply,
     openReplyWithDraft,
     openForward,
+    openAssign,
     openNewCompose,
     closeCompose,
     handleSend,
@@ -8216,6 +8229,198 @@ internet businesses.`;
     }
   };
 
+  // Search saved/archived emails (not inbox) using RPC function
+  const searchSavedEmails = useCallback(async (query) => {
+    if (!query.trim()) {
+      setEmailSearchResults([]);
+      setIsSearchingEmails(false);
+      return;
+    }
+
+    setEmailSearchLoading(true);
+    setIsSearchingEmails(true);
+
+    try {
+      // Use the PostgreSQL RPC function for sophisticated search
+      const { data, error } = await supabase
+        .rpc('search_emails', {
+          search_query: query.trim(),
+          result_limit: 100
+        });
+
+      if (error) throw error;
+
+      // Transform results to match expected format
+      const results = (data || []).map(row => ({
+        email_thread_id: row.email_thread_id,
+        thread_id: row.thread_id,
+        subject: row.subject,
+        last_message_timestamp: row.last_message_timestamp,
+        emails: Array(Number(row.email_count)).fill({}), // Placeholder for count
+        latestEmail: {
+          email_id: row.latest_email_id,
+          from_name: row.latest_sender_name,
+          body_plain: row.latest_body_preview
+        },
+        matchType: row.match_source
+      }));
+
+      setEmailSearchResults(results);
+    } catch (error) {
+      console.error('Error searching emails:', error);
+      toast.error('Search failed');
+      setEmailSearchResults([]);
+    } finally {
+      setEmailSearchLoading(false);
+    }
+  }, []);
+
+  // Handle selecting a search result - loads the full thread and displays it
+  const handleSelectSearchResult = async (searchResult) => {
+    try {
+      // Fetch all emails in this thread
+      const { data: threadEmails, error } = await supabase
+        .from('emails')
+        .select('*')
+        .eq('email_thread_id', searchResult.email_thread_id)
+        .order('message_timestamp', { ascending: false });
+
+      if (error) throw error;
+
+      if (!threadEmails || threadEmails.length === 0) {
+        toast.error('Could not load email thread');
+        return;
+      }
+
+      // Fetch participants for each email to get to/cc recipients with their emails
+      const emailIds = threadEmails.map(e => e.email_id);
+      const { data: participants } = await supabase
+        .from('email_participants')
+        .select(`
+          email_id,
+          participant_type,
+          contact_id,
+          contact:contacts(contact_id, first_name, last_name)
+        `)
+        .in('email_id', emailIds);
+
+      // Collect all contact IDs (participants + senders)
+      const senderContactIds = threadEmails.map(e => e.sender_contact_id).filter(Boolean);
+      const participantContactIds = (participants || []).map(p => p.contact_id).filter(Boolean);
+      const allContactIds = [...new Set([...senderContactIds, ...participantContactIds])];
+
+      // Get contact emails for all contacts
+      let contactEmailMap = {};
+      let contactNameMap = {};
+      if (allContactIds.length > 0) {
+        // Get names
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name')
+          .in('contact_id', allContactIds);
+        (contacts || []).forEach(c => {
+          contactNameMap[c.contact_id] = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+        });
+
+        // Get emails
+        const { data: contactEmails } = await supabase
+          .from('contact_emails')
+          .select('contact_id, email, is_primary')
+          .in('contact_id', allContactIds)
+          .order('is_primary', { ascending: false });
+        (contactEmails || []).forEach(ce => {
+          if (!contactEmailMap[ce.contact_id]) {
+            contactEmailMap[ce.contact_id] = ce.email;
+          }
+        });
+      }
+
+      // Group participants by email_id
+      const participantsByEmail = {};
+      (participants || []).forEach(p => {
+        if (!participantsByEmail[p.email_id]) {
+          participantsByEmail[p.email_id] = { sender: [], to: [], cc: [], bcc: [] };
+        }
+        const contact = p.contact;
+        const name = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : '';
+        const email = contactEmailMap[p.contact_id] || '';
+
+        if (p.participant_type === 'sender') {
+          participantsByEmail[p.email_id].sender.push({ name, email });
+        } else if (p.participant_type === 'to') {
+          participantsByEmail[p.email_id].to.push({ name, email });
+        } else if (p.participant_type === 'cc') {
+          participantsByEmail[p.email_id].cc.push({ name, email });
+        } else if (p.participant_type === 'bcc') {
+          participantsByEmail[p.email_id].bcc.push({ name, email });
+        }
+      });
+
+      // Transform to match the format expected by the central column
+      const formattedEmails = threadEmails.map(email => {
+        const emailParticipants = participantsByEmail[email.email_id] || { sender: [], to: [], cc: [] };
+
+        // Get sender info from participants (includes me when I'm the sender)
+        const sender = emailParticipants.sender[0] || {};
+        // Fallback to contact tables if not in participants
+        const senderName = sender.name || contactNameMap[email.sender_contact_id] || '';
+        const senderEmail = sender.email || contactEmailMap[email.sender_contact_id] || '';
+
+        return {
+          id: email.email_id,
+          thread_id: email.thread_id,
+          fastmail_id: email.gmail_id,
+          from_email: senderEmail,
+          from_name: senderName,
+          to_recipients: emailParticipants.to,
+          cc_recipients: emailParticipants.cc,
+          subject: email.subject,
+          body_text: email.body_plain,
+          body_html: email.body_html,
+          date: email.message_timestamp,
+          has_attachments: email.has_attachments,
+          attachments: [],
+          is_read: email.is_read ?? true,
+          // Mark as "archived" email so UI can adapt
+          _isArchivedEmail: true,
+          _email_thread_id: email.email_thread_id
+        };
+      });
+
+      setSelectedThread(formattedEmails);
+
+      // Collapse mobile panels
+      if (window.innerWidth <= 768) {
+        setListCollapsed(true);
+      }
+    } catch (err) {
+      console.error('Error loading search result thread:', err);
+      toast.error('Failed to load email thread');
+    }
+  };
+
+  // Debounced email search effect
+  useEffect(() => {
+    if (activeTab === 'email' && emailSearchQuery.trim()) {
+      const debounce = setTimeout(() => {
+        searchSavedEmails(emailSearchQuery);
+      }, 300);
+      return () => clearTimeout(debounce);
+    } else if (!emailSearchQuery.trim()) {
+      setEmailSearchResults([]);
+      setIsSearchingEmails(false);
+    }
+  }, [emailSearchQuery, activeTab, searchSavedEmails]);
+
+  // Clear search when switching tabs
+  useEffect(() => {
+    if (activeTab !== 'email') {
+      setEmailSearchQuery('');
+      setEmailSearchResults([]);
+      setIsSearchingEmails(false);
+    }
+  }, [activeTab]);
+
   // Delete single email (without blocking)
   const deleteEmail = async () => {
     const latestEmail = getLatestEmail();
@@ -8369,10 +8574,76 @@ internet businesses.`;
             </CollapseButton>
           </ListHeader>
 
+          {/* Email Search Bar - only for email tab */}
+          {!listCollapsed && activeTab === 'email' && (
+            <SearchContainer theme={theme}>
+              <SearchInputWrapper theme={theme}>
+                <FaSearch size={14} style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', flexShrink: 0 }} />
+                <SearchInput
+                  theme={theme}
+                  type="text"
+                  placeholder="Search saved emails..."
+                  value={emailSearchQuery}
+                  onChange={(e) => setEmailSearchQuery(e.target.value)}
+                />
+                {emailSearchQuery && (
+                  <ClearSearchButton
+                    theme={theme}
+                    onClick={() => {
+                      setEmailSearchQuery('');
+                      setEmailSearchResults([]);
+                      setIsSearchingEmails(false);
+                    }}
+                  >
+                    <FaTimes size={12} />
+                  </ClearSearchButton>
+                )}
+              </SearchInputWrapper>
+            </SearchContainer>
+          )}
+
           {!listCollapsed && (activeTab === 'email' || activeTab === 'whatsapp') && (
             <EmailList style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
               {threadsLoading || whatsappLoading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
+              ) : isSearchingEmails && activeTab === 'email' ? (
+                /* Search Results Mode */
+                <>
+                  <SearchResultsHeader theme={theme}>
+                    {emailSearchLoading ? 'Searching...' : `${emailSearchResults.length} threads found`}
+                  </SearchResultsHeader>
+                  {emailSearchResults.map(result => (
+                    <EmailItem
+                      key={result.email_thread_id}
+                      theme={theme}
+                      $selected={selectedThread?.[0]?._email_thread_id === result.email_thread_id}
+                      onClick={() => handleSelectSearchResult(result)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {result.latestEmail?.from_name || result.latestEmail?.from_email || 'Unknown'}
+                        </span>
+                        {result.emails?.length > 1 && (
+                          <span style={{ opacity: 0.6, flexShrink: 0 }}>({result.emails.length})</span>
+                        )}
+                      </EmailSender>
+                      <EmailSubject theme={theme}>{result.subject || 'No Subject'}</EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {result.latestEmail?.body_plain?.substring(0, 100) || ''}
+                      </EmailSnippet>
+                      <SearchResultDate theme={theme}>
+                        {result.last_message_timestamp ? new Date(result.last_message_timestamp).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        }) : ''}
+                      </SearchResultDate>
+                    </EmailItem>
+                  ))}
+                  {!emailSearchLoading && emailSearchResults.length === 0 && (
+                    <EmptyState theme={theme}>No emails found matching "{emailSearchQuery}"</EmptyState>
+                  )}
+                </>
               ) : (
                 <>
                   {/* Inbox Section (null status) */}
@@ -12988,6 +13259,10 @@ internet businesses.`;
                       <ActionBtn theme={theme} onClick={() => openReply(true)}>Reply All</ActionBtn>
                     )}
                     <ActionBtn theme={theme} onClick={openForward}>Forward</ActionBtn>
+                    <ActionBtn theme={theme} onClick={openAssign} style={{ background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD' }}>
+                      <FaUserCheck style={{ marginRight: '6px' }} />
+                      Assign
+                    </ActionBtn>
 
                     {/* Spam and Delete buttons */}
                     <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>

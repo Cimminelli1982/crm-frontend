@@ -170,6 +170,61 @@ const EmailSnippet = styled.div`
   text-overflow: ellipsis;
 `;
 
+// Email Search Components
+const SearchContainer = styled.div`
+  padding: 12px 16px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const SearchInputWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  border-radius: 8px;
+  padding: 8px 12px;
+`;
+
+const SearchInput = styled.input`
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const ClearSearchButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  padding: 2px;
+  display: flex;
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+`;
+
+const SearchResultsHeader = styled.div`
+  padding: 8px 16px;
+  font-size: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const SearchResultDate = styled.div`
+  font-size: 11px;
+  color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  margin-top: 4px;
+`;
+
 // Email Content Panel (center)
 const EmailContentPanel = styled.div`
   flex: 1;
@@ -1005,6 +1060,12 @@ export {
   EmailUnreadDot,
   EmailSubject,
   EmailSnippet,
+  SearchContainer,
+  SearchInputWrapper,
+  SearchInput,
+  ClearSearchButton,
+  SearchResultsHeader,
+  SearchResultDate,
   EmailContentPanel,
   EmailHeader,
   EmailFrom,
