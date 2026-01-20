@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pintology - Juicy lectures for thirsty humans</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Sans+Pro:wght@300;400;600;700&family=Special+Elite&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Palette estratta dall'immagine */
+            --verde-salvia: #5B9A7D;
+            --verde-scuro: #3D6B5B;
+            --verde-chiaro: #87CEAB;
+            --giallo-highlight: #F7E44D;
+            --rosso-accent: #C45C5C;
+            --blu-lavanda: #9BA8D4;
+            --bianco-carta: #F5F5F0;
+            --nero-testo: #2C3E50;
+            --arancio-birra: #E8A040;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Source Sans Pro', 'Georgia', serif;
+            line-height: 1.6;
+            color: var(--nero-testo);
+        }
+
+        /* ==================== HEADER ==================== */
+        header {
+            background: white;
+            padding: 15px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Logo stile ritaglio di giornale */
+        .logo {
+            position: relative;
+            display: inline-block;
+        }
+
+        .logo-text {
+            font-family: 'Special Elite', 'Courier New', monospace;
+            font-size: 28px;
+            font-weight: bold;
+            color: var(--nero-testo);
+            letter-spacing: 2px;
+            position: relative;
+            padding: 8px 15px;
+            background: var(--bianco-carta);
+            display: inline-block;
+            /* Effetto carta strappata */
+            clip-path: polygon(
+                0% 5%, 3% 0%, 8% 3%, 15% 0%, 22% 2%, 30% 0%, 
+                38% 3%, 45% 0%, 52% 2%, 60% 0%, 68% 3%, 75% 0%, 
+                82% 2%, 90% 0%, 95% 3%, 100% 0%, 100% 95%, 
+                97% 100%, 92% 97%, 85% 100%, 78% 98%, 70% 100%, 
+                62% 97%, 55% 100%, 48% 98%, 40% 100%, 32% 97%, 
+                25% 100%, 18% 98%, 10% 100%, 5% 97%, 0% 100%
+            );
+            box-shadow: 2px 3px 8px rgba(0,0,0,0.15);
+        }
+
+        .logo-text::before {
+            content: '';
+            position: absolute;
+            bottom: 8px;
+            left: 10px;
+            right: 10px;
+            height: 12px;
+            background: var(--giallo-highlight);
+            z-index: -1;
+            transform: skewX(-2deg);
+        }
+
+        .language-switcher {
+            display: flex;
+            gap: 10px;
+        }
+
+        .lang-btn {
+            padding: 8px 15px;
+            background: transparent;
+            border: 2px solid var(--verde-chiaro);
+            border-radius: 5px;
+            color: var(--nero-testo);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .lang-btn:hover {
+            background: var(--verde-chiaro);
+            color: white;
+        }
+
+        .lang-btn.active {
+            background: var(--verde-salvia);
+            color: white;
+            border-color: var(--verde-salvia);
+        }
+
+        /* ==================== HERO ==================== */
+        .hero {
+            /* Sfondo che riprende esattamente i colori dell'immagine */
+            background: #5B9A7D;
+            position: relative;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* Texture carta stropicciata come nell'immagine */
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                repeating-linear-gradient(
+                    45deg,
+                    transparent,
+                    transparent 100px,
+                    rgba(255,255,255,0.02) 100px,
+                    rgba(255,255,255,0.02) 200px
+                ),
+                repeating-linear-gradient(
+                    -45deg,
+                    transparent,
+                    transparent 100px,
+                    rgba(0,0,0,0.02) 100px,
+                    rgba(0,0,0,0.02) 200px
+                );
+            pointer-events: none;
+        }
+
+        .hero-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 40px;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero-image-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .hero-image {
+            max-width: 110%;
+            height: auto;
+            max-height: 85vh;
+            object-fit: contain;
+            /* Nessuna ombra - si fonde naturalmente */
+            animation: float 8s ease-in-out infinite;
+            margin-left: -5%;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .hero-content {
+            color: white;
+            text-align: left;
+        }
+
+        .hero-content h2 {
+            font-family: 'Special Elite', monospace;
+            font-size: 14px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+            font-weight: 400;
+            opacity: 0.9;
+        }
+
+        .hero-content h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 48px;
+            margin-bottom: 25px;
+            line-height: 1.2;
+            font-weight: 700;
+            font-style: italic;
+        }
+
+        .hero-tagline {
+            font-size: 20px;
+            margin-bottom: 40px;
+            font-weight: 300;
+            line-height: 1.6;
+            opacity: 0.95;
+        }
+
+        .cta-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 350px;
+        }
+
+        .btn {
+            display: block;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: var(--arancio-birra);
+            color: white;
+            box-shadow: 0 4px 15px rgba(232, 160, 64, 0.4);
+        }
+
+        .btn-primary:hover {
+            background: #D4922F;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(232, 160, 64, 0.5);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.95);
+            color: var(--verde-scuro);
+            border-color: white;
+        }
+
+        /* ==================== FEATURED EVENTS ==================== */
+        .featured-events {
+            background: white;
+            padding: 100px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Decorazioni collage */
+        .featured-events::before {
+            content: '📚';
+            position: absolute;
+            top: 60px;
+            left: 5%;
+            font-size: 50px;
+            opacity: 0.12;
+            transform: rotate(-15deg);
+        }
+
+        .featured-events::after {
+            content: '🍺';
+            position: absolute;
+            bottom: 80px;
+            right: 8%;
+            font-size: 55px;
+            opacity: 0.1;
+            transform: rotate(10deg);
+        }
+
+        .featured-events h2 {
+            text-align: center;
+            font-family: 'Playfair Display', serif;
+            font-size: 42px;
+            margin-bottom: 60px;
+            font-weight: 400;
+            color: var(--nero-testo);
+            position: relative;
+        }
+
+        .featured-events h2::after {
+            content: '';
+            display: block;
+            width: 80px;
+            height: 4px;
+            background: var(--giallo-highlight);
+            margin: 20px auto 0;
+        }
+
+        .featured-events-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .event-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .event-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.12);
+        }
+
+        .event-image {
+            width: 100%;
+            height: 220px;
+            background: linear-gradient(135deg, var(--verde-salvia) 0%, var(--verde-scuro) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 70px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .event-image::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.1) 100%);
+        }
+
+        .event-content {
+            padding: 30px;
+        }
+
+        .event-date {
+            font-size: 13px;
+            color: var(--verde-salvia);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+        }
+
+        .event-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--nero-testo);
+            margin-bottom: 15px;
+            line-height: 1.3;
+        }
+
+        .event-speaker {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .event-location {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 25px;
+        }
+
+        .event-btn {
+            display: inline-block;
+            padding: 14px 32px;
+            background: var(--arancio-birra);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 700;
+            transition: all 0.3s;
+        }
+
+        .event-btn:hover {
+            background: #D4922F;
+            transform: translateY(-2px);
+        }
+
+        /* ==================== MANIFESTO ==================== */
+        .manifesto {
+            background: var(--bianco-carta);
+            padding: 100px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Elementi decorativi ispirati al collage */
+        .manifesto .deco-bulb {
+            position: absolute;
+            top: 100px;
+            right: 8%;
+            font-size: 70px;
+            opacity: 0.15;
+            transform: rotate(15deg);
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { opacity: 0.15; transform: rotate(15deg) scale(1); }
+            50% { opacity: 0.25; transform: rotate(15deg) scale(1.05); }
+        }
+
+        .manifesto .deco-eye {
+            position: absolute;
+            bottom: 120px;
+            left: 5%;
+            font-size: 55px;
+            opacity: 0.12;
+            transform: rotate(-10deg);
+        }
+
+        .manifesto .deco-ear {
+            position: absolute;
+            top: 50%;
+            right: 3%;
+            font-size: 45px;
+            opacity: 0.1;
+            transform: translateY(-50%) rotate(20deg);
+        }
+
+        .manifesto .deco-books {
+            position: absolute;
+            bottom: 60px;
+            right: 15%;
+            font-size: 50px;
+            opacity: 0.12;
+            transform: rotate(-5deg);
+        }
+
+        .manifesto-wrapper {
+            max-width: 850px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .manifesto h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 80px;
+            margin-bottom: 50px;
+            font-weight: 900;
+            color: var(--verde-salvia);
+            text-transform: uppercase;
+            letter-spacing: -2px;
+            line-height: 0.9;
+            position: relative;
+            display: inline-block;
+        }
+
+        .manifesto h2::after {
+            content: '';
+            position: absolute;
+            bottom: 10px;
+            left: 0;
+            width: 100%;
+            height: 15px;
+            background: var(--giallo-highlight);
+            z-index: -1;
+            transform: skewX(-3deg);
+        }
+
+        .manifesto-content {
+            font-size: 20px;
+            line-height: 1.7;
+            color: var(--nero-testo);
+        }
+
+        .manifesto-content p {
+            margin-bottom: 28px;
+        }
+
+        .manifesto-content p:first-of-type {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--verde-scuro);
+            margin-bottom: 35px;
+            line-height: 1.4;
+        }
+
+        .manifesto-content p:last-of-type {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--nero-testo);
+            margin-top: 35px;
+            border-left: 5px solid var(--arancio-birra);
+            padding-left: 25px;
+            font-style: italic;
+        }
+
+        /* ==================== FAQ ==================== */
+        .faq {
+            background: white;
+            padding: 100px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .faq::before {
+            content: '👂';
+            position: absolute;
+            top: 80px;
+            right: 10%;
+            font-size: 60px;
+            opacity: 0.1;
+            transform: rotate(15deg);
+        }
+
+        .faq::after {
+            content: '🗣️';
+            position: absolute;
+            bottom: 100px;
+            left: 5%;
+            font-size: 50px;
+            opacity: 0.08;
+            transform: rotate(-10deg);
+        }
+
+        .faq h2 {
+            text-align: center;
+            font-family: 'Playfair Display', serif;
+            font-size: 42px;
+            margin-bottom: 60px;
+            font-weight: 400;
+            color: var(--nero-testo);
+        }
+
+        .faq-item {
+            background: white;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.06);
+            border-left: 4px solid var(--verde-salvia);
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .faq-item:hover {
+            box-shadow: 0 5px 25px rgba(0,0,0,0.1);
+        }
+
+        .faq-question {
+            padding: 25px 30px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s;
+        }
+
+        .faq-question:hover {
+            background: #f8f9fa;
+        }
+
+        .faq-question h4 {
+            font-size: 18px;
+            color: var(--nero-testo);
+            margin: 0;
+            flex: 1;
+            font-weight: 600;
+        }
+
+        .faq-icon {
+            font-size: 20px;
+            color: var(--verde-salvia);
+            transition: transform 0.3s;
+            margin-left: 15px;
+        }
+
+        .faq-item.active .faq-icon {
+            transform: rotate(180deg);
+        }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
+        }
+
+        .faq-answer-content {
+            padding: 0 30px 25px 30px;
+        }
+
+        .faq-item.active .faq-answer {
+            max-height: 1000px;
+        }
+
+        .faq-answer p, .faq-answer ul {
+            color: #555;
+            line-height: 1.8;
+            font-size: 16px;
+        }
+
+        .faq-answer ul {
+            margin-left: 20px;
+            margin-top: 15px;
+        }
+
+        .faq-answer li {
+            margin-bottom: 10px;
+        }
+
+        .price-highlight {
+            background: linear-gradient(135deg, #FFF9E6 0%, #FFF3CD 100%);
+            padding: 25px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid var(--arancio-birra);
+        }
+
+        /* ==================== UPCOMING EVENTS ==================== */
+        .upcoming-events {
+            background: #f8f9fa;
+            padding: 100px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upcoming-events::before {
+            content: '💡';
+            position: absolute;
+            top: 50px;
+            left: 8%;
+            font-size: 45px;
+            opacity: 0.1;
+            transform: rotate(-20deg);
+        }
+
+        .upcoming-events::after {
+            content: '👁️';
+            position: absolute;
+            bottom: 60px;
+            right: 5%;
+            font-size: 50px;
+            opacity: 0.08;
+            transform: rotate(15deg);
+        }
+
+        .upcoming-events h2 {
+            text-align: center;
+            font-family: 'Playfair Display', serif;
+            font-size: 36px;
+            margin-bottom: 50px;
+            font-weight: 400;
+            color: var(--nero-testo);
+        }
+
+        .upcoming-events-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .small-event-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.06);
+            transition: all 0.3s;
+        }
+
+        .small-event-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .small-event-image {
+            width: 100%;
+            height: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 45px;
+        }
+
+        .small-event-content {
+            padding: 25px;
+        }
+
+        .small-event-card .event-date {
+            font-size: 12px;
+        }
+
+        .small-event-card .event-title {
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+
+        .small-event-card .event-speaker,
+        .small-event-card .event-location {
+            font-size: 14px;
+        }
+
+        /* ==================== LOCATION CTA ==================== */
+        .location-cta {
+            background: linear-gradient(135deg, var(--verde-salvia) 0%, var(--verde-scuro) 100%);
+            padding: 60px 20px;
+            text-align: center;
+            color: white;
+        }
+
+        .location-cta h3 {
+            font-size: 16px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: 25px;
+            font-weight: 400;
+            opacity: 0.9;
+        }
+
+        .location-cta .btn {
+            display: inline-block;
+        }
+
+        /* ==================== CONTACT ==================== */
+        .contact {
+            background: var(--nero-testo);
+            color: white;
+            padding: 100px 20px;
+            text-align: center;
+        }
+
+        .contact h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 42px;
+            margin-bottom: 20px;
+            font-weight: 400;
+        }
+
+        .contact h3 {
+            font-size: 22px;
+            margin-bottom: 30px;
+            font-weight: 400;
+            color: var(--verde-chiaro);
+        }
+
+        .contact a {
+            color: white;
+            text-decoration: none;
+            font-size: 16px;
+            padding: 16px 35px;
+            border: 2px solid white;
+            border-radius: 6px;
+            display: inline-block;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .contact a:hover {
+            background: white;
+            color: var(--nero-testo);
+        }
+
+        /* ==================== FOOTER ==================== */
+        footer {
+            background: #1a252f;
+            color: #aaa;
+            padding: 50px 20px;
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 35px;
+            margin-top: 25px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: #aaa;
+            text-decoration: none;
+            transition: color 0.3s;
+            font-size: 14px;
+        }
+
+        .footer-links a:hover {
+            color: var(--verde-chiaro);
+        }
+
+        /* ==================== RESPONSIVE ==================== */
+        @media (max-width: 1024px) {
+            .hero-container {
+                grid-template-columns: 1fr;
+                text-align: center;
+                gap: 30px;
+            }
+
+            .hero-content {
+                text-align: center;
+                order: 2;
+            }
+
+            .hero-image-wrapper {
+                order: 1;
+            }
+
+            .hero-image {
+                max-width: 90%;
+                margin-left: 0;
+                max-height: 50vh;
+            }
+
+            .cta-buttons {
+                margin: 0 auto;
+            }
+
+            .hero-content h1 {
+                font-size: 38px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero-content h1 {
+                font-size: 32px;
+            }
+
+            .logo-text {
+                font-size: 22px;
+            }
+
+            .featured-events-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .manifesto h2 {
+                font-size: 50px;
+            }
+
+            .manifesto-content {
+                font-size: 17px;
+            }
+
+            .manifesto-content p:first-of-type {
+                font-size: 22px;
+            }
+
+            .event-title {
+                font-size: 22px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero {
+                min-height: auto;
+                padding: 60px 0;
+            }
+
+            .hero-image {
+                max-height: 50vh;
+            }
+
+            .hero-content h1 {
+                font-size: 28px;
+            }
+
+            .hero-tagline {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-text">Pintology</span>
+            </div>
+            <div class="language-switcher">
+                <button class="lang-btn active" onclick="switchLanguage('it')">IT</button>
+                <button class="lang-btn" onclick="switchLanguage('en')">EN</button>
+            </div>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-image-wrapper">
+                <img src="pintology-hero.png" alt="Pintology - Collage surreale: testa aperta con libri, lampadina, birra e elementi creativi" class="hero-image">
+            </div>
+            <div class="hero-content">
+                <h2>Pintology presenta</h2>
+                <h1>Juicy lectures for thirsty humans</h1>
+                <p class="hero-tagline">Una serie di lezioni informali e interattive per nerd, curiosi e avventori, nel tempo di una birra.</p>
+                <div class="cta-buttons">
+                    <a href="#" class="btn btn-primary">🎟️ Acquista Biglietti</a>
+                    <a href="#" class="btn btn-secondary">⚡ Last Minute</a>
+                    <a href="#" class="btn btn-secondary">💌 Iscriviti alla Newsletter</a>
+                    <a href="#" class="btn btn-secondary">💡 Diventa Speaker</a>
+                    <a href="#" class="btn btn-secondary">📍 Ospita nel Tuo Locale</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="featured-events">
+        <h2>Prossimi Eventi</h2>
+        <div class="featured-events-grid">
+            <div class="event-card">
+                <div class="event-image">🌙</div>
+                <div class="event-content">
+                    <div class="event-date">Sabato 25 Gennaio 2026</div>
+                    <h3 class="event-title">Il Lato Oscuro della Luna: Scienza e Mito</h3>
+                    <div class="event-speaker">Con Dr. Marco Rossi, Astrofisico</div>
+                    <div class="event-location">📍 Torino - Birreria da confermare</div>
+                    <a href="#" class="event-btn">Acquista Biglietto</a>
+                </div>
+            </div>
+
+            <div class="event-card">
+                <div class="event-image" style="background: linear-gradient(135deg, var(--rosso-accent) 0%, #9A4040 100%);">🎭</div>
+                <div class="event-content">
+                    <div class="event-date">Mercoledì 29 Gennaio 2026</div>
+                    <h3 class="event-title">Perché Amiamo i Cattivi: Psicologia dei Villain</h3>
+                    <div class="event-speaker">Con Prof.ssa Laura Bianchi, Psicologa</div>
+                    <div class="event-location">📍 Torino - Birreria da confermare</div>
+                    <a href="#" class="event-btn">Acquista Biglietto</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="manifesto">
+        <span class="deco-bulb">💡</span>
+        <span class="deco-eye">👁️</span>
+        <span class="deco-ear">👂</span>
+        <span class="deco-books">📚</span>
+        <div class="manifesto-wrapper">
+            <h2>Manifesto</h2>
+            <div class="manifesto-content">
+                <p>Pintology non è un podcast. Pintology non è un reel. Pintology è fruibile esclusivamente live.</p>
+                
+                <p>L'idea di Pintology nasce in risposta a due esigenze tipicamente umane: scoprire il mondo in cui viviamo e interagire con i nostri simili. Si potrebbe tranquillamente dire che il nostro concept non ha nulla di nuovo. A unire l'utile e il dilettevole ci aveva infatti già pensato l'élite culturale europea durante l'Illuminismo, quando i café letterari ospitavano le menti più brillanti dell'epoca per favorire il dibattito e la crescita intellettiva.</p>
+                
+                <p>Oggi che abbiamo tanti mezzi tanto accessibili, non abbiamo sicuramente più bisogno di trascinarci in un café per imparare qualcosa di nuovo. Ma con il dissiparsi del confine tra artificiale e umano noi crediamo sempre di più nel valore dell'interazione tra esseri della nostra specie, perché in fondo imparare da sapiens esperti e appassionati invece che dal nostro telefono non solo è più attendibile: è anche decisamente più divertente.</p>
+                
+                <p>Sappiamo bene che le lezioni tenute dai nostri speakers potrebbero tranquillamente essere fruibili in formato video sul divano di casa vostra, ma fino a quando la connessione tra esseri umani non sarà riproducibile artificialmente, noi avremo modo di offrirvi un'esperienza live irripetibile.</p>
+                
+                <p>Un po' come le serate degli illuministi, ma con meno pretese. Ah, ovviamente crediamo anche nei bar. Non solo perché non esiste luogo al mondo che si presti meglio alle interazioni sociali o alle serate inaspettate, ma soprattutto perché ci piace bere.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="faq">
+        <div class="container">
+            <h2>Domande Frequenti</h2>
+            
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Come funziona Pintology?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p>Ogni serata Pintology è incentrata sulla "Pinta del Giorno": una lezione di 30-40 minuti rigorosamente informale e interattiva, tenuta da un professore o un esperto all'interno di un bar, una birreria o un'enoteca di Torino. Le lezioni sono accessibili a tutti e non solo a un pubblico accademico: l'unico requisito per partecipare è la tua curiosità.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Cosa succede a Pintology?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p><strong>Ti presenti 20 minuti prima dell'inizio della lezione</strong> e usufruisci della consumazione (non per forza alcolica!) inclusa nel tuo biglietto. Tutte le nostre location offrono snack o pasti sfiziosi per non restare a pancia vuota.</p>
+                        <p><strong>Prendi posto dove vuoi.</strong> Per i prossimi 10 minuti il nostro host ti intratterrà con qualche attività a tema per rompere il ghiaccio e metterti subito a tuo agio.</p>
+                        <p><strong>Ha inizio la "Pinta":</strong> una lezione di 30-40 minuti tenuta da un professore o un esperto, seguita da un Q&A moderato dal nostro host.</p>
+                        <p><strong>La serata si chiude</strong> con del tempo libero per socializzare con gli altri partecipanti, ordinare altro da bere o da mangiare, e scambiare due chiacchiere direttamente con l'esperto.</p>
+                        <p style="margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #FFF9E6 0%, #FFF3CD 100%); border-radius: 8px; border-left: 4px solid var(--arancio-birra);"><strong>💡 Ricorda:</strong> A Pintology le domande scomode sono benvenute e la curiosità è incoraggiata! Le interazioni tra i partecipanti sono una parte fondamentale dell'esperienza.</p>
+                        <p style="font-style: italic; color: #666;">Feedback, critiche costruttive e suggerimenti per le prossime "Pinte" sono sempre apprezzati.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Quanto costa Pintology?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <div class="price-highlight">
+                            <p style="font-size: 22px; font-weight: bold; color: var(--nero-testo); margin-bottom: 10px;">Il biglietto per la serata Pintology ha un costo di 23€</p>
+                            <p style="margin-bottom: 0;">Include una consumazione (birra, vino alla mescita, bevande analcoliche)</p>
+                        </div>
+                        <p><strong>Ecco cosa stai pagando con il tuo biglietto:</strong></p>
+                        <ul>
+                            <li>Il tempo prezioso dei nostri esperti, professori universitari e ricercatori con anni di formazione alle spalle.</li>
+                            <li>L'affitto della location: realtà locali indipendenti pronte ad accoglierci e a dissetarci secondo le nostre esigenze.</li>
+                            <li>Una mensilità di ChatGPT Pro per il nostro host che deve prepararsi il discorso di intro.</li>
+                            <li>La ricerca disperata dei nostri founders Marti e Cimmi per trovare ogni settimana argomenti stimolanti e mai banali e relativi speakers.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Dove si svolge Pintology?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p>In birrerie, enoteche, circoli e bar della Città di Torino. Pintology non ha una dimora fissa; troverai le indicazioni nella mail di conferma all'acquisto del biglietto.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>E se non bevo?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p>La serata Pintology non è incentrata sul consumo di alcool, ma sulla divulgazione divertente. Tutte le nostre location offrono una selezione di bevande analcoliche e piattini gustosi. La consumazione inclusa nel biglietto copre ovviamente anche acqua, bevande analcoliche, tè e caffè.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Come posso acquistare i biglietti?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p>Puoi acquistare i biglietti direttamente dal nostro sito cliccando sul pulsante "Acquista Biglietti" o tramite la nostra pagina Eventbrite.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Voglio presentare una lezione a Pintology. Come faccio?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p>Grazie per il tuo interesse! Invia la tua proposta attraverso il nostro form cliccando su "Diventa Speaker". Cerchiamo idee originali e coinvolgenti da persone con esperienza e passione nel loro campo. Se hai un'idea che pensi si abbini bene a una bevuta in compagnia, ci piacerebbe sentirti!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Devo comprare i biglietti in anticipo?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p>Sì. Non vendiamo biglietti all'ingresso per garantire il posto a tutti.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h4>Chi ha creato Pintology?</h4>
+                    <span class="faq-icon">▼</span>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <p>Pintology è stato creato da Marti e Cimmi, due amiconi, un nerd e una non nerd curiosa, con l'obiettivo di portare cultura e conoscenza in contesti informali e conviviali e continuare a bersi una cosa insieme.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="upcoming-events">
+        <h2>Altri Eventi in Programma</h2>
+        <div class="upcoming-events-grid">
+            <div class="small-event-card">
+                <div class="small-event-image" style="background: linear-gradient(135deg, var(--blu-lavanda) 0%, #7B8AC4 100%);">🎭</div>
+                <div class="small-event-content">
+                    <div class="event-date">Sabato 1 Febbraio 2026</div>
+                    <h3 class="event-title">Storia del Teatro dell'Assurdo</h3>
+                    <div class="event-speaker">Con Giovanni Verdi</div>
+                    <div class="event-location">📍 Torino</div>
+                    <a href="#" class="event-btn">Biglietti</a>
+                </div>
+            </div>
+
+            <div class="small-event-card">
+                <div class="small-event-image" style="background: linear-gradient(135deg, var(--rosso-accent) 0%, #A04545 100%);">🎨</div>
+                <div class="small-event-content">
+                    <div class="event-date">Giovedì 6 Febbraio 2026</div>
+                    <h3 class="event-title">Arte e Intelligenza Artificiale</h3>
+                    <div class="event-speaker">Con Chiara Neri</div>
+                    <div class="event-location">📍 London</div>
+                    <a href="#" class="event-btn">Biglietti</a>
+                </div>
+            </div>
+
+            <div class="small-event-card">
+                <div class="small-event-image" style="background: linear-gradient(135deg, var(--arancio-birra) 0%, #C88A30 100%);">🔬</div>
+                <div class="small-event-content">
+                    <div class="event-date">Sabato 8 Febbraio 2026</div>
+                    <h3 class="event-title">Fermentazione: Scienza in Cucina</h3>
+                    <div class="event-speaker">Con Chef Paolo Conti</div>
+                    <div class="event-location">📍 Torino</div>
+                    <a href="#" class="event-btn">Biglietti</a>
+                </div>
+            </div>
+
+            <div class="small-event-card">
+                <div class="small-event-image" style="background: linear-gradient(135deg, var(--verde-scuro) 0%, #2D5045 100%);">🌍</div>
+                <div class="small-event-content">
+                    <div class="event-date">Mercoledì 12 Febbraio 2026</div>
+                    <h3 class="event-title">Geopolitica del Caffè</h3>
+                    <div class="event-speaker">Con Dr. Stefano Marino</div>
+                    <div class="event-location">📍 London</div>
+                    <a href="#" class="event-btn">Biglietti</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="location-cta">
+        <div class="container">
+            <h3>Non sei a Torino o Londra?</h3>
+            <a href="#" class="btn btn-primary">📍 Porta Pintology nella tua città</a>
+        </div>
+    </section>
+
+    <section class="contact">
+        <div class="container">
+            <h2>Contattaci</h2>
+            <h3>info@pintology.com</h3>
+            <a href="mailto:info@pintology.com">📬 Inviaci un'email</a>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>Copyright © 2026 Pintology - Tutti i Diritti Riservati.</p>
+            <div class="footer-links">
+                <a href="#">Home</a>
+                <a href="#">Torino</a>
+                <a href="#">London</a>
+                <a href="#">Richieste Lezioni</a>
+                <a href="#">Manifesto</a>
+                <a href="#">Chi Siamo</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const translations = {
+            it: {
+                heroSubtitle: "Pintology presenta",
+                heroTitle: "Juicy lectures for thirsty humans",
+                heroTagline: "Una serie di lezioni informali e interattive per nerd, curiosi e avventori, nel tempo di una birra.",
+                btnTickets: "🎟️ Acquista Biglietti",
+                btnLastMinute: "⚡ Last Minute",
+                btnNewsletter: "💌 Iscriviti alla Newsletter",
+                btnSpeaker: "💡 Diventa Speaker",
+                btnVenue: "📍 Ospita nel Tuo Locale",
+                eventsTitle: "Prossimi Eventi",
+                manifestoTitle: "Manifesto",
+                faqTitle: "Domande Frequenti",
+                upcomingTitle: "Altri Eventi in Programma",
+                locationCtaTitle: "Non sei a Torino o Londra?",
+                locationCtaBtn: "📍 Porta Pintology nella tua città",
+                contactTitle: "Contattaci",
+                contactBtn: "📬 Inviaci un'email",
+                copyright: "Copyright © 2026 Pintology - Tutti i Diritti Riservati."
+            },
+            en: {
+                heroSubtitle: "Pintology presents",
+                heroTitle: "Juicy lectures for thirsty humans",
+                heroTagline: "A series of informal and interactive lectures for nerds, curious minds and patrons, in the time of a pint.",
+                btnTickets: "🎟️ Buy Tickets",
+                btnLastMinute: "⚡ Last Minute",
+                btnNewsletter: "💌 Join Newsletter",
+                btnSpeaker: "💡 Become a Speaker",
+                btnVenue: "📍 Host at Your Venue",
+                eventsTitle: "Upcoming Events",
+                manifestoTitle: "Manifesto",
+                faqTitle: "Frequently Asked Questions",
+                upcomingTitle: "More Upcoming Events",
+                locationCtaTitle: "Not in Turin or London?",
+                locationCtaBtn: "📍 Bring Pintology to your city",
+                contactTitle: "Contact Us",
+                contactBtn: "📬 Send us an email",
+                copyright: "Copyright © 2026 Pintology - All Rights Reserved."
+            }
+        };
+
+        function switchLanguage(lang) {
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            const t = translations[lang];
+            document.querySelector('.hero-content h2').textContent = t.heroSubtitle;
+            document.querySelector('.hero-content h1').textContent = t.heroTitle;
+            document.querySelector('.hero-tagline').textContent = t.heroTagline;
+            document.querySelectorAll('.cta-buttons .btn')[0].textContent = t.btnTickets;
+            document.querySelectorAll('.cta-buttons .btn')[1].textContent = t.btnLastMinute;
+            document.querySelectorAll('.cta-buttons .btn')[2].textContent = t.btnNewsletter;
+            document.querySelectorAll('.cta-buttons .btn')[3].textContent = t.btnSpeaker;
+            document.querySelectorAll('.cta-buttons .btn')[4].textContent = t.btnVenue;
+            document.querySelector('.featured-events h2').textContent = t.eventsTitle;
+            document.querySelector('.manifesto h2').textContent = t.manifestoTitle;
+            document.querySelector('.faq h2').textContent = t.faqTitle;
+            document.querySelector('.upcoming-events h2').textContent = t.upcomingTitle;
+            document.querySelector('.location-cta h3').textContent = t.locationCtaTitle;
+            document.querySelector('.location-cta .btn').textContent = t.locationCtaBtn;
+            document.querySelector('.contact h2').textContent = t.contactTitle;
+            document.querySelector('.contact a').textContent = t.contactBtn;
+            document.querySelector('footer p').textContent = t.copyright;
+        }
+
+        // FAQ Accordion
+        document.querySelectorAll('.faq-question').forEach(question => {
+            question.addEventListener('click', () => {
+                const faqItem = question.parentElement;
+                const wasActive = faqItem.classList.contains('active');
+                
+                document.querySelectorAll('.faq-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                if (!wasActive) {
+                    faqItem.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

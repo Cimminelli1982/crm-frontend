@@ -1,5 +1,13 @@
 # CRM Frontend - Claude Project Memory
 
+## ⚠️ REGOLE IMPORTANTI
+
+1. **NON chiedere se esistono campi/tabelle nel DB** - Lo schema completo è documentato sotto. Se manca qualcosa, usa MCP Supabase per verificare, non chiedere all'utente.
+2. **Il DB è già completo** - Contacts, companies, deals, attachments, tags, interactions... tutto esiste già. Non proporre di creare nuovi campi a meno che l'utente non lo chieda esplicitamente.
+3. **Usa MCP tools prima di chiedere** - Hai accesso a `mcp__supabase__*` per query dirette. Usali.
+
+---
+
 ## Come Avviare il Frontend
 
 **IMPORTANTE: Usa SEMPRE questo comando per il nuovo CRM:**
@@ -167,6 +175,43 @@ URL: **http://localhost:3002/new-crm/command-center**
 │  status: pending    │              │  status: pending     │
 │  merge_selections   │              │  merge_selections    │
 └─────────────────────┘              └──────────────────────┘
+
+
+                    DEALS & ATTACHMENTS
+                    ───────────────────
+
+┌────────────────────────────────────────────────────────────────────┐
+│                          deals                                      │
+│  ────────────────────────────────────────────────────────────────  │
+│  deal_id (PK), opportunity, deal_name, description                  │
+│  stage: Lead → Evaluating → Qualified → Closing → Invested/Passed   │
+│  category: Inbox, Startup, Investment, Fund, Partnership, etc.      │
+│  source_category: Not Set, Cold Contacting, Introduction            │
+│  total_investment, deal_currency, proposed_at                       │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │
+           ┌───────────────────┼───────────────────┐
+           │                   │                   │
+           ▼                   ▼                   ▼
+┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+│ deals_contacts  │   │deal_attachments │   │   deal_tags     │
+│  (junction)     │   │  (junction)     │   │   (junction)    │
+│  ─────────────  │   │  ─────────────  │   └─────────────────┘
+│  deal_id (FK)   │   │  deal_id (FK)   │
+│  contact_id(FK) │   │  attachment_id  │
+│  relationship   │   │     (FK)        │
+└────────┬────────┘   └────────┬────────┘
+         │                     │
+         ▼                     ▼
+┌─────────────────┐   ┌─────────────────────────────────────────┐
+│    contacts     │   │              attachments                 │
+└─────────────────┘   │  ─────────────────────────────────────  │
+                      │  attachment_id (PK)                      │
+                      │  file_name, file_url (Supabase Storage)  │
+                      │  file_type, file_size                    │
+                      │  text_content (extracted for search)     │
+                      │  processing_status                       │
+                      └─────────────────────────────────────────┘
 ```
 
 ---
@@ -510,6 +555,15 @@ membership_type         membership_type (manual, filter)
 ### membership_type
 `manual, filter`
 
+### deal_stage
+`Lead, Evaluating, Qualified, Closing, Negotiation, Invested, Closed Won, Monitoring, Closed Lost, Passed, DELETE`
+
+### deal_category
+`Inbox, Startup, Investment, Fund, Partnership, Real Estate, Private Debt, Private Equity, Other`
+
+### deal_source_category
+`Not Set, Cold Contacting, Introduction`
+
 ---
 
 ## Altre Tabelle Importanti
@@ -534,10 +588,77 @@ membership_type         membership_type (manual, filter)
 - `contacts_hold`, `companies_hold` - entità in attesa
 - `emails_spam`, `whatsapp_spam`, `domains_spam` - blocklist
 
+### deals
+```
+deal_id                 uuid PK (auto uuid_generate_v4)
+opportunity             varchar NOT NULL (startup/opportunity name)
+deal_name               text
+stage                   deal_stage (default 'Lead')
+category                deal_category (default 'Inbox')
+source_category         deal_source_category (default 'Not Set')
+description             text
+total_investment        numeric
+deal_currency           deal_currency
+proposed_at             timestamptz
+created_by              creation_source (default 'User')
+created_at              timestamptz (default now())
+last_modified_by        creation_source
+last_modified_at        timestamptz
+```
+
+### deals_contacts
+```
+deals_contacts_id       uuid PK
+deal_id                 uuid FK → deals.deal_id
+contact_id              uuid FK → contacts.contact_id
+relationship            deal_contact_relationship NOT NULL
+created_at              timestamptz (default now())
+```
+
+### attachments
+```
+attachment_id           uuid PK (auto uuid_generate_v4)
+file_name               varchar NOT NULL
+file_url                varchar NOT NULL (Supabase Storage URL)
+file_type               varchar (mime type, e.g., 'application/pdf')
+file_size               bigint
+description             text
+permanent_url           text
+text_content            text (extracted text for search)
+processing_status       text (default 'pending')
+processed_at            timestamptz
+processing_error        text
+-- Optional FKs (one attachment can link to multiple entities)
+note_id                 uuid FK → notes.note_id
+contact_id              uuid FK → contacts.contact_id
+interaction_id          uuid FK → interactions.interaction_id
+chat_id                 uuid FK → chats.id
+email_thread_id         uuid FK → email_threads.email_thread_id
+created_by              creator_type (default 'User')
+created_at              timestamptz (default now())
+```
+
+### deal_attachments (junction)
+```
+deal_attachment_id      uuid PK (auto uuid_generate_v4)
+deal_id                 uuid FK → deals.deal_id
+attachment_id           uuid FK → attachments.attachment_id
+created_at              timestamptz (default now())
+created_by              text (default 'User')
+```
+
+### company_attachments (junction)
+```
+company_attachment_id   uuid PK
+company_id              uuid FK → companies.company_id
+attachment_id           uuid FK → attachments.attachment_id
+created_at              timestamptz (default now())
+```
+
 ### Altri
-- `deals`, `deals_contacts`
 - `meetings`, `meeting_contacts`
-- `notes`, `note_contacts`
+- `notes`, `note_contacts`, `note_attachments`
+- `task_files` - file attachments for tasks
 - `sync_state` - stato sync per email/calendar
 
 ---

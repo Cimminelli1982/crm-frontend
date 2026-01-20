@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavig
 import styled, { createGlobalStyle } from 'styled-components';
 import { Toaster } from 'react-hot-toast';
 
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import NewNavigation from './components/NewNavigation';
 import NotificationBar from './components/NotificationBar';
 import SortPage from './pages/SortPage';
@@ -16,6 +18,8 @@ import TagContactsPage from './pages/TagContactsPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
 import CommandCenterPage from './pages/CommandCenterPage';
 import DealSubmissionPage from './pages/DealSubmissionPage';
+import NewCRMLogin from './pages/NewCRMLogin';
+import AuthCallback from './pages/AuthCallback';
 import { supabase } from './lib/supabaseClient';
 
 const GlobalStyles = createGlobalStyle`
@@ -128,7 +132,7 @@ const CRMAppContent = () => {
   const navigate = useNavigate();
 
   // Check if current route is public (no navigation needed)
-  const isPublicRoute = location.pathname === '/deal-submission';
+  const isPublicRoute = ['/deal-submission', '/login', '/auth/callback'].includes(location.pathname);
 
   // Map paths to page IDs for navigation highlighting
   const getPageIdFromPath = (pathname) => {
@@ -289,6 +293,8 @@ const CRMAppContent = () => {
         <GlobalStyles theme="light" />
         <Routes>
           <Route path="/deal-submission" element={<DealSubmissionPage />} />
+          <Route path="/login" element={<NewCRMLogin />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
         </Routes>
       </>
     );
@@ -329,20 +335,22 @@ const CRMAppContent = () => {
         />
         <PageContainer>
           <Routes>
-            <Route path="/" element={<Navigate to="/sort" replace />} />
-            <Route path="/sort" element={<SortPage theme={theme} onInboxCountChange={setInboxCount} />} />
-            <Route path="/interactions" element={<InteractionsPage theme={theme} />} />
-            <Route path="/search" element={<SearchPage theme={theme} />} />
-            <Route path="/keep-in-touch" element={<KeepInTouchPage theme={theme} onKeepInTouchCountChange={setKeepInTouchCount} />} />
-            <Route path="/contact/:contactId" element={<ContactDetail theme={theme} />} />
-            <Route path="/contact/:contactId/edit" element={<ContactEditNew theme={theme} />} />
-            <Route path="/city/:cityId/contacts" element={<CityContactsPage theme={theme} />} />
-            <Route path="/tag/:tagId/contacts" element={<TagContactsPage theme={theme} />} />
-            <Route path="/company/:companyId" element={<CompanyDetailPage theme={theme} />} />
-            <Route path="/command-center" element={<CommandCenterPage theme={theme} />} />
+            <Route path="/" element={<Navigate to="/command-center" replace />} />
+            <Route path="/command-center" element={<ProtectedRoute><CommandCenterPage theme={theme} /></ProtectedRoute>} />
+            <Route path="/search" element={<ProtectedRoute><SearchPage theme={theme} /></ProtectedRoute>} />
+            <Route path="/sort" element={<ProtectedRoute><SortPage theme={theme} onInboxCountChange={setInboxCount} /></ProtectedRoute>} />
+            <Route path="/interactions" element={<ProtectedRoute><InteractionsPage theme={theme} /></ProtectedRoute>} />
+            <Route path="/keep-in-touch" element={<ProtectedRoute><KeepInTouchPage theme={theme} onKeepInTouchCountChange={setKeepInTouchCount} /></ProtectedRoute>} />
+            <Route path="/contact/:contactId" element={<ProtectedRoute><ContactDetail theme={theme} /></ProtectedRoute>} />
+            <Route path="/contact/:contactId/edit" element={<ProtectedRoute><ContactEditNew theme={theme} /></ProtectedRoute>} />
+            <Route path="/city/:cityId/contacts" element={<ProtectedRoute><CityContactsPage theme={theme} /></ProtectedRoute>} />
+            <Route path="/tag/:tagId/contacts" element={<ProtectedRoute><TagContactsPage theme={theme} /></ProtectedRoute>} />
+            <Route path="/company/:companyId" element={<ProtectedRoute><CompanyDetailPage theme={theme} /></ProtectedRoute>} />
             <Route path="/deal-submission" element={<DealSubmissionPage />} />
+            <Route path="/login" element={<NewCRMLogin />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             {/* Fallback route */}
-            <Route path="*" element={<Navigate to="/sort" replace />} />
+            <Route path="*" element={<Navigate to="/command-center" replace />} />
           </Routes>
         </PageContainer>
       </ContentContainer>
@@ -384,7 +392,9 @@ const NewCRMApp = () => {
   try {
     return (
       <Router basename="/new-crm">
-        <CRMAppContent />
+        <AuthProvider>
+          <CRMAppContent />
+        </AuthProvider>
       </Router>
     );
   } catch (error) {

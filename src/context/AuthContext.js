@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext();
 
+// Whitelist of authorized emails
+const ALLOWED_EMAILS = ['simone@cimminelli.com'];
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,8 +29,30 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  // Sign in with Google OAuth
+  const signInWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + '/new-crm/auth/callback'
+      }
+    });
+    return { error };
+  };
+
+  // Sign out
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    return { error };
+  };
+
+  // Check if user email is in whitelist
+  const isAuthorized = (userToCheck) => {
+    return userToCheck && ALLOWED_EMAILS.includes(userToCheck.email);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut, isAuthorized }}>
       {children}
     </AuthContext.Provider>
   );

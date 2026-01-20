@@ -9,9 +9,11 @@ import {
   FiX,
   FiChevronLeft,
   FiChevronRight,
-  FiCommand
+  FiCommand,
+  FiLogOut
 } from 'react-icons/fi';
 import Logo from './Logo';
+import { useAuth } from '../context/AuthContext';
 
 const NewNavigation = ({
   currentPage = 'sort',
@@ -25,6 +27,11 @@ const NewNavigation = ({
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { signOut, user } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+  };
 
   const navigationItems = [
     {
@@ -35,35 +42,11 @@ const NewNavigation = ({
       description: 'Email, WhatsApp & Calendar hub'
     },
     {
-      id: 'sort',
-      label: 'Sort',
-      icon: FiLayers,
-      path: '/sort',
-      description: 'Manage and organize your contacts',
-      count: inboxCount,
-      isInbox: true
-    },
-    {
-      id: 'interactions',
-      label: 'Interactions',
-      icon: FiClock,
-      path: '/interactions',
-      description: 'Recent contact activity'
-    },
-    {
       id: 'search',
       label: 'Search',
       icon: FiSearch,
       path: '/search',
       description: 'Find contacts by name, company, or details'
-    },
-    {
-      id: 'keep-in-touch',
-      label: 'Keep in Touch',
-      icon: FiBell,
-      path: '/keep-in-touch',
-      description: 'Follow-up reminders',
-      count: keepInTouchCount
     }
   ];
 
@@ -257,9 +240,19 @@ const NewNavigation = ({
 
         <DesktopNavFooter theme={theme}>
           {!isCollapsed && (
-            <ThemeToggle theme={theme} onClick={onThemeToggle}>
-              {theme === 'light' ? '🌙' : '☀️'} {theme === 'light' ? 'Dark' : 'Light'} Mode
-            </ThemeToggle>
+            <>
+              <ThemeToggle theme={theme} onClick={onThemeToggle}>
+                {theme === 'light' ? '🌙' : '☀️'} {theme === 'light' ? 'Dark' : 'Light'} Mode
+              </ThemeToggle>
+              <LogoutButton theme={theme} onClick={handleLogout}>
+                <FiLogOut size={16} /> Logout
+              </LogoutButton>
+            </>
+          )}
+          {isCollapsed && (
+            <LogoutButtonCollapsed theme={theme} onClick={handleLogout} title="Logout">
+              <FiLogOut size={18} />
+            </LogoutButtonCollapsed>
           )}
         </DesktopNavFooter>
       </DesktopNavContainer>
@@ -617,6 +610,45 @@ const ThemeToggle = styled.button`
 
   &:hover {
     background: ${props => props.theme === 'light' ? '#F3F4F6' : '#4B5563'};
+  }
+`;
+
+const LogoutButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid ${props => props.theme === 'light' ? '#FCA5A5' : '#7F1D1D'};
+  border-radius: 8px;
+  color: ${props => props.theme === 'light' ? '#DC2626' : '#F87171'};
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: 500;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#FEE2E2' : 'rgba(127, 29, 29, 0.3)'};
+  }
+`;
+
+const LogoutButtonCollapsed = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid ${props => props.theme === 'light' ? '#FCA5A5' : '#7F1D1D'};
+  border-radius: 8px;
+  color: ${props => props.theme === 'light' ? '#DC2626' : '#F87171'};
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#FEE2E2' : 'rgba(127, 29, 29, 0.3)'};
   }
 `;
 
