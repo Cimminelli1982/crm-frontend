@@ -881,7 +881,38 @@ const WhatsAppTab = ({
   // Fetch attachments for current chat messages (staging + archived)
   useEffect(() => {
     const fetchAttachments = async () => {
-      // Collect message UIDs from both staging and archived messages
+      // For archived chats (from search), fetch by chat_id
+      if (selectedChat?._isArchivedChat && selectedChat?.chat_id) {
+        try {
+          const { data, error } = await supabase
+            .from('attachments')
+            .select('attachment_id, interaction_id, permanent_url, file_name, file_type')
+            .eq('chat_id', selectedChat.chat_id);
+
+          if (error) {
+            console.error('Error fetching attachments for archived chat:', error);
+            return;
+          }
+
+          if (data) {
+            const map = {};
+            data.forEach(att => {
+              // Use interaction_id as key for archived messages
+              const key = att.interaction_id || att.attachment_id;
+              if (!map[key]) {
+                map[key] = [];
+              }
+              map[key].push(att);
+            });
+            setAttachmentsMap(map);
+          }
+        } catch (err) {
+          console.error('Error fetching attachments:', err);
+        }
+        return;
+      }
+
+      // For normal chats: collect message UIDs from both staging and archived messages
       const stagingUids = (selectedChat?.messages || [])
         .map(m => m.message_uid || m.id)
         .filter(Boolean);
@@ -924,7 +955,7 @@ const WhatsAppTab = ({
     };
 
     fetchAttachments();
-  }, [selectedChat?.messages, archivedMessages]);
+  }, [selectedChat?.messages, selectedChat?._isArchivedChat, selectedChat?.chat_id, archivedMessages]);
 
   // Auto-resize textarea
   useEffect(() => {

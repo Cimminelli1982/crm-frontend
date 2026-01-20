@@ -226,6 +226,13 @@ const CommandCenterPage = ({ theme }) => {
   const [emailSearchLoading, setEmailSearchLoading] = useState(false);
   const [isSearchingEmails, setIsSearchingEmails] = useState(false);
 
+  // WhatsApp search state (for searching saved/archived chats)
+  const [whatsappSearchQuery, setWhatsappSearchQuery] = useState('');
+  const [whatsappSearchResults, setWhatsappSearchResults] = useState([]);
+  const [whatsappSearchLoading, setWhatsappSearchLoading] = useState(false);
+  const [isSearchingWhatsapp, setIsSearchingWhatsapp] = useState(false);
+  const [archivedWhatsappContact, setArchivedWhatsappContact] = useState(null);
+
   // Calendar sections state (needReview, thisWeek, thisMonth, upcoming)
   const [calendarSections, setCalendarSections] = useState({
     needReview: true,
@@ -840,6 +847,20 @@ const CommandCenterPage = ({ theme }) => {
 
   // Compute available contacts for ContactSelector based on active tab
   const availableRightPanelContacts = useMemo(() => {
+    // For whatsapp with archived chat contact - use archivedWhatsappContact
+    if (activeTab === 'whatsapp' && archivedWhatsappContact) {
+      return [{
+        contact_id: archivedWhatsappContact.contact_id,
+        first_name: archivedWhatsappContact.first_name,
+        last_name: archivedWhatsappContact.last_name,
+        email: null,
+        role: 'Contact',
+        completeness_score: archivedWhatsappContact.completeness_score || 0,
+        show_missing: archivedWhatsappContact.show_missing,
+        profile_image_url: archivedWhatsappContact.profile_image_url,
+      }];
+    }
+
     // For email, whatsapp, calendar, deals - use emailContacts from contextContactsHook
     if (['email', 'whatsapp', 'calendar', 'deals'].includes(activeTab)) {
       return (emailContacts || [])
@@ -979,7 +1000,7 @@ const CommandCenterPage = ({ theme }) => {
 
     // For notes - handled by its own component
     return [];
-  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts, tasksChatContacts, tasksCompanyContacts, tasksDealsContacts]);
+  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts, tasksChatContacts, tasksCompanyContacts, tasksDealsContacts, archivedWhatsappContact]);
 
   // Enrich contacts with completeness scores from DB (DRY - all tabs benefit)
   const [enrichedRightPanelContacts, setEnrichedRightPanelContacts] = useState([]);
@@ -4081,17 +4102,26 @@ internet businesses.`;
     try {
       // Get inbox_ids from selected thread, whatsapp chat, or calendar event
       let inboxIds = [];
+      let isArchivedChat = false;
+      let archivedChatContactMobile = null;
 
       if (activeTab === 'email' && selectedThread) {
         inboxIds = selectedThread.map(email => email.id).filter(Boolean);
       } else if (activeTab === 'whatsapp' && selectedWhatsappChat?.messages) {
-        inboxIds = selectedWhatsappChat.messages.map(msg => msg.id).filter(Boolean);
+        // Check if this is an archived chat (from search)
+        if (selectedWhatsappChat._isArchivedChat) {
+          isArchivedChat = true;
+          // Get the contact's mobile number from the chat
+          archivedChatContactMobile = selectedWhatsappChat.contact_number;
+        } else {
+          inboxIds = selectedWhatsappChat.messages.map(msg => msg.id).filter(Boolean);
+        }
       } else if (activeTab === 'calendar' && selectedCalendarEvent) {
         inboxIds = [selectedCalendarEvent.id].filter(Boolean);
       }
 
-      // Skip if no selection
-      if (inboxIds.length === 0) {
+      // Skip if no selection and not an archived chat
+      if (inboxIds.length === 0 && !isArchivedChat) {
         setNotInCrmEmails([]);
         setNotInCrmDomains([]);
         setHoldContacts([]);
@@ -4112,11 +4142,28 @@ internet businesses.`;
       // ============================================
       // 1. FETCH FROM data_integrity_inbox (backend)
       // ============================================
-      const { data: integrityIssues, error: integrityError } = await supabase
-        .from('data_integrity_inbox')
-        .select('*')
-        .in('inbox_id', inboxIds)
-        .eq('status', 'pending');
+      let integrityIssues = [];
+      let integrityError = null;
+
+      if (isArchivedChat && archivedChatContactMobile) {
+        // For archived chats, search by contact's mobile number
+        const result = await supabase
+          .from('data_integrity_inbox')
+          .select('*')
+          .eq('mobile', archivedChatContactMobile)
+          .eq('status', 'pending');
+        integrityIssues = result.data;
+        integrityError = result.error;
+      } else if (inboxIds.length > 0) {
+        // For normal chats, search by inbox_id
+        const result = await supabase
+          .from('data_integrity_inbox')
+          .select('*')
+          .in('inbox_id', inboxIds)
+          .eq('status', 'pending');
+        integrityIssues = result.data;
+        integrityError = result.error;
+      }
 
       if (integrityError) {
         console.error('Error fetching data integrity issues:', integrityError);
@@ -4303,11 +4350,19 @@ internet businesses.`;
       // ============================================
       // 2. FETCH FROM duplicates_inbox (backend)
       // ============================================
-      const { data: duplicatesRaw, error: duplicatesError } = await supabase
-        .from('duplicates_inbox')
-        .select('*')
-        .or(`inbox_id.in.(${inboxIds.join(',')}),inbox_id.is.null`)
-        .eq('status', 'pending');
+      let duplicatesRaw = [];
+      let duplicatesError = null;
+
+      // Skip duplicates query for archived chats (they don't have inbox_id)
+      if (!isArchivedChat && inboxIds.length > 0) {
+        const result = await supabase
+          .from('duplicates_inbox')
+          .select('*')
+          .or(`inbox_id.in.(${inboxIds.join(',')}),inbox_id.is.null`)
+          .eq('status', 'pending');
+        duplicatesRaw = result.data;
+        duplicatesError = result.error;
+      }
 
       if (duplicatesError) {
         console.error('Error fetching duplicates:', duplicatesError);
@@ -8421,6 +8476,145 @@ internet businesses.`;
     }
   }, [activeTab]);
 
+  // WhatsApp search function - searches in archived chats
+  const searchSavedWhatsapp = useCallback(async (query) => {
+    if (!query.trim()) {
+      setWhatsappSearchResults([]);
+      setIsSearchingWhatsapp(false);
+      return;
+    }
+    setWhatsappSearchLoading(true);
+    setIsSearchingWhatsapp(true);
+    try {
+      const { data, error } = await supabase.rpc('search_whatsapp', {
+        search_query: query.trim(),
+        result_limit: 100
+      });
+      if (error) throw error;
+      setWhatsappSearchResults(data || []);
+    } catch (error) {
+      console.error('Error searching WhatsApp:', error);
+      toast.error('Search failed');
+      setWhatsappSearchResults([]);
+    } finally {
+      setWhatsappSearchLoading(false);
+    }
+  }, []);
+
+  // Handle selecting a WhatsApp search result - loads the chat and displays it
+  const handleSelectWhatsappSearchResult = async (searchResult) => {
+    try {
+      const chatId = searchResult.result_chat_id;
+
+      // Fetch all messages for this chat from interactions
+      const { data: messages, error } = await supabase
+        .from('interactions')
+        .select('*')
+        .eq('chat_id', chatId)
+        .eq('interaction_type', 'whatsapp')
+        .order('interaction_date', { ascending: true });
+
+      if (error) throw error;
+
+      // Fetch chat info
+      const { data: chatInfo } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('id', chatId)
+        .single();
+
+      // Fetch contact info if available
+      const { data: contactChats } = await supabase
+        .from('contact_chats')
+        .select('contact_id')
+        .eq('chat_id', chatId)
+        .limit(1);
+
+      let contact = null;
+      if (contactChats?.[0]?.contact_id) {
+        const { data: contactData } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name, profile_image_url')
+          .eq('contact_id', contactChats[0].contact_id)
+          .single();
+        contact = contactData;
+      }
+
+      // Format the chat object to match expected structure
+      const formattedChat = {
+        chat_id: chatId,
+        chat_name: searchResult.result_chat_name || chatInfo?.chat_name || 'Unknown',
+        is_group_chat: chatInfo?.is_group_chat || false,
+        contact_number: null,
+        profileImage: contact?.profile_image_url || null,
+        crmName: contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : null,
+        contact_id: contact?.contact_id || null,
+        messages: (messages || []).map(msg => ({
+          id: msg.interaction_id,
+          body_text: msg.summary,
+          date: msg.interaction_date,
+          direction: msg.direction,
+          _isArchivedMessage: true
+        })),
+        latestMessage: messages?.length > 0 ? {
+          body_text: messages[messages.length - 1].summary,
+          date: messages[messages.length - 1].interaction_date,
+          direction: messages[messages.length - 1].direction
+        } : null,
+        _isArchivedChat: true
+      };
+
+      setSelectedWhatsappChat(formattedChat);
+
+      // Set the contact in the right panel (for archived chats)
+      if (contact?.contact_id) {
+        setArchivedWhatsappContact(contact);
+        setSelectedRightPanelContactId(contact.contact_id);
+      } else {
+        setArchivedWhatsappContact(null);
+      }
+
+      // Collapse mobile panels
+      if (window.innerWidth <= 768) {
+        setListCollapsed(true);
+      }
+    } catch (err) {
+      console.error('Error loading search result chat:', err);
+      toast.error('Failed to load chat');
+    }
+  };
+
+  // Debounced WhatsApp search effect
+  useEffect(() => {
+    if (activeTab === 'whatsapp' && whatsappSearchQuery.trim()) {
+      const debounce = setTimeout(() => {
+        searchSavedWhatsapp(whatsappSearchQuery);
+      }, 300);
+      return () => clearTimeout(debounce);
+    } else if (!whatsappSearchQuery.trim()) {
+      setWhatsappSearchResults([]);
+      setIsSearchingWhatsapp(false);
+      setArchivedWhatsappContact(null);
+    }
+  }, [whatsappSearchQuery, activeTab, searchSavedWhatsapp]);
+
+  // Clear WhatsApp search when switching tabs
+  useEffect(() => {
+    if (activeTab !== 'whatsapp') {
+      setWhatsappSearchQuery('');
+      setWhatsappSearchResults([]);
+      setIsSearchingWhatsapp(false);
+      setArchivedWhatsappContact(null);
+    }
+  }, [activeTab]);
+
+  // Clear archivedWhatsappContact when selecting a normal (non-archived) chat
+  useEffect(() => {
+    if (selectedWhatsappChat && !selectedWhatsappChat._isArchivedChat) {
+      setArchivedWhatsappContact(null);
+    }
+  }, [selectedWhatsappChat]);
+
   // Delete single email (without blocking)
   const deleteEmail = async () => {
     const latestEmail = getLatestEmail();
@@ -8602,6 +8796,35 @@ internet businesses.`;
             </SearchContainer>
           )}
 
+          {/* WhatsApp Search Bar - only for whatsapp tab */}
+          {!listCollapsed && activeTab === 'whatsapp' && (
+            <SearchContainer theme={theme}>
+              <SearchInputWrapper theme={theme}>
+                <FaSearch size={14} style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', flexShrink: 0 }} />
+                <SearchInput
+                  theme={theme}
+                  type="text"
+                  placeholder="Search saved chats..."
+                  value={whatsappSearchQuery}
+                  onChange={(e) => setWhatsappSearchQuery(e.target.value)}
+                />
+                {whatsappSearchQuery && (
+                  <ClearSearchButton
+                    theme={theme}
+                    onClick={() => {
+                      setWhatsappSearchQuery('');
+                      setWhatsappSearchResults([]);
+                      setIsSearchingWhatsapp(false);
+                      setArchivedWhatsappContact(null);
+                    }}
+                  >
+                    <FaTimes size={12} />
+                  </ClearSearchButton>
+                )}
+              </SearchInputWrapper>
+            </SearchContainer>
+          )}
+
           {!listCollapsed && (activeTab === 'email' || activeTab === 'whatsapp') && (
             <EmailList style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
               {threadsLoading || whatsappLoading ? (
@@ -8642,6 +8865,62 @@ internet businesses.`;
                   ))}
                   {!emailSearchLoading && emailSearchResults.length === 0 && (
                     <EmptyState theme={theme}>No emails found matching "{emailSearchQuery}"</EmptyState>
+                  )}
+                </>
+              ) : isSearchingWhatsapp && activeTab === 'whatsapp' ? (
+                /* WhatsApp Search Results Mode */
+                <>
+                  <SearchResultsHeader theme={theme}>
+                    {whatsappSearchLoading ? 'Searching...' : `${whatsappSearchResults.length} chats found`}
+                  </SearchResultsHeader>
+                  {whatsappSearchResults.map(result => {
+                    // Match source badge config
+                    const matchBadge = {
+                      chat_name: { label: 'Name', color: '#10B981', bg: '#D1FAE5' },
+                      contact: { label: 'Contact', color: '#3B82F6', bg: '#DBEAFE' },
+                      phone: { label: 'Phone', color: '#8B5CF6', bg: '#EDE9FE' },
+                      content: { label: 'Message', color: '#F59E0B', bg: '#FEF3C7' }
+                    }[result.match_source] || { label: 'Match', color: '#6B7280', bg: '#F3F4F6' };
+
+                    return (
+                      <EmailItem
+                        key={result.result_chat_id}
+                        theme={theme}
+                        $selected={selectedWhatsappChat?.chat_id === result.result_chat_id}
+                        onClick={() => handleSelectWhatsappSearchResult(result)}
+                      >
+                        <EmailSender theme={theme}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {result.contact_name?.trim() || result.result_chat_name || 'Unknown'}
+                          </span>
+                          <span style={{
+                            fontSize: '10px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: theme === 'light' ? matchBadge.bg : `${matchBadge.color}20`,
+                            color: matchBadge.color,
+                            fontWeight: 500,
+                            flexShrink: 0
+                          }}>
+                            {matchBadge.label}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme}>{result.result_chat_name || 'Unknown Chat'}</EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {result.latest_message_preview?.substring(0, 100) || ''}
+                        </EmailSnippet>
+                        <SearchResultDate theme={theme}>
+                          {result.last_message_timestamp ? new Date(result.last_message_timestamp).toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          }) : ''}
+                        </SearchResultDate>
+                      </EmailItem>
+                    );
+                  })}
+                  {!whatsappSearchLoading && whatsappSearchResults.length === 0 && (
+                    <EmptyState theme={theme}>No chats found matching "{whatsappSearchQuery}"</EmptyState>
                   )}
                 </>
               ) : (
