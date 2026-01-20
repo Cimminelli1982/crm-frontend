@@ -30,13 +30,14 @@ const useTodoistTasks = (activeActionTab, selectedThread) => {
   const [expandedProjects, setExpandedProjects] = useState({ '2335921711': true }); // Only Inbox expanded by default
   const [expandedSections, setExpandedSections] = useState({}); // { sectionId: true/false }
 
-  // Fetch Todoist tasks and projects
+  // Fetch Todoist tasks, projects, and sections
   const fetchTodoistData = useCallback(async () => {
     setLoadingTasks(true);
     try {
-      const [tasksRes, projectsRes] = await Promise.all([
+      const [tasksRes, projectsRes, sectionsRes] = await Promise.all([
         fetch(`${BACKEND_URL}/todoist/tasks`),
         fetch(`${BACKEND_URL}/todoist/projects`),
+        fetch(`${BACKEND_URL}/todoist/sections`),
       ]);
 
       if (tasksRes.ok) {
@@ -44,7 +45,18 @@ const useTodoistTasks = (activeActionTab, selectedThread) => {
         setTodoistTasks(tasks || []);
       }
 
-      if (projectsRes.ok) {
+      if (projectsRes.ok && sectionsRes.ok) {
+        const { projects } = await projectsRes.json();
+        const { sections } = await sectionsRes.json();
+
+        // Nest sections inside their projects
+        const projectsWithSections = (projects || []).map(project => ({
+          ...project,
+          sections: (sections || []).filter(s => s.project_id === project.id)
+        }));
+
+        setTodoistProjects(projectsWithSections);
+      } else if (projectsRes.ok) {
         const { projects } = await projectsRes.json();
         setTodoistProjects(projects || []);
       }
@@ -56,10 +68,10 @@ const useTodoistTasks = (activeActionTab, selectedThread) => {
 
   // Load Todoist data when tasks tab is active
   useEffect(() => {
-    if (activeActionTab === 'tasks' && selectedThread) {
+    if (activeActionTab === 'tasks') {
       fetchTodoistData();
     }
-  }, [activeActionTab, selectedThread, fetchTodoistData]);
+  }, [activeActionTab, fetchTodoistData]);
 
   // Reset task form
   const resetTaskForm = useCallback(() => {

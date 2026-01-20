@@ -248,10 +248,10 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
             }
           }
 
-          // No contacts found for this group chat
-          setContextContacts([]);
+          // No contacts found in DB for this group chat - fall through to phone-based lookup
+          // which will extract senders from messages and look them up in contact_mobiles
           setLoadingContacts(false);
-          return;
+          // Don't return - let it fall through to phone-based lookup below
         } catch (error) {
           console.error('Error fetching group chat contacts:', error);
           setContextContacts([]);

@@ -30,6 +30,9 @@ const SECTION_IDS = {
     'Next Year': '212234198',
     'Someday': '212234197',
   },
+  'Team': {
+    'Rosaria': '212756755',
+  },
   'Birthdays 🎂': {
     'This Week': '212234230',
     'Next Week': '212234232',
@@ -40,6 +43,13 @@ const SECTION_IDS = {
     'Someday': '212234229',
   },
 };
+
+// Project options for creation
+const PROJECT_OPTIONS = [
+  { name: 'Work', icon: FaBriefcase, color: '#4073ff' },
+  { name: 'Personal', icon: FaHome, color: '#b8255f' },
+  { name: 'Team', icon: FaUser, color: '#808080' },
+];
 
 /**
  * TasksTab - Task editor following NotesTab UI pattern
@@ -1725,42 +1735,6 @@ const TasksTab = ({
                 placeholder="e.g., tomorrow, next monday, 2024-12-31"
                 style={inputStyle}
               />
-              {/* Section Buttons */}
-              <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                {[
-                  { name: 'This Week', color: '#EF4444' },
-                  { name: 'Next Week', color: '#F97316' },
-                  { name: 'This Month', color: '#F59E0B' },
-                  { name: 'This Sprint', color: '#8B5CF6' },
-                  { name: 'This Year', color: '#3B82F6' },
-                  { name: 'Next Year', color: '#6366F1' },
-                  { name: 'Someday', color: '#6B7280' },
-                ].map(section => {
-                  const isSelected = sectionName === section.name;
-                  return (
-                    <button
-                      key={section.name}
-                      onClick={() => setSectionName(section.name)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: `1px solid ${isSelected ? section.color : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
-                        background: isSelected
-                          ? `${section.color}20`
-                          : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
-                        color: isSelected
-                          ? section.color
-                          : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
-                        fontSize: '10px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {section.name}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             {/* Priority */}
@@ -1967,51 +1941,74 @@ const TasksTab = ({
               </div>
             )}
 
-            {/* Project */}
-            <div>
-              <label style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                marginBottom: '6px',
-                display: 'block',
-              }}>
-                Project
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                {[
-                  { name: 'Personal', icon: FaHome },
-                  { name: 'Work', icon: FaBriefcase },
-                ].map(proj => {
-                  const Icon = proj.icon;
-                  const isSelected = projectName === proj.name;
-                  return (
-                    <button
-                      key={proj.name}
-                      onClick={() => setProjectName(proj.name)}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: `1px solid ${isSelected ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
-                        background: isSelected
-                          ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
-                          : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
-                        color: isSelected
-                          ? '#3B82F6'
-                          : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
-                        fontSize: '11px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <Icon size={12} />
-                      {proj.name}
-                    </button>
-                  );
-                })}
+            {/* Project and Section Dropdowns */}
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                  marginBottom: '6px',
+                  display: 'block',
+                }}>
+                  Project
+                </label>
+                <select
+                  value={projectName}
+                  onChange={(e) => {
+                    setProjectName(e.target.value);
+                    // Reset section when project changes
+                    const availableSections = Object.keys(SECTION_IDS[e.target.value] || {});
+                    if (availableSections.length > 0) {
+                      setSectionName(availableSections[0]);
+                    } else {
+                      setSectionName('');
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                    color: theme === 'dark' ? '#F3F4F6' : '#1F2937',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {PROJECT_OPTIONS.map(proj => (
+                    <option key={proj.name} value={proj.name}>{proj.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                  marginBottom: '6px',
+                  display: 'block',
+                }}>
+                  Section
+                </label>
+                <select
+                  value={sectionName}
+                  onChange={(e) => setSectionName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                    color: theme === 'dark' ? '#F3F4F6' : '#1F2937',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {Object.keys(SECTION_IDS[projectName] || {}).map(section => (
+                    <option key={section} value={section}>{section}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

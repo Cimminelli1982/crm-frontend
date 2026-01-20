@@ -28,6 +28,54 @@ import {
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 
+// Task project options
+const TASK_PROJECTS = [
+  { id: 'Inbox', label: 'Inbox', color: '#808080' },
+  { id: 'Work', label: 'Work', color: '#4073ff' },
+  { id: 'Personal', label: 'Personal', color: '#b8255f' },
+  { id: 'Team', label: 'Team', color: '#808080' },
+];
+
+// Section IDs by project (Todoist section IDs)
+const SECTION_IDS = {
+  'Personal': {
+    'This Week': '212234199',
+    'Next Week': '212234187',
+    'This Month': '212234192',
+    'This Sprint': '212234194',
+    'This Year': '212234189',
+    'Next Year': '212234193',
+    'Someday': '212234190',
+  },
+  'Work': {
+    'This Week': '212234191',
+    'Next Week': '212234200',
+    'This Month': '212234196',
+    'This Sprint': '212234188',
+    'This Year': '212234195',
+    'Next Year': '212234198',
+    'Someday': '212234197',
+  },
+  'Team': {
+    'Rosaria': '212756755',
+  },
+};
+
+// Section options based on project
+const getSectionsForProject = (project) => {
+  if (project === 'Inbox') return [];
+  if (project === 'Team') return [{ id: 'Rosaria', label: 'Rosaria' }];
+  return [
+    { id: 'This Week', label: 'This Week' },
+    { id: 'Next Week', label: 'Next Week' },
+    { id: 'This Month', label: 'This Month' },
+    { id: 'This Sprint', label: 'This Sprint' },
+    { id: 'This Year', label: 'This Year' },
+    { id: 'Next Year', label: 'Next Year' },
+    { id: 'Someday', label: 'Someday' },
+  ];
+};
+
 // Wide modal content for 2-column layout
 const WideModalContent = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
@@ -883,7 +931,11 @@ const ComposeEmailModal = ({
   const [createTaskMode, setCreateTaskMode] = useState(false);
   const [newTaskContent, setNewTaskContent] = useState('');
   const [newTaskDueString, setNewTaskDueString] = useState('');
+  const [newTaskProject, setNewTaskProject] = useState('Work');
+  const [newTaskSection, setNewTaskSection] = useState('This Week');
   const [creatingTask, setCreatingTask] = useState(false);
+  const [taskLinkedContacts, setTaskLinkedContacts] = useState([]);
+  const [taskContactSuggestions, setTaskContactSuggestions] = useState([]);
 
   // Fetch templates from Supabase
   const fetchTemplates = useCallback(async (searchTerm = '') => {
@@ -1000,6 +1052,49 @@ const ComposeEmailModal = ({
       .map(recipient => recipient.contact_id);
   }, [composeTo]);
 
+  // Fetch contact suggestions based on TO/CC emails
+  const fetchContactSuggestionsFromEmails = useCallback(async () => {
+    const allRecipients = [...composeTo, ...composeCc];
+    const emails = allRecipients.map(r => r.email).filter(Boolean);
+
+    if (emails.length === 0) {
+      setTaskContactSuggestions([]);
+      return [];
+    }
+
+    try {
+      // Search contacts by email
+      const { data: contactEmails, error } = await supabase
+        .from('contact_emails')
+        .select('contact_id, email, contacts(contact_id, first_name, last_name, profile_image_url)')
+        .in('email', emails);
+
+      if (error) throw error;
+
+      // Extract unique contacts
+      const contactsMap = new Map();
+      (contactEmails || []).forEach(ce => {
+        if (ce.contacts && !contactsMap.has(ce.contact_id)) {
+          contactsMap.set(ce.contact_id, {
+            contact_id: ce.contacts.contact_id,
+            first_name: ce.contacts.first_name,
+            last_name: ce.contacts.last_name,
+            profile_image_url: ce.contacts.profile_image_url,
+            email: ce.email,
+          });
+        }
+      });
+
+      const suggestions = Array.from(contactsMap.values());
+      setTaskContactSuggestions(suggestions);
+      return suggestions;
+    } catch (e) {
+      console.error('Failed to fetch contact suggestions:', e);
+      setTaskContactSuggestions([]);
+      return [];
+    }
+  }, [composeTo, composeCc]);
+
   // Fetch available tasks (open tasks, excluding Birthdays)
   const fetchAvailableTasks = useCallback(async (searchTerm = '') => {
     setTasksLoading(true);
@@ -1039,14 +1134,75 @@ const ComposeEmailModal = ({
   }, [taskSearch, taskAssociateModalOpen, fetchAvailableTasks]);
 
   // Open task association modal
-  const openTaskAssociateModal = () => {
+  const openTaskAssociateModal = async () => {
     setTaskAssociateModalOpen(true);
     setTaskSearch('');
     setSelectedTaskToAssociate(null);
-    setCreateTaskMode(false);
+    setCreateTaskMode(false); // Start with search/link mode
     setNewTaskContent('');
-    setNewTaskDueString('');
+    setNewTaskDueString('next week');
+    setNewTaskProject('Work');
+    setNewTaskSection('This Week');
+    setTaskLinkedContacts([]);
     fetchAvailableTasks();
+    await fetchContactSuggestionsFromEmails(); // Fetch contacts from email recipients
+  };
+
+  // Generate task suggestion via AI (triggered by button)
+  const [suggestingTask, setSuggestingTask] = useState(false);
+  const handleSuggestTask = async () => {
+    const contactNames = composeTo.map(r => r.name || r.email?.split('@')[0]).filter(Boolean).join(', ');
+    const draftPart = composeBody?.split('─'.repeat(40))[0].trim() || '';
+
+    if (!draftPart) {
+      toast.error('Write your email draft first');
+      return;
+    }
+
+    setSuggestingTask(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Leggi questa email che sto per mandare e dimmi qual è il mio impegno/promessa in 5-8 parole. Solo l'azione, niente spiegazioni.
+
+DESTINATARIO: ${contactNames}
+EMAIL: "${draftPart.substring(0, 500)}"
+
+Esempi di output corretto:
+- "Rivedere proposte safari di Jacky"
+- "Mandare contratto a Maria"
+- "Decidere su investimento Acme"
+- "Rispondere a John su pricing"
+
+Il mio impegno è:`
+          }],
+          context: 'Sei un assistente che estrae task da email. Rispondi SOLO con il task in italiano, 5-8 parole, inizia con verbo infinito. Nessuna spiegazione.'
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        let suggestion = (data.response || '').trim();
+        // Clean up
+        suggestion = suggestion.replace(/^["']|["']$/g, '');
+        suggestion = suggestion.replace(/^(Il mio impegno è:?|Task:?|Here'?s?|Ecco|Il task|L'impegno)/i, '').trim();
+        suggestion = suggestion.split('\n')[0];
+        if (suggestion.includes(':')) {
+          suggestion = suggestion.split(':').pop().trim();
+        }
+        suggestion = suggestion.replace(/^["'\-•]\s*|["']$/g, '').trim();
+        if (suggestion.length > 80) suggestion = suggestion.substring(0, 80);
+        suggestion = suggestion.charAt(0).toUpperCase() + suggestion.slice(1);
+        setNewTaskContent(suggestion || '');
+      }
+    } catch (e) {
+      console.warn('Failed to generate task suggestion:', e);
+      toast.error('Failed to generate suggestion');
+    }
+    setSuggestingTask(false);
   };
 
   // Associate selected task with TO contacts
@@ -1056,9 +1212,10 @@ const ComposeEmailModal = ({
       return;
     }
 
-    const contactIds = getToContactIds();
+    // Use contacts from suggestions (searched by email)
+    const contactIds = taskContactSuggestions.map(c => c.contact_id);
     if (contactIds.length === 0) {
-      toast.error('No contacts with CRM records in TO field');
+      toast.error('No contacts found in CRM for email recipients');
       return;
     }
 
@@ -1108,20 +1265,39 @@ const ComposeEmailModal = ({
       return;
     }
 
-    const contactIds = getToContactIds();
-    if (contactIds.length === 0) {
-      toast.error('No contacts with CRM records in TO field');
-      return;
-    }
+    const contactIds = taskLinkedContacts.map(c => c.contact_id);
 
     setCreatingTask(true);
     try {
-      // 1. Create in Todoist FIRST
+      // 1. Get project_id from project name
+      let todoistProjectId = null;
+      try {
+        const projectsRes = await fetch(`${BACKEND_URL}/todoist/projects`);
+        if (projectsRes.ok) {
+          const { projects } = await projectsRes.json();
+          const proj = projects.find(p => p.name === newTaskProject);
+          if (proj) todoistProjectId = proj.id;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch Todoist projects:', e);
+      }
+
+      // 2. Create in Todoist FIRST
       const todoistPayload = {
         content: newTaskContent.trim(),
         due_string: newTaskDueString || undefined,
         priority: 1,
       };
+
+      if (todoistProjectId) {
+        todoistPayload.project_id = todoistProjectId;
+      }
+
+      // Add section if applicable
+      const sectionId = SECTION_IDS[newTaskProject]?.[newTaskSection];
+      if (sectionId) {
+        todoistPayload.section_id = sectionId;
+      }
 
       const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
         method: 'POST',
@@ -1140,9 +1316,9 @@ const ComposeEmailModal = ({
       const todoistTask = await todoistResponse.json();
       const todoistId = todoistTask.task?.id || todoistTask.id;
       const todoistUrl = todoistTask.task?.url || todoistTask.url;
-      const todoistProjectId = todoistTask.task?.project_id || todoistTask.project_id;
+      const returnedProjectId = todoistTask.task?.project_id || todoistTask.project_id;
 
-      // 2. Then create in Supabase with todoist_id
+      // 3. Then create in Supabase with todoist_id
       const taskData = {
         content: newTaskContent.trim(),
         due_string: newTaskDueString || null,
@@ -1150,7 +1326,10 @@ const ComposeEmailModal = ({
         priority: 1,
         todoist_id: todoistId,
         todoist_url: todoistUrl,
-        todoist_project_id: todoistProjectId,
+        todoist_project_id: returnedProjectId,
+        todoist_project_name: newTaskProject,
+        todoist_section_id: sectionId || null,
+        todoist_section_name: newTaskSection || null,
         created_at: new Date().toISOString()
       };
 
@@ -1170,23 +1349,28 @@ const ComposeEmailModal = ({
 
       if (taskError) throw taskError;
 
-      // Link to contacts
-      const links = contactIds.map(contactId => ({
-        task_id: newTask.task_id,
-        contact_id: contactId
-      }));
+      // Link to contacts (if any selected)
+      if (contactIds.length > 0) {
+        const links = contactIds.map(contactId => ({
+          task_id: newTask.task_id,
+          contact_id: contactId
+        }));
 
-      const { error: linkError } = await supabase
-        .from('task_contacts')
-        .insert(links);
+        const { error: linkError } = await supabase
+          .from('task_contacts')
+          .insert(links);
 
-      if (linkError) throw linkError;
+        if (linkError) throw linkError;
+      }
 
-      toast.success(`Task created and linked to ${contactIds.length} contact(s)`);
+      toast.success(contactIds.length > 0 ? `Task created and linked to ${contactIds.length} contact(s)` : 'Task created');
       setTaskAssociateModalOpen(false);
       setCreateTaskMode(false);
       setNewTaskContent('');
       setNewTaskDueString('');
+      setNewTaskProject('Work');
+      setNewTaskSection('This Week');
+      setTaskLinkedContacts([]);
     } catch (error) {
       console.error('Error creating task:', error);
       toast.error('Failed to create task');
@@ -2119,8 +2303,12 @@ ${draftPart}`;
                     color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
                   }}>
                     {createTaskMode
-                      ? `Task will be linked to: ${composeTo.map(r => r.name || r.email).join(', ')}`
-                      : `Select a task to link with: ${composeTo.map(r => r.name || r.email).join(', ')}`
+                      ? (taskLinkedContacts.length > 0
+                          ? `Will link to: ${taskLinkedContacts.map(c => `${c.first_name} ${c.last_name}`).join(', ')}`
+                          : 'Select contacts to link below')
+                      : (taskContactSuggestions.length > 0
+                          ? `Will link to: ${taskContactSuggestions.map(c => `${c.first_name} ${c.last_name}`).join(', ')}`
+                          : `No CRM contacts found for: ${composeTo.map(r => r.name || r.email).join(', ')}`)
                     }
                   </p>
                 </div>
@@ -2172,15 +2360,33 @@ ${draftPart}`;
                 /* Create Task Form */
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                      marginBottom: '6px',
-                    }}>
-                      Task Content *
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      }}>
+                        Task Content *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleSuggestTask}
+                        disabled={suggestingTask}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '4px',
+                          border: 'none',
+                          background: '#8B5CF6',
+                          color: '#FFFFFF',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          cursor: suggestingTask ? 'wait' : 'pointer',
+                          opacity: suggestingTask ? 0.7 : 1,
+                        }}
+                      >
+                        {suggestingTask ? 'Suggesting...' : 'Suggest'}
+                      </button>
+                    </div>
                     <input
                       type="text"
                       value={newTaskContent}
@@ -2253,6 +2459,170 @@ ${draftPart}`;
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Project and Section Row */}
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                        marginBottom: '6px',
+                      }}>
+                        Project
+                      </label>
+                      <select
+                        value={newTaskProject}
+                        onChange={(e) => {
+                          setNewTaskProject(e.target.value);
+                          const sections = getSectionsForProject(e.target.value);
+                          if (sections.length > 0) {
+                            setNewTaskSection(sections[0].id);
+                          } else {
+                            setNewTaskSection('');
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                          background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          fontSize: '13px',
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {TASK_PROJECTS.map(proj => (
+                          <option key={proj.id} value={proj.id}>{proj.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {getSectionsForProject(newTaskProject).length > 0 && (
+                      <div style={{ flex: 1 }}>
+                        <label style={{
+                          display: 'block',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                          marginBottom: '6px',
+                        }}>
+                          Section
+                        </label>
+                        <select
+                          value={newTaskSection}
+                          onChange={(e) => setNewTaskSection(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                            background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            fontSize: '13px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {getSectionsForProject(newTaskProject).map(section => (
+                            <option key={section.id} value={section.id}>{section.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Link To Section */}
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      marginBottom: '8px',
+                    }}>
+                      Link to Contacts
+                    </label>
+
+                    {/* Contact Suggestions from Email */}
+                    {taskContactSuggestions.length > 0 && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <div style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginBottom: '6px' }}>
+                          From email recipients:
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {taskContactSuggestions
+                            .filter(c => !taskLinkedContacts.find(lc => lc.contact_id === c.contact_id))
+                            .map(contact => (
+                              <button
+                                key={contact.contact_id}
+                                type="button"
+                                onClick={() => setTaskLinkedContacts(prev => [...prev, contact])}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '16px',
+                                  border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                                  background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                                  color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <FaPlus size={8} />
+                                {contact.first_name} {contact.last_name}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Linked Contacts */}
+                    {taskLinkedContacts.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {taskLinkedContacts.map(contact => (
+                          <div
+                            key={contact.contact_id}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '16px',
+                              background: '#10B981',
+                              color: '#FFFFFF',
+                              fontSize: '12px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            {contact.first_name} {contact.last_name}
+                            <button
+                              type="button"
+                              onClick={() => setTaskLinkedContacts(prev => prev.filter(c => c.contact_id !== contact.contact_id))}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#FFFFFF',
+                                cursor: 'pointer',
+                                padding: 0,
+                                display: 'flex',
+                              }}
+                            >
+                              <FaTimes size={10} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF' }}>
+                        {taskContactSuggestions.length === 0 ? 'No contacts found from email recipients' : 'Click a suggestion above to link'}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : tasksLoading ? (
