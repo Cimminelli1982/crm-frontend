@@ -15,6 +15,7 @@ import CityContactsPage from './pages/CityContactsPage';
 import TagContactsPage from './pages/TagContactsPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
 import CommandCenterPage from './pages/CommandCenterPage';
+import DealSubmissionPage from './pages/DealSubmissionPage';
 import { supabase } from './lib/supabaseClient';
 
 const GlobalStyles = createGlobalStyle`
@@ -125,6 +126,9 @@ const CRMAppContent = () => {
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Check if current route is public (no navigation needed)
+  const isPublicRoute = location.pathname === '/deal-submission';
 
   // Map paths to page IDs for navigation highlighting
   const getPageIdFromPath = (pathname) => {
@@ -278,6 +282,18 @@ const CRMAppContent = () => {
   }, []);
 
 
+  // Render public routes without navigation
+  if (isPublicRoute) {
+    return (
+      <>
+        <GlobalStyles theme="light" />
+        <Routes>
+          <Route path="/deal-submission" element={<DealSubmissionPage />} />
+        </Routes>
+      </>
+    );
+  }
+
   return (
     <AppContainer theme={theme}>
       <GlobalStyles theme={theme} />
@@ -324,6 +340,7 @@ const CRMAppContent = () => {
             <Route path="/tag/:tagId/contacts" element={<TagContactsPage theme={theme} />} />
             <Route path="/company/:companyId" element={<CompanyDetailPage theme={theme} />} />
             <Route path="/command-center" element={<CommandCenterPage theme={theme} />} />
+            <Route path="/deal-submission" element={<DealSubmissionPage />} />
             {/* Fallback route */}
             <Route path="*" element={<Navigate to="/sort" replace />} />
           </Routes>
