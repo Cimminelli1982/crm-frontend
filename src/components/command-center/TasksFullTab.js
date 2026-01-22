@@ -258,6 +258,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
   const [editDueString, setEditDueString] = useState('');
   const [editPriority, setEditPriority] = useState(1);
   const [editProjectName, setEditProjectName] = useState('Inbox');
+  const [editSectionName, setEditSectionName] = useState('');
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [todoistCount, setTodoistCount] = useState(null);
@@ -389,6 +390,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
     setEditDueString(task.due_string || task.due_date || '');
     setEditPriority(task.priority || 1);
     setEditProjectName(task.todoist_project_name || 'Inbox');
+    setEditSectionName(task.todoist_section_name || '');
     setIsEditing(true);
     setIsCreating(false);
 
@@ -408,6 +410,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
     setEditDueString('');
     setEditPriority(1);
     setEditProjectName('Inbox');
+    setEditSectionName('');
     setIsEditing(true);
     setIsCreating(true);
     setLinkedContacts([]);
@@ -1161,9 +1164,12 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
     const taskDate = t.due_date.split('T')[0];
     return taskDate === todayDate;
   });
+  // Get IDs of tasks already shown in "Due Today" to avoid duplicates
+  const todayDueTaskIds = new Set(todayDueTasks.map(t => t.task_id));
   const todayThisWeekTasks = tasks.filter(t =>
     t.todoist_section_name === 'This Week' &&
-    (t.todoist_project_name === 'Work' || t.todoist_project_name === 'Personal')
+    (t.todoist_project_name === 'Work' || t.todoist_project_name === 'Personal') &&
+    !todayDueTaskIds.has(t.task_id)
   );
   const todayDelegatedTasks = tasks.filter(t => t.todoist_project_name === 'Team');
   const todayRecentlyCompletedTasks = completedTasks.slice(0, 10);
@@ -1881,72 +1887,6 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
                     placeholder="e.g., tomorrow, next monday, 2024-12-31"
                     style={inputStyle}
                   />
-                  {/* Section Buttons */}
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
-                    {[
-                      { name: 'This Week', color: '#EF4444' },
-                      { name: 'Next Week', color: '#F97316' },
-                      { name: 'This Month', color: '#F59E0B' },
-                      { name: 'This Sprint', color: '#8B5CF6' },
-                      { name: 'This Year', color: '#3B82F6' },
-                      { name: 'Next Year', color: '#6366F1' },
-                      { name: 'Someday', color: '#6B7280' },
-                    ].map(section => {
-                      const isSelected = selectedTask?.todoist_section_name === section.name;
-                      return (
-                        <button
-                          key={section.name}
-                          onClick={async () => {
-                            if (!selectedTask || isCreating) return;
-                            const projectName = selectedTask.todoist_project_name || editProjectName || 'Personal';
-                            const sectionId = SECTION_IDS[projectName]?.[section.name];
-
-                            // Update Supabase
-                            await supabase
-                              .from('tasks')
-                              .update({
-                                todoist_section_name: section.name,
-                                todoist_section_id: sectionId,
-                                updated_at: new Date().toISOString(),
-                              })
-                              .eq('task_id', selectedTask.task_id);
-
-                            // Sync to Todoist
-                            if (selectedTask.todoist_id && sectionId) {
-                              try {
-                                await fetch(`${BACKEND_URL}/todoist/tasks/${selectedTask.todoist_id}`, {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ section_id: sectionId }),
-                                });
-                              } catch (err) {
-                                console.warn('Failed to sync section to Todoist:', err);
-                              }
-                            }
-
-                            toast.success(`Moved to ${section.name}`);
-                            fetchTasks();
-                          }}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '6px',
-                            border: `1px solid ${isSelected ? section.color : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
-                            background: isSelected
-                              ? `${section.color}20`
-                              : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
-                            color: isSelected
-                              ? section.color
-                              : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
-                            fontSize: '11px',
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {section.name}
-                        </button>
-                      );
-                    })}
-                  </div>
                 </div>
               )}
 
@@ -2415,61 +2355,143 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
                 </div>
               )}
 
-              {/* Project - Only Personal and Work */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                  marginBottom: '6px',
-                  display: 'block',
-                }}>
-                  Move to Project
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  {[
-                    { name: 'Personal', icon: FaHome },
-                    { name: 'Work', icon: FaBriefcase },
-                  ].map(proj => {
-                    const Icon = proj.icon;
-                    const isSelected = editProjectName === proj.name;
-                    return (
-                      <button
-                        key={proj.name}
-                        onClick={() => {
-                          // If coming from Inbox, show section modal
-                          if (editProjectName === 'Inbox' || editProjectName === 'Birthdays 🎂') {
-                            setPendingProjectName(proj.name);
-                            setShowSectionModal(true);
-                          } else {
-                            // Already in Personal/Work, just switch project
-                            setEditProjectName(proj.name);
-                            saveField('todoist_project_name', proj.name);
+              {/* Project and Section Dropdowns */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                    marginBottom: '6px',
+                    display: 'block',
+                  }}>
+                    Project
+                  </label>
+                  <select
+                    value={editProjectName}
+                    onChange={async (e) => {
+                      const newProject = e.target.value;
+                      setEditProjectName(newProject);
+                      // Reset section to first available for this project
+                      const availableSections = Object.keys(SECTION_IDS[newProject] || {});
+                      const newSection = availableSections.length > 0 ? availableSections[0] : '';
+                      setEditSectionName(newSection);
+
+                      if (selectedTask && !isCreating) {
+                        const sectionId = SECTION_IDS[newProject]?.[newSection];
+                        // Update Supabase
+                        await supabase
+                          .from('tasks')
+                          .update({
+                            todoist_project_name: newProject,
+                            todoist_section_name: newSection,
+                            todoist_section_id: sectionId || null,
+                            updated_at: new Date().toISOString(),
+                          })
+                          .eq('task_id', selectedTask.task_id);
+
+                        // Sync to Todoist
+                        if (selectedTask.todoist_id && sectionId) {
+                          try {
+                            await fetch(`${BACKEND_URL}/todoist/tasks/${selectedTask.todoist_id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ section_id: sectionId }),
+                            });
+                          } catch (err) {
+                            console.warn('Failed to sync project/section to Todoist:', err);
                           }
-                        }}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '6px',
-                          border: `1px solid ${isSelected ? '#3B82F6' : (theme === 'dark' ? '#4B5563' : '#D1D5DB')}`,
-                          background: isSelected
-                            ? (theme === 'dark' ? '#1E3A5F' : '#DBEAFE')
-                            : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
-                          color: isSelected
-                            ? '#3B82F6'
-                            : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                        }}
-                      >
-                        <Icon size={14} />
-                        {proj.name}
-                      </button>
-                    );
-                  })}
+                        }
+                        toast.success(`Moved to ${newProject} → ${newSection}`);
+                        fetchTasks();
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="Inbox">Inbox</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Work">Work</option>
+                    <option value="Team">Team</option>
+                  </select>
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <label style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                    marginBottom: '6px',
+                    display: 'block',
+                  }}>
+                    Section
+                  </label>
+                  <select
+                    value={editSectionName}
+                    onChange={async (e) => {
+                      const newSection = e.target.value;
+                      setEditSectionName(newSection);
+
+                      if (selectedTask && !isCreating) {
+                        const sectionId = SECTION_IDS[editProjectName]?.[newSection];
+                        // Update Supabase
+                        await supabase
+                          .from('tasks')
+                          .update({
+                            todoist_section_name: newSection,
+                            todoist_section_id: sectionId || null,
+                            updated_at: new Date().toISOString(),
+                          })
+                          .eq('task_id', selectedTask.task_id);
+
+                        // Sync to Todoist
+                        if (selectedTask.todoist_id && sectionId) {
+                          try {
+                            await fetch(`${BACKEND_URL}/todoist/tasks/${selectedTask.todoist_id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ section_id: sectionId }),
+                            });
+                          } catch (err) {
+                            console.warn('Failed to sync section to Todoist:', err);
+                          }
+                        }
+                        toast.success(`Moved to ${newSection}`);
+                        fetchTasks();
+                      }
+                    }}
+                    disabled={editProjectName === 'Inbox'}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: editProjectName === 'Inbox'
+                        ? (theme === 'dark' ? '#111827' : '#F3F4F6')
+                        : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
+                      color: editProjectName === 'Inbox'
+                        ? (theme === 'dark' ? '#6B7280' : '#9CA3AF')
+                        : (theme === 'dark' ? '#F9FAFB' : '#111827'),
+                      fontSize: '13px',
+                      cursor: editProjectName === 'Inbox' ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {editProjectName === 'Inbox' ? (
+                      <option value="">No sections</option>
+                    ) : (
+                      Object.keys(SECTION_IDS[editProjectName] || {}).map(section => (
+                        <option key={section} value={section}>{section}</option>
+                      ))
+                    )}
+                  </select>
                 </div>
               </div>
 
