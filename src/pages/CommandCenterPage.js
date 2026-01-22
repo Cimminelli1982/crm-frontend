@@ -233,6 +233,12 @@ const CommandCenterPage = ({ theme }) => {
   const [isSearchingWhatsapp, setIsSearchingWhatsapp] = useState(false);
   const [archivedWhatsappContact, setArchivedWhatsappContact] = useState(null);
 
+  // Calendar search state (for searching events and meetings)
+  const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
+  const [calendarSearchResults, setCalendarSearchResults] = useState([]);
+  const [calendarSearchLoading, setCalendarSearchLoading] = useState(false);
+  const [isSearchingCalendar, setIsSearchingCalendar] = useState(false);
+
   // Calendar sections state (needReview, thisWeek, thisMonth, upcoming)
   const [calendarSections, setCalendarSections] = useState({
     needReview: true,
@@ -8615,6 +8621,116 @@ internet businesses.`;
     }
   }, [selectedWhatsappChat]);
 
+  // Calendar search function - searches in events and meetings
+  const searchCalendarEvents = useCallback(async (query) => {
+    if (!query.trim()) {
+      setCalendarSearchResults([]);
+      setIsSearchingCalendar(false);
+      return;
+    }
+    setCalendarSearchLoading(true);
+    setIsSearchingCalendar(true);
+    try {
+      const { data, error } = await supabase.rpc('search_calendar', {
+        search_query: query.trim(),
+        result_limit: 100
+      });
+      if (error) throw error;
+      setCalendarSearchResults(data || []);
+    } catch (error) {
+      console.error('Error searching calendar:', error);
+      toast.error('Search failed');
+      setCalendarSearchResults([]);
+    } finally {
+      setCalendarSearchLoading(false);
+    }
+  }, []);
+
+  // Handle selecting a calendar search result
+  const handleSelectCalendarSearchResult = async (searchResult) => {
+    try {
+      if (searchResult.result_type === 'inbox') {
+        // Raw event from command_center_inbox - fetch full event data
+        const { data: eventData, error } = await supabase
+          .from('command_center_inbox')
+          .select('*')
+          .eq('id', searchResult.result_id)
+          .single();
+
+        if (error) throw error;
+
+        setSelectedCalendarEvent(eventData);
+
+        // Clear contact selection for raw events (no attendees linked yet)
+        setSelectedRightPanelContactId(null);
+      } else if (searchResult.result_type === 'meeting') {
+        // Processed meeting - fetch with contacts
+        const { data: meetingData, error } = await supabase
+          .from('meetings')
+          .select(`
+            *,
+            meeting_contacts (
+              contact_id,
+              contacts:contact_id (
+                contact_id,
+                first_name,
+                last_name,
+                profile_image_url
+              )
+            )
+          `)
+          .eq('meeting_id', searchResult.result_id)
+          .single();
+
+        if (error) throw error;
+
+        // Set as selectedCalendarEvent with source: 'meetings' to match existing pattern
+        setSelectedCalendarEvent({ ...meetingData, source: 'meetings' });
+        setCalendarEventScore(meetingData.score ? parseInt(meetingData.score) : null);
+        setCalendarEventNotes(meetingData.notes || '');
+        setCalendarEventDescription(meetingData.description || '');
+
+        // Set the first attendee as the selected contact in right panel
+        const firstContact = meetingData?.meeting_contacts?.[0]?.contacts;
+        if (firstContact?.contact_id) {
+          setSelectedRightPanelContactId(firstContact.contact_id);
+        } else {
+          setSelectedRightPanelContactId(null);
+        }
+      }
+
+      // Collapse mobile panels
+      if (window.innerWidth <= 768) {
+        setListCollapsed(true);
+      }
+    } catch (err) {
+      console.error('Error loading calendar search result:', err);
+      toast.error('Failed to load event');
+    }
+  };
+
+  // Debounced calendar search effect
+  useEffect(() => {
+    if (activeTab === 'calendar' && calendarSearchQuery.trim()) {
+      const debounce = setTimeout(() => {
+        searchCalendarEvents(calendarSearchQuery);
+      }, 300);
+      return () => clearTimeout(debounce);
+    } else if (!calendarSearchQuery.trim()) {
+      setCalendarSearchResults([]);
+      setIsSearchingCalendar(false);
+    }
+  }, [calendarSearchQuery, activeTab, searchCalendarEvents]);
+
+  // Clear calendar search when switching tabs
+  useEffect(() => {
+    if (activeTab !== 'calendar') {
+      setCalendarSearchQuery('');
+      setCalendarSearchResults([]);
+      setIsSearchingCalendar(false);
+    }
+  }, [activeTab]);
+
   // Delete single email (without blocking)
   const deleteEmail = async () => {
     const latestEmail = getLatestEmail();
@@ -8816,6 +8932,34 @@ internet businesses.`;
                       setWhatsappSearchResults([]);
                       setIsSearchingWhatsapp(false);
                       setArchivedWhatsappContact(null);
+                    }}
+                  >
+                    <FaTimes size={12} />
+                  </ClearSearchButton>
+                )}
+              </SearchInputWrapper>
+            </SearchContainer>
+          )}
+
+          {/* Calendar Search Bar - only for calendar tab */}
+          {!listCollapsed && activeTab === 'calendar' && (
+            <SearchContainer theme={theme}>
+              <SearchInputWrapper theme={theme}>
+                <FaSearch size={14} style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', flexShrink: 0 }} />
+                <SearchInput
+                  theme={theme}
+                  type="text"
+                  placeholder="Search events..."
+                  value={calendarSearchQuery}
+                  onChange={(e) => setCalendarSearchQuery(e.target.value)}
+                />
+                {calendarSearchQuery && (
+                  <ClearSearchButton
+                    theme={theme}
+                    onClick={() => {
+                      setCalendarSearchQuery('');
+                      setCalendarSearchResults([]);
+                      setIsSearchingCalendar(false);
                     }}
                   >
                     <FaTimes size={12} />
@@ -9157,7 +9301,76 @@ internet businesses.`;
                   Processed
                 </button>
               </div>
-              {calendarLoading ? (
+              {isSearchingCalendar ? (
+                /* Calendar Search Results Mode */
+                <>
+                  <SearchResultsHeader theme={theme}>
+                    {calendarSearchLoading ? 'Searching...' : `${calendarSearchResults.length} events found`}
+                  </SearchResultsHeader>
+                  {calendarSearchResults.map(result => {
+                    // Match source badge config (same style as WhatsApp)
+                    const matchBadge = {
+                      name: { label: 'Name', color: '#10B981', bg: '#D1FAE5' },
+                      description: { label: 'Description', color: '#F59E0B', bg: '#FEF3C7' },
+                      attendee: { label: 'Attendee', color: '#3B82F6', bg: '#DBEAFE' },
+                      location: { label: 'Location', color: '#8B5CF6', bg: '#EDE9FE' }
+                    }[result.match_source] || { label: 'Match', color: '#6B7280', bg: '#F3F4F6' };
+
+                    const eventDate = result.event_date ? new Date(result.event_date) : null;
+                    const dateStr = eventDate ? eventDate.toLocaleDateString('en-GB', {
+                      weekday: 'short',
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric'
+                    }) : '';
+                    const timeStr = eventDate ? eventDate.toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }) : '';
+
+                    return (
+                      <EmailItem
+                        key={result.result_id}
+                        theme={theme}
+                        $selected={
+                          (result.result_type === 'inbox' && selectedCalendarEvent?.id === result.result_id) ||
+                          (result.result_type === 'meeting' && selectedCalendarEvent?.meeting_id === result.result_id)
+                        }
+                        onClick={() => handleSelectCalendarSearchResult(result)}
+                      >
+                        <EmailSender theme={theme}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {result.event_name || 'Untitled Event'}
+                          </span>
+                          <span style={{
+                            fontSize: '10px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: theme === 'light' ? matchBadge.bg : `${matchBadge.color}20`,
+                            color: matchBadge.color,
+                            fontWeight: 500,
+                            flexShrink: 0
+                          }}>
+                            {matchBadge.label}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                          {dateStr} {timeStr && `at ${timeStr}`}
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {result.attendee_names || result.description_preview?.substring(0, 100) || result.event_location || ''}
+                        </EmailSnippet>
+                        <SearchResultDate theme={theme}>
+                          {result.result_type === 'meeting' ? 'Processed' : 'To Process'}
+                        </SearchResultDate>
+                      </EmailItem>
+                    );
+                  })}
+                  {!calendarSearchLoading && calendarSearchResults.length === 0 && (
+                    <EmptyState theme={theme}>No events found matching "{calendarSearchQuery}"</EmptyState>
+                  )}
+                </>
+              ) : calendarLoading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
               ) : calendarViewMode === 'toProcess' && calendarEvents.length === 0 ? (
                 <EmptyState theme={theme}>
@@ -14761,7 +14974,7 @@ internet businesses.`;
           )}
 
           {/* Introductions - Email Panel */}
-          {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'email' && (
+          {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'email' && activeActionTab === 'introductions' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
               {/* To Field - Selectable chips grouped by contact */}
               <div style={{ marginBottom: '12px' }}>
@@ -14933,7 +15146,7 @@ internet businesses.`;
           )}
 
           {/* Introductions - WhatsApp Panel */}
-          {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'whatsapp' && (
+          {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'whatsapp' && activeActionTab === 'introductions' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
               {/* Show group chat if group exists (check chat_id FK or fallback to whatsapp_group_jid) */}
               {(selectedIntroductionItem.chat_id || selectedIntroductionItem.whatsapp_group_jid) ? (
@@ -15721,7 +15934,7 @@ internet businesses.`;
                   onDealAssociated={() => setRefreshDealsCounter(c => c + 1)}
                 />
               )}
-              {activeActionTab === 'introductions' && (
+              {activeActionTab === 'introductions' && !(activeTab === 'introductions' && selectedIntroductionItem && ['email', 'whatsapp'].includes(introductionsActionTab)) && (
                 <IntroductionsPanelTab
                   theme={theme}
                   contactId={selectedRightPanelContactId}
