@@ -239,6 +239,12 @@ const CommandCenterPage = ({ theme }) => {
   const [calendarSearchLoading, setCalendarSearchLoading] = useState(false);
   const [isSearchingCalendar, setIsSearchingCalendar] = useState(false);
 
+  // Keep in Touch search state
+  const [keepInTouchSearchQuery, setKeepInTouchSearchQuery] = useState('');
+  const [keepInTouchSearchResults, setKeepInTouchSearchResults] = useState([]);
+  const [keepInTouchSearchLoading, setKeepInTouchSearchLoading] = useState(false);
+  const [isSearchingKeepInTouch, setIsSearchingKeepInTouch] = useState(false);
+
   // Calendar sections state (needReview, thisWeek, thisMonth, upcoming)
   const [calendarSections, setCalendarSections] = useState({
     needReview: true,
@@ -1360,9 +1366,17 @@ internet businesses.`;
   const handleKeepInTouchSnooze = async (snoozeDays) => {
     if (!selectedKeepInTouchContact) return;
     try {
+      // Calculate snoozed_until date (now + snoozeDays)
+      let snoozedUntil = null;
+      if (snoozeDays > 0) {
+        const date = new Date();
+        date.setDate(date.getDate() + snoozeDays);
+        snoozedUntil = date.toISOString();
+      }
+
       const { error } = await supabase
         .from('keep_in_touch')
-        .update({ snooze_days: snoozeDays })
+        .update({ snoozed_until: snoozedUntil })
         .eq('contact_id', selectedKeepInTouchContact.contact_id);
 
       if (error) throw error;
@@ -8757,6 +8771,53 @@ internet businesses.`;
     }
   }, [activeTab]);
 
+  // Search Keep in Touch contacts
+  const searchKeepInTouch = useCallback(async (query) => {
+    if (!query.trim()) {
+      setKeepInTouchSearchResults([]);
+      setIsSearchingKeepInTouch(false);
+      return;
+    }
+    setKeepInTouchSearchLoading(true);
+    setIsSearchingKeepInTouch(true);
+    try {
+      const { data, error } = await supabase.rpc('search_keep_in_touch', {
+        search_query: query.trim(),
+        result_limit: 100
+      });
+      if (error) throw error;
+      setKeepInTouchSearchResults(data || []);
+    } catch (error) {
+      console.error('Error searching Keep in Touch:', error);
+      toast.error('Search failed');
+      setKeepInTouchSearchResults([]);
+    } finally {
+      setKeepInTouchSearchLoading(false);
+    }
+  }, []);
+
+  // Debounced Keep in Touch search effect
+  useEffect(() => {
+    if (activeTab === 'keepintouch' && keepInTouchSearchQuery.trim()) {
+      const debounce = setTimeout(() => {
+        searchKeepInTouch(keepInTouchSearchQuery);
+      }, 300);
+      return () => clearTimeout(debounce);
+    } else if (!keepInTouchSearchQuery.trim()) {
+      setKeepInTouchSearchResults([]);
+      setIsSearchingKeepInTouch(false);
+    }
+  }, [keepInTouchSearchQuery, activeTab, searchKeepInTouch]);
+
+  // Clear Keep in Touch search when switching tabs
+  useEffect(() => {
+    if (activeTab !== 'keepintouch') {
+      setKeepInTouchSearchQuery('');
+      setKeepInTouchSearchResults([]);
+      setIsSearchingKeepInTouch(false);
+    }
+  }, [activeTab]);
+
   // Delete single email (without blocking)
   const deleteEmail = async () => {
     const latestEmail = getLatestEmail();
@@ -10092,8 +10153,109 @@ internet businesses.`;
           {/* Keep in Touch List */}
           {!listCollapsed && activeTab === 'keepintouch' && (
             <EmailList>
+              {/* Search Input */}
+              <SearchContainer theme={theme}>
+                <SearchInputWrapper theme={theme}>
+                  <FaSearch size={14} style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', flexShrink: 0 }} />
+                  <SearchInput
+                    theme={theme}
+                    type="text"
+                    placeholder="Search contacts..."
+                    value={keepInTouchSearchQuery}
+                    onChange={(e) => setKeepInTouchSearchQuery(e.target.value)}
+                  />
+                  {keepInTouchSearchQuery && (
+                    <ClearSearchButton
+                      theme={theme}
+                      onClick={() => {
+                        setKeepInTouchSearchQuery('');
+                        setKeepInTouchSearchResults([]);
+                        setIsSearchingKeepInTouch(false);
+                      }}
+                    >
+                      <FaTimes size={12} />
+                    </ClearSearchButton>
+                  )}
+                </SearchInputWrapper>
+              </SearchContainer>
+
               {keepInTouchLoading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
+              ) : isSearchingKeepInTouch ? (
+                // Search Results
+                keepInTouchSearchLoading ? (
+                  <EmptyState theme={theme}>Searching...</EmptyState>
+                ) : keepInTouchSearchResults.length === 0 ? (
+                  <EmptyState theme={theme}>
+                    <FaSearch size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                    <span>No results found</span>
+                  </EmptyState>
+                ) : (
+                  keepInTouchSearchResults.map(contact => {
+                    const matchBadge = {
+                      name: { label: 'Name', color: '#10B981', bg: '#D1FAE5' },
+                      email: { label: 'Email', color: '#3B82F6', bg: '#DBEAFE' },
+                      company: { label: 'Company', color: '#8B5CF6', bg: '#EDE9FE' }
+                    }[contact.match_source] || { label: 'Match', color: '#6B7280', bg: '#F3F4F6' };
+
+                    return (
+                      <EmailItem
+                        key={contact.contact_id}
+                        theme={theme}
+                        $selected={selectedKeepInTouchContact?.contact_id === contact.contact_id}
+                        onClick={() => setSelectedKeepInTouchContact(contact)}
+                        style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
+                      >
+                        <div style={{
+                          width: '44px',
+                          height: '44px',
+                          borderRadius: '50%',
+                          backgroundColor: contact.profile_image_url ? 'transparent' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          color: theme === 'dark' ? '#D1D5DB' : '#6B7280',
+                          flexShrink: 0,
+                          overflow: 'hidden'
+                        }}>
+                          {contact.profile_image_url ? (
+                            <img src={contact.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            contact.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <EmailSender theme={theme}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {contact.full_name}
+                            </span>
+                          </EmailSender>
+                          <EmailSubject theme={theme} style={{
+                            fontWeight: 600,
+                            color: contact.days_until_next < 0 ? '#ef4444' : contact.days_until_next <= 14 ? '#f59e0b' : (theme === 'dark' ? '#D1D5DB' : '#374151')
+                          }}>
+                            {contact.days_until_next < 0 ? `${Math.abs(contact.days_until_next)} days overdue` : `${contact.days_until_next} days left`}
+                          </EmailSubject>
+                          <EmailSnippet theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            {contact.frequency}
+                            <span style={{
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              backgroundColor: matchBadge.bg,
+                              color: matchBadge.color
+                            }}>
+                              {matchBadge.label}: {contact.match_value?.length > 30 ? contact.match_value.slice(0, 30) + '...' : contact.match_value}
+                            </span>
+                          </EmailSnippet>
+                        </div>
+                      </EmailItem>
+                    );
+                  })
+                )
               ) : keepInTouchContacts.length === 0 ? (
                 <EmptyState theme={theme}>
                   <FaUserCheck size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
@@ -10132,18 +10294,41 @@ internet businesses.`;
                       theme={theme}
                       $selected={selectedKeepInTouchContact?.contact_id === contact.contact_id}
                       onClick={() => setSelectedKeepInTouchContact(contact)}
+                      style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
                     >
-                      <EmailSender theme={theme}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {contact.full_name}
-                        </span>
-                      </EmailSender>
-                      <EmailSubject theme={theme} style={{ fontWeight: 600, color: '#ef4444' }}>
-                        {Math.abs(parseInt(contact.days_until_next))} days overdue
-                      </EmailSubject>
-                      <EmailSnippet theme={theme}>
-                        {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
-                      </EmailSnippet>
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '50%',
+                        backgroundColor: contact.profile_image_url ? 'transparent' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: theme === 'dark' ? '#D1D5DB' : '#6B7280',
+                        flexShrink: 0,
+                        overflow: 'hidden'
+                      }}>
+                        {contact.profile_image_url ? (
+                          <img src={contact.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          contact.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <EmailSender theme={theme}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {contact.full_name}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme} style={{ fontWeight: 600, color: '#ef4444' }}>
+                          {Math.abs(parseInt(contact.days_until_next))} days overdue
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
+                        </EmailSnippet>
+                      </div>
                     </EmailItem>
                   ))}
 
@@ -10178,18 +10363,41 @@ internet businesses.`;
                       theme={theme}
                       $selected={selectedKeepInTouchContact?.contact_id === contact.contact_id}
                       onClick={() => setSelectedKeepInTouchContact(contact)}
+                      style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
                     >
-                      <EmailSender theme={theme}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {contact.full_name}
-                        </span>
-                      </EmailSender>
-                      <EmailSubject theme={theme} style={{ fontWeight: 600, color: '#f59e0b' }}>
-                        {contact.days_until_next} days left
-                      </EmailSubject>
-                      <EmailSnippet theme={theme}>
-                        {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
-                      </EmailSnippet>
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '50%',
+                        backgroundColor: contact.profile_image_url ? 'transparent' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: theme === 'dark' ? '#D1D5DB' : '#6B7280',
+                        flexShrink: 0,
+                        overflow: 'hidden'
+                      }}>
+                        {contact.profile_image_url ? (
+                          <img src={contact.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          contact.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <EmailSender theme={theme}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {contact.full_name}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme} style={{ fontWeight: 600, color: '#f59e0b' }}>
+                          {contact.days_until_next} days left
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
+                        </EmailSnippet>
+                      </div>
                     </EmailItem>
                   ))}
 
@@ -10223,18 +10431,41 @@ internet businesses.`;
                       theme={theme}
                       $selected={selectedKeepInTouchContact?.contact_id === contact.contact_id}
                       onClick={() => setSelectedKeepInTouchContact(contact)}
+                      style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
                     >
-                      <EmailSender theme={theme}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {contact.full_name}
-                        </span>
-                      </EmailSender>
-                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
-                        {contact.days_until_next} days left
-                      </EmailSubject>
-                      <EmailSnippet theme={theme}>
-                        {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
-                      </EmailSnippet>
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '50%',
+                        backgroundColor: contact.profile_image_url ? 'transparent' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: theme === 'dark' ? '#D1D5DB' : '#6B7280',
+                        flexShrink: 0,
+                        overflow: 'hidden'
+                      }}>
+                        {contact.profile_image_url ? (
+                          <img src={contact.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          contact.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <EmailSender theme={theme}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {contact.full_name}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                          {contact.days_until_next} days left
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
+                        </EmailSnippet>
+                      </div>
                     </EmailItem>
                   ))}
                 </>
@@ -12675,7 +12906,7 @@ internet businesses.`;
                           <option value="60">+60 days</option>
                           <option value="90">+90 days</option>
                         </select>
-                        {selectedKeepInTouchContact.snooze_days > 0 && (
+                        {selectedKeepInTouchContact.snoozed_until && new Date(selectedKeepInTouchContact.snoozed_until) > new Date() && (
                           <>
                             <span style={{
                               padding: '2px 8px',
@@ -12683,7 +12914,7 @@ internet businesses.`;
                               borderRadius: '4px',
                               fontSize: '12px'
                             }}>
-                              +{selectedKeepInTouchContact.snooze_days}d active
+                              Snoozed until {new Date(selectedKeepInTouchContact.snoozed_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </span>
                             <button
                               onClick={() => handleKeepInTouchSnooze(0)}
