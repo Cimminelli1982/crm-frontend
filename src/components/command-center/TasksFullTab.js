@@ -70,6 +70,7 @@ const SECTION_IDS = {
   },
   'Team': {
     'Rosaria': '212756755',
+    'Katherine': '213491890',
   },
 };
 
@@ -242,6 +243,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
     someday: false,
     completed: false,
     rosaria: true,
+    katherine: true,
     // Today view sections
     todayInbox: true,
     todayDue: true,
@@ -1091,6 +1093,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
       'nextYear': 'Next Year',
       'someday': 'Someday',
       'rosaria': 'Rosaria',
+      'katherine': 'Katherine',
     };
 
     const newSectionName = sectionNameMap[targetCategory];
@@ -1155,6 +1158,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
 
   // Team project sections
   const rosariaTasks = filteredTasks.filter(t => t.todoist_section_name === 'Rosaria');
+  const katherineTasks = filteredTasks.filter(t => t.todoist_section_name === 'Katherine');
 
   // Today view sections (work on all open tasks, not filtered by project)
   const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
@@ -1602,6 +1606,7 @@ const TasksFullTab = ({ theme, onLinkedContactsChange, onLinkedChatsChange, onLi
                     {/* Render all sections dynamically */}
                     {(selectedProject === 'Team' ? [
                       { id: 'rosaria', name: 'Rosaria', tasks: rosariaTasks, color: '#808080', Icon: FaUser },
+                      { id: 'katherine', name: 'Katherine', tasks: katherineTasks, color: '#808080', Icon: FaUser },
                     ] : [
                       { id: 'thisWeek', name: 'This Week', tasks: thisWeekTasks, color: '#EF4444', Icon: FaClock },
                       { id: 'nextWeek', name: 'Next Week', tasks: nextWeekTasks, color: '#F97316', Icon: FaClock },

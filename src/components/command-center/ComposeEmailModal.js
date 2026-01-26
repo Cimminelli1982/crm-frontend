@@ -58,13 +58,14 @@ const SECTION_IDS = {
   },
   'Team': {
     'Rosaria': '212756755',
+    'Katherine': '213491890',
   },
 };
 
 // Section options based on project
 const getSectionsForProject = (project) => {
   if (project === 'Inbox') return [];
-  if (project === 'Team') return [{ id: 'Rosaria', label: 'Rosaria' }];
+  if (project === 'Team') return [{ id: 'Rosaria', label: 'Rosaria' }, { id: 'Katherine', label: 'Katherine' }];
   return [
     { id: 'This Week', label: 'This Week' },
     { id: 'Next Week', label: 'Next Week' },

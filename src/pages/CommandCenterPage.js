@@ -1356,6 +1356,32 @@ internet businesses.`;
     }
   };
 
+  // Handle snooze change for Keep in Touch
+  const handleKeepInTouchSnooze = async (snoozeDays) => {
+    if (!selectedKeepInTouchContact) return;
+    try {
+      const { error } = await supabase
+        .from('keep_in_touch')
+        .update({ snooze_days: snoozeDays })
+        .eq('contact_id', selectedKeepInTouchContact.contact_id);
+
+      if (error) throw error;
+
+      if (snoozeDays === 0) {
+        toast.success('Snooze reset');
+      } else {
+        toast.success(`Snoozed for ${snoozeDays} days`);
+      }
+
+      // Refresh the list
+      setSelectedKeepInTouchContact(null);
+      setKeepInTouchRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Error updating snooze:', err);
+      toast.error('Failed to update snooze');
+    }
+  };
+
   const handlePipelineDealStageChange = async (newStage) => {
     if (!selectedPipelineDeal) return;
 
@@ -8737,6 +8763,11 @@ internet businesses.`;
     if (!latestEmail) return;
 
     try {
+      // Archive in Fastmail first
+      if (latestEmail.fastmail_id) {
+        await archiveInFastmail(latestEmail.fastmail_id);
+      }
+
       const { error } = await supabase
         .from('command_center_inbox')
         .delete()
@@ -12607,6 +12638,70 @@ internet businesses.`;
                             <option key={freq} value={freq}>{freq}</option>
                           ))}
                         </select>
+                      </div>
+                      {/* Snooze Controls */}
+                      <div style={{
+                        marginTop: '12px',
+                        paddingTop: '12px',
+                        borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
+                      }}>
+                        Snooze:
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleKeepInTouchSnooze(parseInt(e.target.value));
+                            }
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                            background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="">Add snooze...</option>
+                          <option value="7">+7 days</option>
+                          <option value="14">+14 days</option>
+                          <option value="30">+30 days</option>
+                          <option value="60">+60 days</option>
+                          <option value="90">+90 days</option>
+                        </select>
+                        {selectedKeepInTouchContact.snooze_days > 0 && (
+                          <>
+                            <span style={{
+                              padding: '2px 8px',
+                              background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                              borderRadius: '4px',
+                              fontSize: '12px'
+                            }}>
+                              +{selectedKeepInTouchContact.snooze_days}d active
+                            </span>
+                            <button
+                              onClick={() => handleKeepInTouchSnooze(0)}
+                              style={{
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: '#EF4444',
+                                color: '#FFFFFF',
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                                fontWeight: 600
+                              }}
+                            >
+                              Reset
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 

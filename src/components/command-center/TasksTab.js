@@ -32,6 +32,7 @@ const SECTION_IDS = {
   },
   'Team': {
     'Rosaria': '212756755',
+    'Katherine': '213491890',
   },
   'Birthdays 🎂': {
     'This Week': '212234230',
