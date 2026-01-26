@@ -1334,6 +1334,11 @@ internet businesses.`;
 
       toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`);
 
+      // Sync with right panel if viewing the same contact
+      if (selectedRightPanelContactId === selectedKeepInTouchContact.contact_id) {
+        rightPanelContactDetails?.refetch?.();
+      }
+
       // Refresh the list when frequency changes (affects days_until_next calculation)
       if (field === 'frequency') {
         setSelectedKeepInTouchContact(null);
@@ -13600,7 +13605,15 @@ internet businesses.`;
           ) : activeTab === 'notes' ? (
             <NotesFullTab theme={theme} />
           ) : activeTab === 'lists' ? (
-            <ListsTab theme={theme} profileImageModal={profileImageModal} onMemberSelect={setSelectedListMember} />
+            <ListsTab
+              theme={theme}
+              profileImageModal={profileImageModal}
+              onMemberSelect={setSelectedListMember}
+              onSetRightPanelContactId={(contactId) => {
+                setSelectedRightPanelContactId(contactId);
+                if (contactId) setActiveActionTab('crm');
+              }}
+            />
           ) : activeTab === 'tasks' ? (
             <TasksFullTab theme={theme} onLinkedContactsChange={setTasksLinkedContacts} onLinkedChatsChange={setTasksLinkedChats} onLinkedCompaniesChange={setTasksLinkedCompanies} onLinkedDealsChange={setTasksLinkedDeals} />
           ) : selectedThread && selectedThread.length > 0 ? (
@@ -14202,8 +14215,8 @@ internet businesses.`;
           )}
         </EmailContentPanel>
 
-        {/* Right: Actions Panel - Hidden for Notes and Lists tabs */}
-        {activeTab !== 'notes' && activeTab !== 'lists' && (
+        {/* Right: Actions Panel - Hidden for Notes tab */}
+        {activeTab !== 'notes' && (
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
           {/* Data Integrity Warning Bar - show only for email/whatsapp/calendar when not collapsed */}
           {!rightPanelCollapsed && ['email', 'whatsapp', 'calendar'].includes(activeTab) && (
@@ -15807,7 +15820,7 @@ internet businesses.`;
             />
           )}
 
-          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && (tasksLinkedContacts.length > 0 || tasksLinkedChats.length > 0)) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem)) && (
+          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && (tasksLinkedContacts.length > 0 || tasksLinkedChats.length > 0)) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem) || (activeTab === 'lists' && selectedRightPanelContactId)) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
@@ -15992,6 +16005,19 @@ internet businesses.`;
 
                       // Refetch to update UI
                       rightPanelContactDetails?.refetch?.();
+
+                      // Sync with center panel if viewing the same contact in Keep in Touch tab
+                      if (activeTab === 'keepintouch' && selectedKeepInTouchContact?.contact_id === contactId) {
+                        setSelectedKeepInTouchContact(prev => ({ ...prev, ...updates }));
+                        setKeepInTouchContacts(prev => prev.map(c =>
+                          c.contact_id === contactId ? { ...c, ...updates } : c
+                        ));
+                        // Refresh the list when frequency changes
+                        if (updates.frequency) {
+                          setKeepInTouchRefreshTrigger(prev => prev + 1);
+                        }
+                      }
+
                       const fieldNames = Object.keys(updates).join(', ');
                       toast.success(`${fieldNames} updated`);
                     } catch (err) {
