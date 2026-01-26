@@ -56,7 +56,9 @@ const CompanyDetailsTab = ({
   onDuplicates,
   onRefresh,
   onRemoveAssociation,
-  onMarkComplete
+  onMarkComplete,
+  onManageTags,
+  onManageCities
 }) => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
@@ -643,9 +645,19 @@ const CompanyDetailsTab = ({
 
           {/* Tags */}
           <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>
-              <FaTag style={{ marginRight: '6px' }} />
-              Tags ({companyTags.length})
+            <div style={{ ...sectionTitleStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center' }}>
+                <FaTag style={{ marginRight: '6px' }} />
+                Tags ({companyTags.length})
+              </span>
+              {onManageTags && (
+                <FaPlus
+                  size={11}
+                  style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                  onClick={onManageTags}
+                  title="Add tag"
+                />
+              )}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {companyTags.length === 0 ? (
@@ -671,9 +683,19 @@ const CompanyDetailsTab = ({
 
           {/* Cities */}
           <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>
-              <FaMapMarkerAlt style={{ marginRight: '6px' }} />
-              Cities ({companyCities.length})
+            <div style={{ ...sectionTitleStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center' }}>
+                <FaMapMarkerAlt style={{ marginRight: '6px' }} />
+                Cities ({companyCities.length})
+              </span>
+              {onManageCities && (
+                <FaPlus
+                  size={11}
+                  style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                  onClick={onManageCities}
+                  title="Add city"
+                />
+              )}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {companyCities.length === 0 ? (

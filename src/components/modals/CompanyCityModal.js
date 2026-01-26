@@ -1,234 +1,113 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
-import { FiX, FiPlus, FiSearch, FiEdit } from 'react-icons/fi';
-import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
+import { supabase } from '../../lib/supabaseClient';
+import { getCountryFlag } from '../../utils/countryFlags';
 
-// Styled components
+// Styled Components
 const ModalHeader = styled.div`
+  padding: 20px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #e5e7eb;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
 
-  h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    color: #111827;
-    font-weight: 600;
-  }
+const ModalTitle = styled.h3`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+`;
 
-  button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: #6b7280;
-    padding: 4px;
-    border-radius: 4px;
-    
-    &:hover {
-      color: #1f2937;
-      background-color: #f3f4f6;
-    }
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
   }
+`;
+
+const ModalBody = styled.div`
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
 `;
 
 const Section = styled.div`
-  margin-bottom: 15px;
+  margin-bottom: 24px;
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
-const SectionTitle = styled.h3`
-  font-size: 16px;
-  font-weight: bold;
-  color: #374151;
+const SectionTitle = styled.h4`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 1rem;
+  font-weight: 600;
   margin-bottom: 12px;
 `;
 
-const CitiesList = styled.div`
+const ItemsList = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
-  padding: 5px 0;
   min-height: 32px;
 `;
 
-const CityTag = styled.div`
+const ItemTag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
-  background-color: ${props => props.color || '#e0f2fe'};
-  color: ${props => props.textColor || '#0369a1'};
-  border-radius: 16px;
+  padding: 6px 12px;
+  background: ${props => props.theme === 'light' ? '#DBEAFE' : '#1E3A8A'};
+  color: ${props => props.theme === 'light' ? '#1D4ED8' : '#93C5FD'};
+  border: 1px solid ${props => props.theme === 'light' ? '#93C5FD' : '#3B82F6'};
+  border-radius: 20px;
   font-size: 0.875rem;
-  gap: 6px;
+  gap: 8px;
   max-width: 200px;
 
   span {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 150px;
-  }
-
-  button {
-    background: none;
-    border: none;
-    padding: 2px;
-    cursor: pointer;
-    color: inherit;
-    opacity: 0.7;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-
-    &:hover {
-      opacity: 1;
-    }
+    max-width: 140px;
   }
 `;
 
-const SearchContainer = styled.div`
-  position: relative;
-  margin-bottom: 16px;
-  width: 90%;
-`;
-
-const SearchIcon = styled.div`
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6b7280;
-`;
-
-const SearchInput = styled.input`
-  width: 100%;
-  padding: 10px 10px 10px 35px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  outline: none;
-  transition: border-color 0.2s;
-
-  &:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-`;
-
-const SuggestionsContainer = styled.div`
-  position: relative;
-  margin-top: 5px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  max-height: 200px;
-  overflow-y: auto;
-  background-color: white;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  z-index: 10;
-`;
-
-const SuggestionItem = styled.button`
-  width: 100%;
-  text-align: left;
-  padding: 8px 12px;
-  border: none;
+const RemoveButton = styled.button`
   background: none;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: #374151;
-  transition: background-color 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  &:hover {
-    background-color: #f3f4f6;
-  }
-
-  &:not(:last-child) {
-    border-bottom: 1px solid #f3f4f6;
-  }
-`;
-
-const NewCityButton = styled.button`
-  width: 100%;
-  text-align: left;
-  padding: 8px 12px;
   border: none;
-  background-color: #f3f4f6;
+  padding: 2px;
   cursor: pointer;
-  font-size: 0.875rem;
-  color: #1f2937;
+  color: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
   display: flex;
   align-items: center;
-  gap: 5px;
-  transition: background-color 0.2s;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 14px;
+  transition: all 0.2s ease;
 
   &:hover {
-    background-color: #e5e7eb;
-  }
-`;
-
-const Message = styled.div`
-  padding: 10px;
-  border-radius: 4px;
-  margin-bottom: 15px;
-  font-size: 0.875rem;
-
-  &.success {
-    background-color: #d1fae5;
-    color: #065f46;
-  }
-
-  &.error {
-    background-color: #fee2e2;
-    color: #b91c1c;
-  }
-  
-  &.info {
-    background-color: #e0f2fe;
-    color: #0369a1;
-  }
-`;
-
-const ButtonGroup = styled.div`
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
-`;
-
-const Button = styled.button`
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &.primary {
-    background-color: black;
-    color: white;
-    border: none;
-
-    &:hover {
-      background-color: #333;
-    }
-  }
-
-  &.secondary {
-    background-color: white;
-    color: #4b5563;
-    border: 1px solid #d1d5db;
-
-    &:hover {
-      background-color: #f9fafb;
-    }
+    background: ${props => props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+    transform: scale(1.1);
   }
 
   &:disabled {
@@ -237,55 +116,158 @@ const Button = styled.button`
   }
 `;
 
-// Helper function to get city colors
-const getCityColor = () => {
-  return { bg: '#e0f2fe', text: '#0369a1' }; // Sky blue
-};
+const EmptyMessage = styled.div`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-style: italic;
+  padding: 8px;
+`;
 
-// Get flag emoji from city name (reused from Companies.js)
-const getFlagEmoji = (cityName) => {
-  // Map of some cities to their country codes
-  const cityCountryMap = {
-    'New York': 'US',
-    'San Francisco': 'US',
-    'Los Angeles': 'US',
-    'Chicago': 'US',
-    'London': 'GB',
-    'Berlin': 'DE',
-    'Paris': 'FR',
-    'Rome': 'IT',
-    'Madrid': 'ES',
-    'Amsterdam': 'NL',
-    'Tokyo': 'JP',
-    'Sydney': 'AU',
-    'Singapore': 'SG',
-    'Hong Kong': 'HK',
-    'Dubai': 'AE',
-    'Mumbai': 'IN',
-    'Toronto': 'CA',
-    'Zurich': 'CH',
-    'Milan': 'IT',
-    'Barcelona': 'ES',
-    'Stockholm': 'SE',
-  };
-  
-  // Extract country code or default to question mark
-  const countryCode = cityCountryMap[cityName] || 'unknown';
-  
-  // If unknown, return the city name without a flag
-  if (countryCode === 'unknown') {
-    return null;
+const SearchContainer = styled.div`
+  margin-bottom: 12px;
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 12px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  border-radius: 8px;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s;
+
+  &:focus {
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
   }
-  
-  // Convert country code to flag emoji
-  return countryCode
-    .toUpperCase()
-    .replace(/./g, char => 
-      String.fromCodePoint(char.charCodeAt(0) + 127397)
-    );
-};
 
-const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const SuggestionsContainer = styled.div`
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+`;
+
+const SuggestionItem = styled.button`
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#4B5563'};
+  }
+
+  &:not(:last-child) {
+    border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const NoResults = styled.div`
+  padding: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 0.875rem;
+  text-align: center;
+`;
+
+const CreateButton = styled.button`
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  border: none;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#4B5563'};
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: ${props => props.theme === 'light' ? '#059669' : '#10B981'};
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.2s;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#6B7280'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const Message = styled.div`
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 16px;
+  font-size: 0.875rem;
+
+  ${props => {
+    if (props.type === 'success') {
+      return `
+        background: ${props.theme === 'light' ? '#D1FAE5' : '#064E3B'};
+        color: ${props.theme === 'light' ? '#065F46' : '#6EE7B7'};
+      `;
+    } else if (props.type === 'error') {
+      return `
+        background: ${props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+        color: ${props.theme === 'light' ? '#B91C1C' : '#FCA5A5'};
+      `;
+    } else if (props.type === 'info') {
+      return `
+        background: ${props.theme === 'light' ? '#EFF6FF' : '#1E3A8A'};
+        color: ${props.theme === 'light' ? '#1D4ED8' : '#DBEAFE'};
+      `;
+    }
+  }}
+`;
+
+const ModalFooter = styled.div`
+  padding: 20px;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  display: flex;
+  justify-content: flex-end;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
+
+const DoneButton = styled.button`
+  background: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#2563EB' : '#3B82F6'};
+  }
+`;
+
+const CompanyCityModal = ({
+  isOpen,
+  onRequestClose,
+  company,
+  theme = 'light'
+}) => {
   const [relatedCities, setRelatedCities] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -295,25 +277,22 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
 
   // Fetch related cities for the company
   const fetchRelatedCities = async () => {
+    if (!company?.id) return;
+
     try {
-      console.log('Fetching related cities for company ID:', company.id);
-      
       const { data, error } = await supabase
         .from('company_cities')
-        .select(`
-          city_id,
-          cities:city_id(city_id, name)
-        `)
+        .select('city_id, cities(city_id, name, country)')
         .eq('company_id', company.id);
 
       if (error) throw error;
 
       const cities = data.map(item => ({
         id: item.city_id,
-        name: item.cities?.name || 'Unknown'
+        name: item.cities?.name || 'Unknown',
+        country: item.cities?.country
       }));
 
-      console.log('Fetched cities:', cities);
       setRelatedCities(cities);
     } catch (error) {
       console.error('Error fetching related cities:', error);
@@ -331,7 +310,7 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
 
       const { data, error } = await supabase
         .from('cities')
-        .select('*')
+        .select('city_id, name, country')
         .ilike('name', `%${search}%`)
         .limit(10);
 
@@ -349,10 +328,10 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
   };
 
   useEffect(() => {
-    if (isOpen && company) {
+    if (isOpen && company?.id) {
       fetchRelatedCities();
     }
-  }, [isOpen, company]);
+  }, [isOpen, company?.id]);
 
   useEffect(() => {
     if (searchTerm.length >= 2) {
@@ -362,12 +341,12 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       setSuggestions([]);
       setShowSuggestions(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, relatedCities]);
 
   const handleUnlinkCity = async (cityToRemove) => {
     try {
       setLoading(true);
-      
+
       const { error } = await supabase
         .from('company_cities')
         .delete()
@@ -377,11 +356,10 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       if (error) throw error;
 
       setRelatedCities(relatedCities.filter(city => city.id !== cityToRemove.id));
-      // Note: cityToRemove.id comes from our internal state which uses 'id'
-      setMessage({ type: 'success', text: 'City unlinked successfully' });
+      setMessage({ type: 'success', text: 'City removed successfully' });
     } catch (error) {
       console.error('Error unlinking city:', error);
-      setMessage({ type: 'error', text: 'Failed to unlink city' });
+      setMessage({ type: 'error', text: 'Failed to remove city' });
     } finally {
       setLoading(false);
     }
@@ -390,107 +368,73 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
   const handleAddCity = async (cityToAdd) => {
     try {
       setLoading(true);
-      console.log('Adding city:', cityToAdd);
-      console.log('Company:', company);
-      
-      // Get company ID (should be a UUID string, not an integer)
-      const companyId = company.id;
-      if (!companyId) {
-        throw new Error('Invalid company ID');
-      }
-      
-      console.log('Using company ID:', companyId, 'Type:', typeof companyId);
-      
-      // Check if already associated - cityToAdd has city_id from cities table
+
       const cityId = cityToAdd.city_id || cityToAdd.id;
-      const { data: existingCheck, error: checkError } = await supabase
+
+      // Check if already associated
+      const { data: existingCheck } = await supabase
         .from('company_cities')
         .select('company_id, city_id')
-        .eq('company_id', companyId)
-        .eq('city_id', cityId);
+        .eq('company_id', company.id)
+        .eq('city_id', cityId)
+        .single();
 
-      if (checkError) {
-        console.error('Error checking existing city:', checkError);
-        throw checkError;
-      }
-
-      console.log('Existing check result:', existingCheck);
-
-      if (existingCheck && existingCheck.length > 0) {
-        console.log('City already linked:', existingCheck);
+      if (existingCheck) {
         setMessage({ type: 'info', text: 'This city is already linked to the company' });
         return;
       }
 
-      const newAssociation = {
-        company_id: companyId,
-        city_id: cityId,
-        created_at: new Date().toISOString()
-      };
-      console.log('Creating new association:', newAssociation, 'Types:', {
-        company_id_type: typeof companyId,
-        city_id_type: typeof cityId
-      });
-      
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('company_cities')
-        .insert(newAssociation)
-        .select();
+        .insert({
+          company_id: company.id,
+          city_id: cityId
+        });
 
-      if (error) {
-        console.error('Error inserting city:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('Successfully added city:', data);
       await fetchRelatedCities();
       setSearchTerm('');
       setShowSuggestions(false);
-      setMessage({ type: 'success', text: 'City linked successfully' });
+      setMessage({ type: 'success', text: 'City added successfully' });
     } catch (error) {
       console.error('Error linking city:', error);
-      setMessage({ type: 'error', text: `Failed to link city: ${error.message}` });
+      setMessage({ type: 'error', text: `Failed to add city: ${error.message}` });
     } finally {
       setLoading(false);
     }
   };
 
   const handleCreateCity = async () => {
+    if (!searchTerm.trim()) return;
+
     try {
       setLoading(true);
-      
+
       // Create new city
       const { data, error } = await supabase
         .from('cities')
-        .insert({ 
-          name: searchTerm.trim(),
-          created_at: new Date().toISOString()
-        })
-        .select();
+        .insert({ name: searchTerm.trim() })
+        .select()
+        .single();
 
       if (error) throw error;
 
       // Add the new city to the company
-      if (data && data[0]) {
-        await handleAddCity(data[0]);
+      if (data) {
+        await handleAddCity(data);
       }
     } catch (error) {
       console.error('Error creating city:', error);
       setMessage({ type: 'error', text: 'Failed to create city' });
-    } finally {
       setLoading(false);
     }
   };
 
-  const clearMessage = () => {
-    setTimeout(() => {
-      setMessage({ type: '', text: '' });
-    }, 3000);
-  };
-
   useEffect(() => {
     if (message.text) {
-      clearMessage();
+      const timer = setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      return () => clearTimeout(timer);
     }
   }, [message]);
 
@@ -506,140 +450,102 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
           bottom: 'auto',
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
-          padding: '20px',
-          border: 'none',
-          borderRadius: '0.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          padding: '0',
           maxWidth: '500px',
           width: '90%',
-          minHeight: '360px'
+          maxHeight: '80vh',
+          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+          borderRadius: '12px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 1000
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          zIndex: 9999
         }
       }}
     >
-      <div style={{ padding: '1rem' }}>
-        <ModalHeader>
-          <h2>Manage Company Cities</h2>
-          <button onClick={onRequestClose} aria-label="Close modal">
-            <FiX size={20} />
-          </button>
-        </ModalHeader>
+      <ModalHeader theme={theme}>
+        <ModalTitle theme={theme}>Manage Company Cities</ModalTitle>
+        <CloseButton theme={theme} onClick={onRequestClose}>×</CloseButton>
+      </ModalHeader>
 
+      <ModalBody theme={theme}>
         <Section>
-          <SectionTitle>Company Cities</SectionTitle>
-          <CitiesList>
-            {relatedCities.map(city => {
-              const color = getCityColor();
-              const flag = getFlagEmoji(city.name);
-              return (
-                <CityTag 
-                  key={city.id} 
-                  color={color.bg}
-                  textColor={color.text}
+          <SectionTitle theme={theme}>Current Cities</SectionTitle>
+          <ItemsList>
+            {relatedCities.map((city, index) => (
+              <ItemTag key={city.id || index} theme={theme}>
+                <span>{getCountryFlag(city.country)} {city.name}</span>
+                <RemoveButton
+                  theme={theme}
+                  onClick={() => handleUnlinkCity(city)}
+                  disabled={loading}
                 >
-                  {flag && <span className="flag" style={{ marginRight: '4px' }}>{flag}</span>}
-                  <span title={city.name}>{city.name}</span>
-                  <button 
-                    onClick={() => handleUnlinkCity(city)}
-                    disabled={loading}
-                    title="Unlink city"
-                  >
-                    <FiX size={14} />
-                  </button>
-                </CityTag>
-              );
-            })}
+                  ×
+                </RemoveButton>
+              </ItemTag>
+            ))}
             {relatedCities.length === 0 && (
-              <span style={{ color: '#6c757d', fontStyle: 'italic', padding: '4px' }}>
-                No cities linked
-              </span>
+              <EmptyMessage theme={theme}>No cities linked</EmptyMessage>
             )}
-          </CitiesList>
+          </ItemsList>
         </Section>
 
         <Section>
-          <SectionTitle>Add Cities</SectionTitle>
+          <SectionTitle theme={theme}>Add Cities</SectionTitle>
           <SearchContainer>
-            <SearchIcon>
-              <FiSearch size={16} />
-            </SearchIcon>
             <SearchInput
+              theme={theme}
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search for a city (type at least 2 letters)..."
+              placeholder="Search or create a city..."
             />
           </SearchContainer>
 
           {showSuggestions && (
-            <SuggestionsContainer>
+            <SuggestionsContainer theme={theme}>
               {suggestions.map(suggestion => (
                 <SuggestionItem
                   key={suggestion.city_id}
+                  theme={theme}
                   onClick={() => handleAddCity(suggestion)}
                   disabled={loading}
                 >
-                  {suggestion.name}
+                  {getCountryFlag(suggestion.country)} {suggestion.name}
                 </SuggestionItem>
               ))}
               {suggestions.length === 0 && searchTerm.length >= 2 && (
-                <div style={{ padding: '8px 12px', color: '#6c757d', fontSize: '0.875rem' }}>
-                  No cities found
-                </div>
+                <NoResults theme={theme}>No cities found</NoResults>
               )}
               {searchTerm.length >= 2 && (
-                <NewCityButton
+                <CreateButton
+                  theme={theme}
                   onClick={handleCreateCity}
                   disabled={loading}
                 >
-                  <FiPlus size={14} />
-                  Create "{searchTerm}" as new city
-                </NewCityButton>
+                  + Create "{searchTerm}" as new city
+                </CreateButton>
               )}
             </SuggestionsContainer>
           )}
         </Section>
 
         {message.text && (
-          <Message className={message.type}>
+          <Message theme={theme} type={message.type}>
             {message.text}
           </Message>
         )}
+      </ModalBody>
 
-        <ButtonGroup>
-          <Button className="primary" onClick={onRequestClose}>
-            Done
-          </Button>
-        </ButtonGroup>
-
-        {loading && (
-          <div style={{ textAlign: 'center', marginTop: '10px' }}>
-            <div className="spinner" style={{ 
-              width: '20px', 
-              height: '20px', 
-              border: '3px solid #f3f3f3', 
-              borderTop: '3px solid #000000', 
-              borderRadius: '50%', 
-              animation: 'spin 1s linear infinite' 
-            }}></div>
-          </div>
-        )}
-      </div>
+      <ModalFooter theme={theme}>
+        <DoneButton theme={theme} onClick={onRequestClose}>Done</DoneButton>
+      </ModalFooter>
     </Modal>
   );
 };
 
 export default CompanyCityModal;
-
-// Add CSS for spinner
-const style = document.createElement('style');
-style.innerHTML = `
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(style);

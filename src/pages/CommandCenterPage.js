@@ -126,6 +126,8 @@ import ManageContactCitiesModal from '../components/modals/ManageContactCitiesMo
 import ManageContactCompaniesModal from '../components/modals/ManageContactCompaniesModal';
 import ManageContactListsModal from '../components/modals/ManageContactListsModal';
 import MergeCompanyModal from '../components/modals/MergeCompanyModal';
+import CompanyTagsModal from '../components/modals/CompanyTagsModal';
+import CompanyCityModal from '../components/modals/CompanyCityModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
@@ -1269,6 +1271,10 @@ const CommandCenterPage = ({ theme }) => {
   const [kitManageMobilesOpen, setKitManageMobilesOpen] = useState(false);
   const [kitTagsModalOpen, setKitTagsModalOpen] = useState(false);
   const [kitCityModalOpen, setKitCityModalOpen] = useState(false);
+  // Company Tags and Cities modals (for Company Details tab)
+  const [companyTagsModalOpen, setCompanyTagsModalOpen] = useState(false);
+  const [companyCityModalOpen, setCompanyCityModalOpen] = useState(false);
+  const [selectedCompanyForModal, setSelectedCompanyForModal] = useState(null);
   const [kitCompanyModalContact, setKitCompanyModalContact] = useState(null);
   const [kitEnrichmentModalOpen, setKitEnrichmentModalOpen] = useState(false);
   // Manage Lists modal state
@@ -16240,6 +16246,24 @@ internet businesses.`;
                     rightPanelContactDetails?.refetch?.();
                     setRightPanelCompanyRefreshKey(k => k + 1);
                   }}
+                  onManageTags={() => {
+                    if (rightPanelCompanyDetails?.company && selectedRightPanelCompanyId) {
+                      setSelectedCompanyForModal({
+                        id: selectedRightPanelCompanyId,
+                        name: rightPanelCompanyDetails.company.name
+                      });
+                      setCompanyTagsModalOpen(true);
+                    }
+                  }}
+                  onManageCities={() => {
+                    if (rightPanelCompanyDetails?.company && selectedRightPanelCompanyId) {
+                      setSelectedCompanyForModal({
+                        id: selectedRightPanelCompanyId,
+                        name: rightPanelCompanyDetails.company.name
+                      });
+                      setCompanyCityModalOpen(true);
+                    }
+                  }}
                 />
               )}
               {activeActionTab === 'whatsapp' && (
@@ -18130,6 +18154,30 @@ internet businesses.`;
           }
         }}
         company={companyMergeCompany}
+      />
+
+      {/* Company Tags Modal */}
+      <CompanyTagsModal
+        isOpen={companyTagsModalOpen}
+        onRequestClose={() => {
+          setCompanyTagsModalOpen(false);
+          // Refresh company details to show updated tags
+          setRightPanelCompanyRefreshKey(k => k + 1);
+        }}
+        company={selectedCompanyForModal}
+        theme={theme}
+      />
+
+      {/* Company City Modal */}
+      <CompanyCityModal
+        isOpen={companyCityModalOpen}
+        onRequestClose={() => {
+          setCompanyCityModalOpen(false);
+          // Refresh company details to show updated cities
+          setRightPanelCompanyRefreshKey(k => k + 1);
+        }}
+        company={selectedCompanyForModal}
+        theme={theme}
       />
 
       {/* Create Company from Domain Modal */}

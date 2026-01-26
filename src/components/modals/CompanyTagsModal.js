@@ -1,332 +1,293 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
-import { FiX, FiPlus, FiSearch } from 'react-icons/fi';
-import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
+import { supabase } from '../../lib/supabaseClient';
 
-// Styled components
+// Styled Components
 const ModalHeader = styled.div`
+  padding: 20px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #333;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
 
-  h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    color: #fff;
-    font-weight: 600;
-  }
+const ModalTitle = styled.h3`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+`;
 
-  button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: #00ff00;
-    padding: 4px;
-    border-radius: 4px;
-    
-    &:hover {
-      color: #33ff33;
-      background-color: #333;
-    }
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
   }
+`;
+
+const ModalBody = styled.div`
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
 `;
 
 const Section = styled.div`
-  margin-bottom: 15px;
+  margin-bottom: 24px;
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
-const SectionTitle = styled.h3`
-  font-size: 14px;
-  font-weight: bold;
-  color: #00ff00;
+const SectionTitle = styled.h4`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 1rem;
+  font-weight: 600;
   margin-bottom: 12px;
 `;
 
-const TagsList = styled.div`
+const ItemsList = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 8px;
   margin-bottom: 16px;
-  padding: 5px 0;
   min-height: 32px;
-  background: #222;
-  border-radius: 4px;
-  padding: 10px;
 `;
 
-const Tag = styled.div`
+const ItemTag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 2px 5px;
-  font-size: 0.7rem;
-  border-radius: 3px;
-  background-color: #333;
-  color: #00ff00;
-  font-weight: 500;
-  margin-right: 0.25rem;
-  margin-bottom: 0.25rem;
-  border: 1px solid #00ff00;
-  gap: 3px;
+  padding: 6px 12px;
+  background: ${props => props.theme === 'light' ? '#FEF3C7' : '#78350F'};
+  color: ${props => props.theme === 'light' ? '#92400E' : '#FDE68A'};
+  border: 1px solid ${props => props.theme === 'light' ? '#FDE68A' : '#F59E0B'};
+  border-radius: 20px;
+  font-size: 0.875rem;
+  gap: 8px;
   max-width: 200px;
 
   span {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 150px;
-  }
-
-  button {
-    background: none;
-    border: none;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: 0.25rem;
-    color: #00ff00;
-    cursor: pointer;
-    
-    &:hover { 
-      color: #ff3333; 
-    }
+    max-width: 140px;
   }
 `;
 
+const RemoveButton = styled.button`
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 14px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+    transform: scale(1.1);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const EmptyMessage = styled.div`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-style: italic;
+  padding: 8px;
+`;
+
 const SearchContainer = styled.div`
-  position: relative;
-  margin-bottom: 16px;
-  width: 90%;
+  margin-bottom: 12px;
 `;
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 10px;
-  padding-left: 36px;
-  border: 1px solid #444;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #fff;
-  background-color: #222;
-  transition: all 0.2s;
+  padding: 12px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  border-radius: 8px;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s;
 
   &:focus {
-    outline: none;
-    border-color: #00ff00;
-    box-shadow: 0 0 0 2px rgba(0, 255, 0, 0.1);
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
   }
 
-  &:hover {
-    background-color: #333;
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
   }
-`;
-
-const SearchIcon = styled.div`
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #00ff00;
 `;
 
 const SuggestionsContainer = styled.div`
-  margin-top: 8px;
-  border: 1px solid #444;
-  border-radius: 4px;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
   max-height: 200px;
   overflow-y: auto;
-  background-color: #222;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 `;
 
 const SuggestionItem = styled.button`
   width: 100%;
   text-align: left;
-  padding: 8px 12px;
-  background: none;
+  padding: 12px;
   border: none;
-  border-bottom: 1px solid #333;
+  background: none;
   cursor: pointer;
-  font-size: 0.8rem;
-  color: #fff;
+  font-size: 0.875rem;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   transition: background-color 0.2s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  &:last-child {
-    border-bottom: none;
-  }
 
   &:hover {
-    background-color: #333;
-    color: #00ff00;
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#4B5563'};
   }
-`;
 
-const NewTagButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background-color: #333;
-  color: #00ff00;
-  border: 1px solid #00ff00;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background-color: #444;
+  &:not(:last-child) {
+    border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
   }
 
   &:disabled {
-    background-color: #222;
-    color: #666;
-    border-color: #666;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const NoResults = styled.div`
+  padding: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 0.875rem;
+  text-align: center;
+`;
+
+const CreateButton = styled.button`
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  border: none;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#4B5563'};
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: ${props => props.theme === 'light' ? '#059669' : '#10B981'};
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.2s;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#6B7280'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
   }
 `;
 
 const Message = styled.div`
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 12px;
-  margin-top: 12px;
-  
-  &.success {
-    background-color: #223322;
-    color: #00ff00;
-  }
-  
-  &.error {
-    background-color: #332222;
-    color: #ff5555;
-  }
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 16px;
+  font-size: 0.875rem;
+
+  ${props => {
+    if (props.type === 'success') {
+      return `
+        background: ${props.theme === 'light' ? '#D1FAE5' : '#064E3B'};
+        color: ${props.theme === 'light' ? '#065F46' : '#6EE7B7'};
+      `;
+    } else if (props.type === 'error') {
+      return `
+        background: ${props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+        color: ${props.theme === 'light' ? '#B91C1C' : '#FCA5A5'};
+      `;
+    } else if (props.type === 'info') {
+      return `
+        background: ${props.theme === 'light' ? '#EFF6FF' : '#1E3A8A'};
+        color: ${props.theme === 'light' ? '#1D4ED8' : '#DBEAFE'};
+      `;
+    }
+  }}
 `;
 
-const ButtonGroup = styled.div`
+const ModalFooter = styled.div`
+  padding: 20px;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 15px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
 `;
 
-const Button = styled.button`
-  padding: 6px 14px;
-  border-radius: 4px;
-  font-size: 0.8rem;
+const DoneButton = styled.button`
+  background: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
-  
-  &.primary {
-    background-color: #333;
-    color: #00ff00;
-    border: 1px solid #00ff00;
-    
-    &:hover {
-      background-color: #444;
-    }
+  transition: all 0.2s ease;
 
-    &:disabled {
-      background-color: #222;
-      color: #666;
-      border-color: #666;
-      cursor: not-allowed;
-    }
-  }
-  
-  &.secondary {
-    background-color: #333;
-    color: #999;
-    border: 1px solid #666;
-    
-    &:hover {
-      background-color: #444;
-    }
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#2563EB' : '#3B82F6'};
   }
 `;
 
-// Helper function to get tag colors - not used anymore since we're using a consistent green style
-const getTagColor = (tagName) => {
-  // Return consistent green color to match table styling
-  return { bg: '#333', text: '#00ff00' };
-};
-
-const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
+const CompanyTagsModal = ({
+  isOpen,
+  onRequestClose,
+  company,
+  theme = 'light'
+}) => {
   const [currentTags, setCurrentTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showSuggestions, setShowSuggestions] = useState(false);
-  
+
   const entityId = company?.id;
-  
+
   // Fetch current tags for the company
   const fetchCurrentTags = async () => {
+    if (!entityId) return;
+
     try {
-      console.log(`Fetching tags for company with ID: ${entityId}`);
-      
-      // Use correct table name from schema
-      const tableName = 'company_tags';
-      const idField = 'company_id';
-      
-      console.log(`Querying table: ${tableName}, idField: ${idField}, id: ${entityId}`);
-      
-      // Direct query to see what's in the table
-      let { data, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .eq(idField, entityId);
-      
-      console.log('Raw tag connections data:', data);
-      
-      if (error) {
-        console.error('Error fetching raw tags:', error);
-        throw error;
-      }
-      
-      // Now get the actual tags
-      if (data && data.length > 0) {
-        // Get all tag ids
-        const tagIds = data.map(item => item.tag_id);
-        console.log('Found tag IDs:', tagIds);
-        
-        // Fetch tag details
-        const { data: tagsData, error: tagsError } = await supabase
-          .from('tags')
-          .select('tag_id, name')
-          .in('tag_id', tagIds);
-        
-        if (tagsError) {
-          console.error('Error fetching tag details:', tagsError);
-          throw tagsError;
-        }
-        
-        console.log('Tags details:', tagsData);
-        
-        // Combine the data
-        const combinedData = data.map(item => {
-          const tagInfo = tagsData.find(tag => tag.tag_id === item.tag_id);
-          return {
-            id: item.entry_id,     // connection ID
-            tag_id: item.tag_id,   // tag ID 
-            name: tagInfo?.name || 'Unknown tag'
-          };
-        });
-        
-        console.log('Setting currentTags to:', combinedData);
-        setCurrentTags(combinedData);
-      } else {
-        console.log('No tags found, clearing currentTags');
-        setCurrentTags([]);
-      }
+      const { data, error } = await supabase
+        .from('company_tags')
+        .select('entry_id, tag_id, tags(tag_id, name)')
+        .eq('company_id', entityId);
+
+      if (error) throw error;
+      setCurrentTags(data || []);
     } catch (error) {
       console.error('Error fetching tags:', error);
       setMessage({ type: 'error', text: 'Failed to load tags' });
@@ -336,19 +297,22 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
   // Fetch tag suggestions based on search term
   const fetchTagSuggestions = async (search) => {
     try {
-      let query = supabase.from('tags').select('tag_id, name');
-      
-      if (search) {
-        query = query.ilike('name', `%${search}%`);
+      if (search.length < 2) {
+        setSuggestions([]);
+        return;
       }
 
-      const { data, error } = await query.limit(10);
+      const { data, error } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .ilike('name', `%${search}%`)
+        .limit(10);
 
       if (error) throw error;
 
       // Filter out tags that are already assigned
-      const filteredSuggestions = data.filter(tag => 
-        !currentTags.some(currentTag => currentTag.tag_id === tag.tag_id)
+      const filteredSuggestions = data.filter(tag =>
+        !currentTags.some(ct => ct.tags?.tag_id === tag.tag_id || ct.tag_id === tag.tag_id)
       );
 
       setSuggestions(filteredSuggestions);
@@ -371,30 +335,21 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
       setSuggestions([]);
       setShowSuggestions(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, currentTags]);
 
   const handleRemoveTag = async (tagToRemove) => {
     try {
       setLoading(true);
-      console.log(`Removing tag ID ${tagToRemove.tag_id} from company ${entityId}`);
-      
-      // Use correct company_tags table
-      const tableName = 'company_tags';
-      const idField = 'company_id';
-      
-      // Use the combination of entity_id and tag_id to identify the record to delete
+      const tagId = tagToRemove.tags?.tag_id || tagToRemove.tag_id;
+
       const { error } = await supabase
-        .from(tableName)
+        .from('company_tags')
         .delete()
-        .eq(idField, entityId)
-        .eq('tag_id', tagToRemove.tag_id);
+        .eq('company_id', entityId)
+        .eq('tag_id', tagId);
 
-      if (error) {
-        console.error('Delete error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      // Either fetch tags again to ensure UI is in sync with database
       await fetchCurrentTags();
       setMessage({ type: 'success', text: 'Tag removed successfully' });
     } catch (error) {
@@ -408,85 +363,39 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
   const handleAddTag = async (tagToAdd) => {
     try {
       setLoading(true);
-      console.log(`Adding tag ${tagToAdd.tag_id} to company ${entityId}`);
-      
-      if (!entityId) {
-        console.error('Missing company ID. Cannot add tag.');
-        throw new Error('Missing company ID');
-      }
-      
-      // Use company_tags table
-      const tableName = 'company_tags';
-      const idFieldName = 'company_id';
-      
-      // Create insertion object
-      const insertData = {
-        tag_id: tagToAdd.tag_id,
-        company_id: entityId
-      };
-      
-      console.log('Inserting data:', insertData, 'into table:', tableName);
-      
-      // Verify the tag isn't already associated
-      console.log(`Checking if tag ${tagToAdd.tag_id} is already associated with ${idFieldName}=${entityId}`);
-      const { data: existingTag, error: checkError } = await supabase
-        .from(tableName)
+      const tagId = tagToAdd.tag_id;
+
+      // Check if already associated
+      const { data: existingTag } = await supabase
+        .from('company_tags')
         .select('*')
-        .eq(idFieldName, entityId)
-        .eq('tag_id', tagToAdd.tag_id);
-      
-      if (checkError) {
-        console.error('Error checking existing tag:', checkError);
-        throw checkError;
-      }
-      
-      console.log('Existing tag check result:', existingTag);
-      
-      // If tag already exists, don't try to insert again
-      if (existingTag && existingTag.length > 0) {
-        console.log('Tag already exists for this company, skipping insertion');
-        setMessage({ type: 'success', text: 'Tag already exists' });
-        
-        // Refresh current tags just to be sure UI is in sync
-        await fetchCurrentTags();
-        
+        .eq('company_id', entityId)
+        .eq('tag_id', tagId)
+        .single();
+
+      if (existingTag) {
+        setMessage({ type: 'info', text: 'Tag already exists' });
         setSearchTerm('');
         setShowSuggestions(false);
         return;
       }
-      
-      // Log all data before insertion
-      console.log('About to insert tag connection with data:', {
-        tableName,
-        idFieldName,
-        entityId,
-        tagId: tagToAdd.tag_id,
-        fullInsertData: insertData
-      });
-      
-      // Add connection in the company_tags table
-      const { data: insertedData, error } = await supabase
-        .from(tableName)
-        .insert(insertData)
-        .select();
 
-      if (error) {
-        console.error('Insert error:', error);
-        throw error;
-      }
-      
-      console.log('Insert successful, result:', insertedData);
+      const { error } = await supabase
+        .from('company_tags')
+        .insert({
+          company_id: entityId,
+          tag_id: tagId
+        });
 
-      // Refresh current tags
+      if (error) throw error;
+
       await fetchCurrentTags();
-      
       setSearchTerm('');
       setShowSuggestions(false);
       setMessage({ type: 'success', text: 'Tag added successfully' });
     } catch (error) {
       console.error('Error adding tag:', error);
-      console.error('Error details:', error.message, error.code, error.details);
-      setMessage({ type: 'error', text: `Failed to add tag: ${error.message || 'Unknown error'}` });
+      setMessage({ type: 'error', text: `Failed to add tag: ${error.message}` });
     } finally {
       setLoading(false);
     }
@@ -497,106 +406,45 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
 
     try {
       setLoading(true);
-      console.log(`Creating new tag "${searchTerm}" for company`);
-      
-      if (!entityId) {
-        console.error('Missing company ID. Cannot add tag.');
-        throw new Error('Missing company ID');
-      }
-      
+
       // Check if tag with this name already exists
-      const { data: existingTagsByName, error: searchError } = await supabase
+      const { data: existingTags } = await supabase
         .from('tags')
-        .select('tag_id, name')
-        .ilike('name', searchTerm.trim());
-        
-      if (searchError) {
-        console.error('Error searching for existing tags:', searchError);
-        throw searchError;
-      }
-      
+        .select('*')
+        .ilike('name', searchTerm.trim())
+        .limit(1);
+
       let tagToUse;
-      
-      // If tag already exists, use it instead of creating a new one
-      if (existingTagsByName && existingTagsByName.length > 0) {
-        console.log('Tag with this name already exists, using existing tag');
-        tagToUse = existingTagsByName[0];
+
+      if (existingTags && existingTags.length > 0) {
+        tagToUse = existingTags[0];
       } else {
-        // Create new tag if it doesn't exist
-        const { data: newTag, error: createError } = await supabase
+        const { data: newTag, error } = await supabase
           .from('tags')
-          .insert({ 
-            name: searchTerm.trim()
-          })
+          .insert({ name: searchTerm.trim() })
           .select()
           .single();
-  
-        if (createError) {
-          console.error('Error creating tag:', createError);
-          throw createError;
-        }
-        
-        console.log('New tag created:', newTag);
+
+        if (error) throw error;
         tagToUse = newTag;
       }
 
-      // Use company_tags table
-      const tableName = 'company_tags';
-      const idFieldName = 'company_id';
-      
-      // Check if this tag is already associated with the company
-      const { data: existingConnection, error: checkError } = await supabase
-        .from(tableName)
-        .select('*')
-        .eq(idFieldName, entityId)
-        .eq('tag_id', tagToUse.tag_id);
-        
-      if (checkError) {
-        console.error('Error checking existing connection:', checkError);
-        throw checkError;
+      if (tagToUse) {
+        await handleAddTag(tagToUse);
       }
-      
-      // If connection already exists, don't create a duplicate
-      if (existingConnection && existingConnection.length > 0) {
-        console.log('Tag already associated with this company');
-        setMessage({ type: 'success', text: 'Tag already exists' });
-        await fetchCurrentTags();
-        setSearchTerm('');
-        setShowSuggestions(false);
-        return;
-      }
-      
-      // Create insertion object
-      const insertData = {
-        tag_id: tagToUse.tag_id,
-        company_id: entityId
-      };
-      
-      console.log('Connecting tag:', insertData);
-      
-      // Then add the connection
-      const { error: connectError } = await supabase
-        .from(tableName)
-        .insert(insertData);
-
-      if (connectError) {
-        console.error('Error connecting tag:', connectError);
-        throw connectError;
-      }
-
-      // Refresh current tags
-      await fetchCurrentTags();
-      
-      setSearchTerm('');
-      setShowSuggestions(false);
-      setMessage({ type: 'success', text: tagToUse === existingTagsByName ? 'Existing tag added successfully' : 'New tag created and added successfully' });
     } catch (error) {
       console.error('Error creating tag:', error);
       setMessage({ type: 'error', text: 'Failed to create tag' });
-    } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (message.text) {
+      const timer = setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
   return (
     <Modal
@@ -610,134 +458,102 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
           bottom: 'auto',
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
-          padding: '20px',
-          border: '1px solid #444',
-          borderRadius: '8px',
-          backgroundColor: '#111',
-          color: '#fff',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
+          padding: '0',
           maxWidth: '500px',
           width: '90%',
-          minHeight: '360px'
+          maxHeight: '80vh',
+          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+          borderRadius: '12px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          zIndex: 1000
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          zIndex: 9999
         }
       }}
     >
-      <div style={{ padding: '1rem' }}>
-        <ModalHeader>
-          <h2>Manage Company Tags</h2>
-          <button onClick={onRequestClose} aria-label="Close modal">
-            <FiX size={20} />
-          </button>
-        </ModalHeader>
+      <ModalHeader theme={theme}>
+        <ModalTitle theme={theme}>Manage Company Tags</ModalTitle>
+        <CloseButton theme={theme} onClick={onRequestClose}>×</CloseButton>
+      </ModalHeader>
 
+      <ModalBody theme={theme}>
         <Section>
-          <SectionTitle>Current Tags</SectionTitle>
-          <TagsList>
-            {currentTags.map(tag => {
-              const color = getTagColor(tag.name);
-              return (
-                <Tag 
-                  key={tag.id}
+          <SectionTitle theme={theme}>Current Tags</SectionTitle>
+          <ItemsList>
+            {currentTags.map((tagRelation, index) => (
+              <ItemTag key={tagRelation.entry_id || index} theme={theme}>
+                <span>{tagRelation.tags?.name || 'Unknown'}</span>
+                <RemoveButton
+                  theme={theme}
+                  onClick={() => handleRemoveTag(tagRelation)}
+                  disabled={loading}
                 >
-                  <span title={tag.name}>{tag.name.length > 25 ? `${tag.name.substring(0, 25)}...` : tag.name}</span>
-                  <button 
-                    onClick={() => handleRemoveTag(tag)}
-                    disabled={loading}
-                  >
-                    <FiX size={14} />
-                  </button>
-                </Tag>
-              );
-            })}
+                  ×
+                </RemoveButton>
+              </ItemTag>
+            ))}
             {currentTags.length === 0 && (
-              <span style={{ color: '#6c757d', fontStyle: 'italic', padding: '4px' }}>
-                No tags assigned
-              </span>
+              <EmptyMessage theme={theme}>No tags assigned</EmptyMessage>
             )}
-          </TagsList>
+          </ItemsList>
         </Section>
 
         <Section>
-          <SectionTitle>Add Tags</SectionTitle>
+          <SectionTitle theme={theme}>Add Tags</SectionTitle>
           <SearchContainer>
-            <SearchIcon>
-              <FiSearch size={16} />
-            </SearchIcon>
             <SearchInput
+              theme={theme}
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search or create new tag..."
+              placeholder="Search or create a tag..."
             />
           </SearchContainer>
 
           {showSuggestions && (
-            <SuggestionsContainer>
+            <SuggestionsContainer theme={theme}>
               {suggestions.map(suggestion => (
                 <SuggestionItem
-                  key={suggestion.id}
+                  key={suggestion.tag_id}
+                  theme={theme}
                   onClick={() => handleAddTag(suggestion)}
                   disabled={loading}
                 >
                   {suggestion.name}
                 </SuggestionItem>
               ))}
-              {searchTerm.trim() && !suggestions.find(s => s.name.toLowerCase() === searchTerm.toLowerCase()) && (
-                <div style={{ padding: '8px 12px' }}>
-                  <NewTagButton
-                    onClick={handleCreateTag}
-                    disabled={loading}
-                  >
-                    <FiPlus size={12} />
-                    Create "{searchTerm}"
-                  </NewTagButton>
-                </div>
+              {suggestions.length === 0 && searchTerm.length >= 2 && (
+                <NoResults theme={theme}>No tags found</NoResults>
+              )}
+              {searchTerm.length >= 2 && (
+                <CreateButton
+                  theme={theme}
+                  onClick={handleCreateTag}
+                  disabled={loading}
+                >
+                  + Create "{searchTerm}" as new tag
+                </CreateButton>
               )}
             </SuggestionsContainer>
           )}
         </Section>
 
         {message.text && (
-          <Message className={message.type}>
+          <Message theme={theme} type={message.type}>
             {message.text}
           </Message>
         )}
+      </ModalBody>
 
-        <ButtonGroup>
-          <Button className="primary" onClick={onRequestClose}>
-            Done
-          </Button>
-        </ButtonGroup>
-
-        {loading && (
-          <div style={{ textAlign: 'center', marginTop: '10px' }}>
-            <div className="spinner" style={{ 
-              width: '20px', 
-              height: '20px', 
-              border: '3px solid #f3f3f3', 
-              borderTop: '3px solid #000000', 
-              borderRadius: '50%', 
-              animation: 'spin 1s linear infinite' 
-            }}></div>
-          </div>
-        )}
-      </div>
+      <ModalFooter theme={theme}>
+        <DoneButton theme={theme} onClick={onRequestClose}>Done</DoneButton>
+      </ModalFooter>
     </Modal>
   );
 };
 
 export default CompanyTagsModal;
-
-// Add CSS for spinner
-const style = document.createElement('style');
-style.innerHTML = `
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(style);
