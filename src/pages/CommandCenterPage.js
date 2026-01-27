@@ -156,6 +156,8 @@ import RelatedTab from '../components/command-center/RelatedTab';
 import FilesTab from '../components/command-center/FilesTab';
 import CalendarPanelTab from '../components/command-center/CalendarPanelTab';
 import useContactDetails from '../hooks/useContactDetails';
+import { useViewport } from '../hooks/useViewport';
+import { CommandCenterMobile } from '../components/mobile/command-center';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -174,6 +176,9 @@ const sanitizeEmailHtml = (html) => {
 const CommandCenterPage = ({ theme }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('email');
+
+  // Viewport detection for responsive layout
+  const viewport = useViewport();
 
   // Mobile detection for default collapsed state
   const isMobile = window.innerWidth <= 768;
@@ -391,6 +396,10 @@ const CommandCenterPage = ({ theme }) => {
   const [tasksChatContacts, setTasksChatContacts] = useState([]); // Contacts from linked chats
   const [tasksCompanyContacts, setTasksCompanyContacts] = useState([]); // Contacts from linked companies
   const [tasksDealsContacts, setTasksDealsContacts] = useState([]); // Contacts from linked deals
+  // Notes linked entities - From NotesFullTab
+  const [notesLinkedContacts, setNotesLinkedContacts] = useState([]);
+  const [notesLinkedCompanies, setNotesLinkedCompanies] = useState([]);
+  const [notesLinkedDeals, setNotesLinkedDeals] = useState([]);
 
   // Right panel company selector state (for CompanyDetailsTab)
   const [selectedRightPanelCompanyId, setSelectedRightPanelCompanyId] = useState(null);
@@ -1012,9 +1021,22 @@ const CommandCenterPage = ({ theme }) => {
       return allContacts;
     }
 
-    // For notes - handled by its own component
+    // For notes - use linked contacts from NotesFullTab
+    if (activeTab === 'notes' && notesLinkedContacts.length > 0) {
+      return notesLinkedContacts.map(c => ({
+        contact_id: c.contact_id,
+        first_name: c.first_name || '',
+        last_name: c.last_name || '',
+        email: null,
+        role: 'Note Contact',
+        completeness_score: c.completeness_score || 0,
+        show_missing: c.show_missing,
+        profile_image_url: c.profile_image_url,
+      }));
+    }
+
     return [];
-  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts, tasksChatContacts, tasksCompanyContacts, tasksDealsContacts, archivedWhatsappContact]);
+  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts, tasksChatContacts, tasksCompanyContacts, tasksDealsContacts, archivedWhatsappContact, notesLinkedContacts]);
 
   // Enrich contacts with completeness scores from DB (DRY - all tabs benefit)
   const [enrichedRightPanelContacts, setEnrichedRightPanelContacts] = useState([]);
@@ -8890,6 +8912,41 @@ internet businesses.`;
     { id: 'lists', label: 'Lists', icon: FaList, count: 0, hasUnread: false },
   ];
 
+  // Mobile: Render mobile-optimized version
+  if (viewport.isMobile) {
+    return (
+      <CommandCenterMobile
+        theme={theme}
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        // Email data
+        emailThreads={threads}
+        selectedThread={selectedThread}
+        onSelectThread={setSelectedThread}
+        // WhatsApp data
+        whatsappChats={whatsappChats}
+        selectedChat={selectedWhatsappChat}
+        onSelectChat={setSelectedWhatsappChat}
+        // Tasks data
+        tasks={todoistTasks}
+        // Calendar data
+        calendarEvents={calendarEvents}
+        selectedEvent={selectedCalendarEvent}
+        onSelectEvent={setSelectedCalendarEvent}
+        // Keep in Touch
+        keepInTouchContacts={keepInTouchContacts}
+        // Deals
+        deals={pipelineDeals}
+        // Actions
+        onComposeEmail={() => setShowComposeModal(true)}
+        onSendWhatsApp={() => setActiveActionTab('whatsapp')}
+        onCreateTask={() => {/* TODO */}}
+      />
+    );
+  }
+
+  // Desktop: Render full 3-panel layout
   return (
     <PageContainer theme={theme}>
       {/* Header with Tabs */}
@@ -13609,7 +13666,12 @@ internet businesses.`;
               <EmptyState theme={theme}>Select an introduction to view details</EmptyState>
             )
           ) : activeTab === 'notes' ? (
-            <NotesFullTab theme={theme} />
+            <NotesFullTab
+              theme={theme}
+              onLinkedContactsChange={setNotesLinkedContacts}
+              onLinkedCompaniesChange={setNotesLinkedCompanies}
+              onLinkedDealsChange={setNotesLinkedDeals}
+            />
           ) : activeTab === 'lists' ? (
             <ListsTab
               theme={theme}
@@ -14221,8 +14283,7 @@ internet businesses.`;
           )}
         </EmailContentPanel>
 
-        {/* Right: Actions Panel - Hidden for Notes tab */}
-        {activeTab !== 'notes' && (
+        {/* Right: Actions Panel */}
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
           {/* Data Integrity Warning Bar - show only for email/whatsapp/calendar when not collapsed */}
           {!rightPanelCollapsed && ['email', 'whatsapp', 'calendar'].includes(activeTab) && (
@@ -14293,7 +14354,7 @@ internet businesses.`;
               <CollapseButton theme={theme} onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}>
                 {rightPanelCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
               </CollapseButton>
-              {!rightPanelCollapsed && activeTab !== 'notes' && (
+              {!rightPanelCollapsed && (
                 <>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details">
                     <FaUser />
@@ -15826,7 +15887,7 @@ internet businesses.`;
             />
           )}
 
-          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && (tasksLinkedContacts.length > 0 || tasksLinkedChats.length > 0)) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem) || (activeTab === 'lists' && selectedRightPanelContactId)) && (
+          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && (tasksLinkedContacts.length > 0 || tasksLinkedChats.length > 0)) || (activeTab === 'notes' && notesLinkedContacts.length > 0) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem) || (activeTab === 'lists' && selectedRightPanelContactId)) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab

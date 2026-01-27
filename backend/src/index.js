@@ -2866,8 +2866,8 @@ app.post('/whatsapp/connect', async (req, res) => {
 });
 
 // Logout and clear session
-app.post('/whatsapp/logout', (req, res) => {
-  const result = clearSession();
+app.post('/whatsapp/logout', async (req, res) => {
+  const result = await clearSession();
   res.json(result);
 });
 
@@ -3170,6 +3170,376 @@ app.post('/whatsapp/create-group', async (req, res) => {
 });
 
 // ============ END WHATSAPP ============
+
+// ============ NOTES CRUD ENDPOINTS ============
+
+// List notes with filters
+app.get('/notes', async (req, res) => {
+  try {
+    const { folder, type, search, linked_contact, linked_company, linked_deal, limit = 50, offset = 0 } = req.query;
+
+    let query = supabase
+      .from('notes')
+      .select(`
+        *,
+        notes_contacts(contact_id, contacts(contact_id, first_name, last_name, profile_image_url)),
+        note_companies(company_id, companies(company_id, name)),
+        note_deals(deal_id, deals(deal_id, opportunity))
+      `)
+      .is('deleted_at', null)
+      .order('last_modified_at', { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+    if (folder) {
+      query = query.ilike('folder_path', `${folder}%`);
+    }
+    if (type) {
+      query = query.eq('note_type', type);
+    }
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,markdown_content.ilike.%${search}%`);
+    }
+    if (linked_contact) {
+      const { data: noteIds } = await supabase
+        .from('notes_contacts')
+        .select('note_id')
+        .eq('contact_id', linked_contact);
+      if (noteIds?.length) {
+        query = query.in('note_id', noteIds.map(n => n.note_id));
+      } else {
+        return res.json({ success: true, notes: [], total: 0 });
+      }
+    }
+    if (linked_company) {
+      const { data: noteIds } = await supabase
+        .from('note_companies')
+        .select('note_id')
+        .eq('company_id', linked_company);
+      if (noteIds?.length) {
+        query = query.in('note_id', noteIds.map(n => n.note_id));
+      } else {
+        return res.json({ success: true, notes: [], total: 0 });
+      }
+    }
+    if (linked_deal) {
+      const { data: noteIds } = await supabase
+        .from('note_deals')
+        .select('note_id')
+        .eq('deal_id', linked_deal);
+      if (noteIds?.length) {
+        query = query.in('note_id', noteIds.map(n => n.note_id));
+      } else {
+        return res.json({ success: true, notes: [], total: 0 });
+      }
+    }
+
+    const { data: notes, error, count } = await query;
+    if (error) throw error;
+
+    res.json({ success: true, notes, total: count || notes?.length || 0 });
+  } catch (error) {
+    console.error('[Notes] List error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get single note by ID
+app.get('/notes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: note, error } = await supabase
+      .from('notes')
+      .select(`
+        *,
+        notes_contacts(contact_id, contacts(contact_id, first_name, last_name, profile_image_url)),
+        note_companies(company_id, companies(company_id, name)),
+        note_deals(deal_id, deals(deal_id, opportunity))
+      `)
+      .eq('note_id', id)
+      .is('deleted_at', null)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ success: false, error: 'Note not found' });
+      }
+      throw error;
+    }
+
+    res.json({ success: true, note });
+  } catch (error) {
+    console.error('[Notes] Get error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create new note
+app.post('/notes', async (req, res) => {
+  try {
+    const { title, markdown_content, folder_path, note_type, contacts, companies, deals } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'Title is required' });
+    }
+
+    const file_name = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.md';
+    const crypto = await import('crypto');
+    const content_hash = crypto.createHash('sha256').update(markdown_content || '').digest('hex');
+
+    const { data: note, error } = await supabase
+      .from('notes')
+      .insert({
+        title,
+        markdown_content: markdown_content || '',
+        text: markdown_content || '',
+        folder_path: folder_path || 'Inbox',
+        file_name,
+        obsidian_path: `${folder_path || 'Inbox'}/${file_name}`,
+        note_type: note_type || 'general',
+        content_hash,
+        sync_source: 'crm',
+        created_by: 'User',
+        last_modified_by: 'User',
+        last_modified_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (contacts?.length) {
+      const links = contacts.map(contactId => ({ note_id: note.note_id, contact_id: contactId }));
+      await supabase.from('notes_contacts').upsert(links, { onConflict: 'note_id,contact_id' });
+    }
+    if (companies?.length) {
+      const links = companies.map(companyId => ({ note_id: note.note_id, company_id: companyId }));
+      await supabase.from('note_companies').upsert(links, { onConflict: 'note_id,company_id' });
+    }
+    if (deals?.length) {
+      const links = deals.map(dealId => ({ note_id: note.note_id, deal_id: dealId }));
+      await supabase.from('note_deals').upsert(links, { onConflict: 'note_id,deal_id' });
+    }
+
+    console.log(`[Notes] Created note: ${note.note_id} - ${title}`);
+    res.json({ success: true, note });
+  } catch (error) {
+    console.error('[Notes] Create error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update note
+app.put('/notes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, markdown_content, folder_path, note_type } = req.body;
+
+    const updates = {
+      last_modified_by: 'User',
+      last_modified_at: new Date().toISOString(),
+      sync_source: 'crm',
+    };
+
+    if (title !== undefined) {
+      updates.title = title;
+      updates.file_name = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.md';
+    }
+    if (markdown_content !== undefined) {
+      updates.markdown_content = markdown_content;
+      updates.text = markdown_content;
+      const crypto = await import('crypto');
+      updates.content_hash = crypto.createHash('sha256').update(markdown_content).digest('hex');
+    }
+    if (folder_path !== undefined) updates.folder_path = folder_path;
+    if (note_type !== undefined) updates.note_type = note_type;
+
+    if (updates.file_name || updates.folder_path) {
+      const { data: current } = await supabase.from('notes').select('folder_path, file_name').eq('note_id', id).single();
+      const newFolder = updates.folder_path || current?.folder_path || 'Inbox';
+      const newFile = updates.file_name || current?.file_name;
+      updates.obsidian_path = `${newFolder}/${newFile}`;
+    }
+
+    const { data: note, error } = await supabase
+      .from('notes')
+      .update(updates)
+      .eq('note_id', id)
+      .is('deleted_at', null)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Note not found' });
+      throw error;
+    }
+
+    console.log(`[Notes] Updated note: ${id}`);
+    res.json({ success: true, note });
+  } catch (error) {
+    console.error('[Notes] Update error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Soft delete note
+app.delete('/notes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: note, error } = await supabase
+      .from('notes')
+      .update({ deleted_at: new Date().toISOString(), last_modified_by: 'User', last_modified_at: new Date().toISOString() })
+      .eq('note_id', id)
+      .is('deleted_at', null)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Note not found' });
+      throw error;
+    }
+
+    console.log(`[Notes] Soft deleted note: ${id}`);
+    res.json({ success: true, note });
+  } catch (error) {
+    console.error('[Notes] Delete error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Link note to entities
+app.post('/notes/:id/link', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contacts, companies, deals } = req.body;
+    const results = { contacts: 0, companies: 0, deals: 0 };
+
+    if (contacts?.length) {
+      const links = contacts.map(contactId => ({ note_id: id, contact_id: contactId }));
+      const { error } = await supabase.from('notes_contacts').upsert(links, { onConflict: 'note_id,contact_id' });
+      if (!error) results.contacts = contacts.length;
+    }
+    if (companies?.length) {
+      const links = companies.map(companyId => ({ note_id: id, company_id: companyId }));
+      const { error } = await supabase.from('note_companies').upsert(links, { onConflict: 'note_id,company_id' });
+      if (!error) results.companies = companies.length;
+    }
+    if (deals?.length) {
+      const links = deals.map(dealId => ({ note_id: id, deal_id: dealId }));
+      const { error } = await supabase.from('note_deals').upsert(links, { onConflict: 'note_id,deal_id' });
+      if (!error) results.deals = deals.length;
+    }
+
+    await supabase.from('notes').update({ last_modified_at: new Date().toISOString(), sync_source: 'crm' }).eq('note_id', id);
+
+    console.log(`[Notes] Linked note ${id}: ${JSON.stringify(results)}`);
+    res.json({ success: true, linked: results });
+  } catch (error) {
+    console.error('[Notes] Link error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Unlink note from entities
+app.delete('/notes/:id/link', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contacts, companies, deals } = req.body;
+    const results = { contacts: 0, companies: 0, deals: 0 };
+
+    if (contacts?.length) {
+      const { error } = await supabase.from('notes_contacts').delete().eq('note_id', id).in('contact_id', contacts);
+      if (!error) results.contacts = contacts.length;
+    }
+    if (companies?.length) {
+      const { error } = await supabase.from('note_companies').delete().eq('note_id', id).in('company_id', companies);
+      if (!error) results.companies = companies.length;
+    }
+    if (deals?.length) {
+      const { error } = await supabase.from('note_deals').delete().eq('note_id', id).in('deal_id', deals);
+      if (!error) results.deals = deals.length;
+    }
+
+    await supabase.from('notes').update({ last_modified_at: new Date().toISOString(), sync_source: 'crm' }).eq('note_id', id);
+
+    console.log(`[Notes] Unlinked note ${id}: ${JSON.stringify(results)}`);
+    res.json({ success: true, unlinked: results });
+  } catch (error) {
+    console.error('[Notes] Unlink error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get sync status
+app.get('/notes/sync/status', async (req, res) => {
+  try {
+    const { data: lastSync, error } = await supabase
+      .from('obsidian_sync_state')
+      .select('*')
+      .order('last_sync_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+
+    let githubConnected = false;
+    if (process.env.GITHUB_TOKEN && process.env.OBSIDIAN_REPO) {
+      try {
+        const [owner, repo] = process.env.OBSIDIAN_REPO.split('/');
+        const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+          headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}` }
+        });
+        githubConnected = response.ok;
+      } catch (e) { githubConnected = false; }
+    }
+
+    res.json({ success: true, lastSync: lastSync || null, githubConnected, obsidianRepo: process.env.OBSIDIAN_REPO || null });
+  } catch (error) {
+    console.error('[Notes] Sync status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Trigger manual sync
+app.post('/notes/sync', async (req, res) => {
+  try {
+    const { direction } = req.body;
+
+    if (!process.env.GITHUB_TOKEN) {
+      return res.status(400).json({ success: false, error: 'GitHub token not configured' });
+    }
+
+    const [owner, repo] = (process.env.OBSIDIAN_REPO || '').split('/');
+    if (!owner || !repo) {
+      return res.status(400).json({ success: false, error: 'OBSIDIAN_REPO not configured' });
+    }
+
+    const workflowFile = direction === 'from_github' ? 'sync-from-supabase.yml' : 'sync-to-supabase.yml';
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowFile}/dispatches`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main' }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`GitHub API error: ${error}`);
+    }
+
+    console.log(`[Notes] Triggered sync workflow: ${workflowFile}`);
+    res.json({ success: true, message: `Sync triggered: ${direction || 'both'}` });
+  } catch (error) {
+    console.error('[Notes] Sync trigger error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ END NOTES ============
 
 app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);

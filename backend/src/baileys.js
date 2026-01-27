@@ -138,16 +138,57 @@ export function getQRCode() {
 /**
  * Clear session (logout)
  */
-export function clearSession() {
+export async function clearSession() {
   try {
-    if (fs.existsSync(AUTH_FOLDER)) {
-      fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-      fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+    // First, close the socket if it exists
+    if (sock) {
+      console.log('[Baileys] Closing socket before clearing session...');
+      try {
+        sock.end();
+      } catch (e) {
+        console.log('[Baileys] Socket end error (ignoring):', e.message);
+      }
+      sock = null;
     }
-    sock = null;
+
     qrCode = null;
     connectionStatus = 'disconnected';
     connectionError = null;
+
+    // Wait a moment for file handles to be released
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Try to delete auth folder with retries
+    if (fs.existsSync(AUTH_FOLDER)) {
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          // Delete files one by one instead of the whole folder
+          const files = fs.readdirSync(AUTH_FOLDER);
+          for (const file of files) {
+            const filePath = path.join(AUTH_FOLDER, file);
+            try {
+              fs.unlinkSync(filePath);
+            } catch (e) {
+              console.log(`[Baileys] Could not delete ${file}: ${e.message}`);
+            }
+          }
+          // Now try to recreate clean folder
+          fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+          fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+          break;
+        } catch (error) {
+          retries--;
+          console.log(`[Baileys] Clear attempt failed, ${retries} retries left:`, error.message);
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+    } else {
+      fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+    }
+
     console.log('[Baileys] Session cleared');
     return { success: true };
   } catch (error) {

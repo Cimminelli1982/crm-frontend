@@ -10,32 +10,30 @@ import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import MDEditor from '@uiw/react-md-editor';
 
-// Note types for categorization
-const NOTE_TYPES = [
-  { id: 'general', label: 'General', icon: FaStickyNote, color: '#8B5CF6' },
-  { id: 'meeting', label: 'Meeting', icon: FaFolder, color: '#3B82F6' },
-  { id: 'idea', label: 'Idea', icon: FaStickyNote, color: '#F59E0B' },
-  { id: 'project', label: 'Project', icon: FaFolder, color: '#10B981' },
-];
+// Folder icons and colors for Obsidian folders
+const FOLDER_CONFIG = {
+  '': { icon: FaFile, color: '#6B7280', emoji: '📄', label: 'Root' },
+  'Inbox': { icon: FaFolder, color: '#8B5CF6', emoji: '📥' },
+  '📥 Inbox': { icon: FaFolder, color: '#8B5CF6', emoji: '📥' },
+  '📅 Daily Notes': { icon: FaStickyNote, color: '#3B82F6', emoji: '📅' },
+  '🏢 Business': { icon: FaBuilding, color: '#10B981', emoji: '🏢' },
+  '💭 Ideas & Philosophy': { icon: FaStickyNote, color: '#F59E0B', emoji: '💭' },
+  '🤝 Meetings': { icon: FaHandshake, color: '#EC4899', emoji: '🤝' },
+  '👥 People': { icon: FaUser, color: '#6366F1', emoji: '👥' },
+  '📚 Learning': { icon: FaFolder, color: '#14B8A6', emoji: '📚' },
+  '🍳 Recipes': { icon: FaFolder, color: '#F97316', emoji: '🍳' },
+  '🛠️ Setup': { icon: FaFolder, color: '#64748B', emoji: '🛠️' },
+  '📎 Resources': { icon: FaFolder, color: '#A855F7', emoji: '📎' },
+  'default': { icon: FaFolder, color: '#6B7280', emoji: '📁' },
+};
 
-// Folder structure
-const FOLDERS = [
-  { id: 'Inbox', label: 'Inbox', icon: FaFolder },
-  { id: 'CRM', label: 'CRM', icon: FaFolderOpen },
-  { id: 'CRM/Contacts', label: '↳ Contacts', icon: FaFile },
-  { id: 'CRM/Companies', label: '↳ Companies', icon: FaFile },
-  { id: 'CRM/Deals', label: '↳ Deals', icon: FaFile },
-  { id: 'Personal', label: 'Personal', icon: FaFolderOpen },
-  { id: 'Archive', label: 'Archive', icon: FaFolder },
-];
-
-const NotesFullTab = ({ theme }) => {
+const NotesFullTab = ({ theme, onLinkedContactsChange, onLinkedCompaniesChange, onLinkedDealsChange }) => {
   // Notes list state
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState(null);
-  const [expandedTypes, setExpandedTypes] = useState({ general: true, meeting: true, idea: true, project: true });
+  const [expandedFolders, setExpandedFolders] = useState({});
 
   // Selected note state
   const [selectedNote, setSelectedNote] = useState(null);
@@ -67,69 +65,50 @@ const NotesFullTab = ({ theme }) => {
 
   // Obsidian sync state
   const [syncing, setSyncing] = useState(false);
-  const OBSIDIAN_SYNC_URL = 'http://localhost:3003';
+  // Sync state
+  const [lastSyncAt, setLastSyncAt] = useState(null);
 
-  // Sync from Obsidian inbox
+  // Fetch sync status
+  const fetchSyncStatus = async () => {
+    try {
+      const { data } = await supabase
+        .from('obsidian_sync_state')
+        .select('last_sync_at, sync_direction, files_synced')
+        .eq('id', 'main')
+        .single();
+      if (data) {
+        setLastSyncAt(data.last_sync_at);
+      }
+    } catch (e) {
+      console.log('No sync state found');
+    }
+  };
+
+  // Refresh notes and show sync status
   const handleObsidianSync = async () => {
     setSyncing(true);
     try {
-      const response = await fetch(`${OBSIDIAN_SYNC_URL}/inbox`);
-      if (!response.ok) throw new Error('Failed to connect to Obsidian sync server');
+      // Refresh notes from Supabase
+      await fetchNotes();
+      await fetchSyncStatus();
 
-      const { content } = await response.json();
-      const trimmedContent = content?.replace(/^#\s*Inbox\s*\n*/i, '').trim();
-
-      if (!trimmedContent) {
-        toast('Inbox is empty', { icon: '📭' });
-        return;
-      }
-
-      // Create new note with markdown content
-      const { data, error } = await supabase
-        .from('notes')
-        .insert({
-          title: `Obsidian Inbox - ${new Date().toLocaleDateString()}`,
-          markdown_content: trimmedContent,
-          text: trimmedContent, // Keep for backward compat
-          note_type: 'general',
-          folder_path: 'Inbox',
-          obsidian_path: 'Inbox.md',
-          synced_at: new Date().toISOString(),
-          created_by: 'User',
-          last_modified_by: 'User',
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Archive inbox on local server
-      const archiveResponse = await fetch(`${OBSIDIAN_SYNC_URL}/archive`, { method: 'POST' });
-      if (!archiveResponse.ok) {
-        toast.error('Note saved but failed to archive inbox');
-      }
-
-      setNotes(prev => [data, ...prev]);
-      setSelectedNote(data);
-      setEditTitle(data.title);
-      setEditContent(data.markdown_content || '');
-      setEditNoteType(data.note_type);
-      setEditFolderPath(data.folder_path || 'Inbox');
-      setIsEditing(false);
-      setIsCreating(false);
-
-      toast.success('Synced from Obsidian!');
+      const syncTime = lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : 'never';
+      toast.success(`Notes refreshed! Last Obsidian sync: ${syncTime}`, {
+        icon: '🔄',
+        duration: 3000,
+      });
     } catch (error) {
-      console.error('Obsidian sync error:', error);
-      if (error.message.includes('Failed to fetch')) {
-        toast.error('Obsidian sync server not running. Start with: npm run obsidian-sync');
-      } else {
-        toast.error(error.message || 'Failed to sync');
-      }
+      console.error('Refresh error:', error);
+      toast.error('Failed to refresh notes');
     } finally {
       setSyncing(false);
     }
   };
+
+  // Fetch sync status on mount
+  useEffect(() => {
+    fetchSyncStatus();
+  }, []);
 
   // Fetch all notes
   const fetchNotes = useCallback(async () => {
@@ -200,19 +179,40 @@ const NotesFullTab = ({ theme }) => {
     }
   }, [selectedNote, fetchLinkedEntities]);
 
+  // Notify parent of linked entities changes
+  useEffect(() => {
+    if (onLinkedContactsChange) {
+      onLinkedContactsChange(linkedContacts);
+    }
+  }, [linkedContacts, onLinkedContactsChange]);
+
+  useEffect(() => {
+    if (onLinkedCompaniesChange) {
+      onLinkedCompaniesChange(linkedCompanies);
+    }
+  }, [linkedCompanies, onLinkedCompaniesChange]);
+
+  useEffect(() => {
+    if (onLinkedDealsChange) {
+      onLinkedDealsChange(linkedDeals);
+    }
+  }, [linkedDeals, onLinkedDealsChange]);
+
   // Filter notes
   const filteredNotes = notes.filter(note => {
     const matchesSearch = !searchQuery ||
       note.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       note.markdown_content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       note.text?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFolder = !selectedFolder || note.folder_path === selectedFolder;
+    const matchesFolder = selectedFolder === null || (note.folder_path || '') === selectedFolder;
     return matchesSearch && matchesFolder;
   });
 
-  // Group notes by type
-  const notesByType = NOTE_TYPES.reduce((acc, type) => {
-    acc[type.id] = filteredNotes.filter(n => n.note_type === type.id);
+  // Get unique folders from notes - keep empty string for root files
+  const uniqueFolders = [...new Set(notes.map(n => n.folder_path ?? ''))].sort();
+
+  const notesByFolder = uniqueFolders.reduce((acc, folder) => {
+    acc[folder] = filteredNotes.filter(n => (n.folder_path ?? '') === folder);
     return acc;
   }, {});
 
@@ -525,9 +525,6 @@ const NotesFullTab = ({ theme }) => {
           >
             {syncing ? <FaSync size={12} className="spin" /> : <SiObsidian size={12} />}
           </button>
-          <button onClick={handleCreateNew} style={buttonStyle}>
-            <FaPlus size={12} />
-          </button>
         </div>
 
         <style>{`
@@ -535,7 +532,7 @@ const NotesFullTab = ({ theme }) => {
           @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         `}</style>
 
-        {/* Folder filter */}
+        {/* Quick folder filter - top folders */}
         <div style={{
           padding: '8px 12px',
           borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
@@ -549,84 +546,95 @@ const NotesFullTab = ({ theme }) => {
               padding: '4px 8px',
               borderRadius: '4px',
               border: 'none',
-              background: !selectedFolder ? '#8B5CF6' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-              color: !selectedFolder ? 'white' : (theme === 'dark' ? '#D1D5DB' : '#374151'),
+              background: selectedFolder === null ? '#8B5CF6' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+              color: selectedFolder === null ? 'white' : (theme === 'dark' ? '#D1D5DB' : '#374151'),
               fontSize: '11px',
               cursor: 'pointer',
             }}
           >
-            All
+            All ({notes.length})
           </button>
-          {FOLDERS.slice(0, 4).map(folder => (
-            <button
-              key={folder.id}
-              onClick={() => setSelectedFolder(folder.id)}
-              style={{
-                padding: '4px 8px',
-                borderRadius: '4px',
-                border: 'none',
-                background: selectedFolder === folder.id ? '#8B5CF6' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-                color: selectedFolder === folder.id ? 'white' : (theme === 'dark' ? '#D1D5DB' : '#374151'),
-                fontSize: '11px',
-                cursor: 'pointer',
-              }}
-            >
-              {folder.label}
-            </button>
-          ))}
+          {uniqueFolders.slice(0, 5).map(folder => {
+            const config = FOLDER_CONFIG[folder] || FOLDER_CONFIG.default;
+            const displayName = config.label || folder || 'Root';
+            return (
+              <button
+                key={folder || '_root'}
+                onClick={() => setSelectedFolder(folder)}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: selectedFolder === folder ? '#8B5CF6' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                  color: selectedFolder === folder ? 'white' : (theme === 'dark' ? '#D1D5DB' : '#374151'),
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                }}
+              >
+                {config.emoji} {displayName}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Notes list */}
+        {/* Notes list by folder */}
         <div style={{ flex: 1, overflow: 'auto' }}>
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
               Loading...
             </div>
           ) : (
-            NOTE_TYPES.map(type => (
-              <div key={type.id}>
-                <div
-                  style={sectionHeaderStyle}
-                  onClick={() => setExpandedTypes(prev => ({ ...prev, [type.id]: !prev[type.id] }))}
-                >
-                  {expandedTypes[type.id] ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
-                  <type.icon size={12} style={{ color: type.color }} />
-                  <span>{type.label}</span>
-                  <span style={{ marginLeft: 'auto', opacity: 0.7 }}>
-                    {notesByType[type.id]?.length || 0}
-                  </span>
-                </div>
+            uniqueFolders.map(folder => {
+              const folderConfig = FOLDER_CONFIG[folder] || FOLDER_CONFIG.default;
+              const FolderIcon = folderConfig.icon;
+              const folderNotes = notesByFolder[folder] || [];
+              const isExpanded = expandedFolders[folder] !== false; // Default to expanded
 
-                {expandedTypes[type.id] && notesByType[type.id]?.map(note => (
+              return (
+                <div key={folder}>
                   <div
-                    key={note.note_id}
-                    style={noteItemStyle(selectedNote?.note_id === note.note_id)}
-                    onClick={() => handleSelectNote(note)}
+                    style={sectionHeaderStyle}
+                    onClick={() => setExpandedFolders(prev => ({ ...prev, [folder]: !isExpanded }))}
                   >
-                    <div style={{
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                      marginBottom: '4px',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
-                      {note.title}
-                    </div>
-                    <div style={{
-                      fontSize: '11px',
-                      color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                    }}>
-                      <span>{note.folder_path || 'Inbox'}</span>
-                      <span>{new Date(note.last_modified_at || note.created_at).toLocaleDateString()}</span>
-                    </div>
+                    {isExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+                    <span style={{ fontSize: '12px' }}>{folderConfig.emoji || '📁'}</span>
+                    <span>{folderConfig.label || folder || 'Root'}</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.7 }}>
+                      {folderNotes.length}
+                    </span>
                   </div>
-                ))}
-              </div>
-            ))
+
+                  {isExpanded && folderNotes.map(note => (
+                    <div
+                      key={note.note_id}
+                      style={noteItemStyle(selectedNote?.note_id === note.note_id)}
+                      onClick={() => handleSelectNote(note)}
+                    >
+                      <div style={{
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        marginBottom: '4px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {note.title}
+                      </div>
+                      <div style={{
+                        fontSize: '11px',
+                        color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                      }}>
+                        <span>{note.file_name || note.title}</span>
+                        <span>{new Date(note.last_modified_at || note.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })
           )}
 
           {!loading && filteredNotes.length === 0 && (
@@ -700,7 +708,7 @@ const NotesFullTab = ({ theme }) => {
                 </div>
               )}
 
-              {/* Folder selector */}
+              {/* Folder selector - uses actual folders from Obsidian */}
               {isEditing && (
                 <select
                   value={editFolderPath}
@@ -715,30 +723,15 @@ const NotesFullTab = ({ theme }) => {
                     outline: 'none',
                   }}
                 >
-                  {FOLDERS.map(f => (
-                    <option key={f.id} value={f.id}>{f.label}</option>
+                  {uniqueFolders.map(folder => (
+                    <option key={folder} value={folder}>
+                      {FOLDER_CONFIG[folder]?.emoji || '📁'} {folder}
+                    </option>
                   ))}
-                </select>
-              )}
-
-              {/* Note type selector */}
-              {isEditing && (
-                <select
-                  value={editNoteType}
-                  onChange={(e) => setEditNoteType(e.target.value)}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
-                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                    fontSize: '12px',
-                    outline: 'none',
-                  }}
-                >
-                  {NOTE_TYPES.map(t => (
-                    <option key={t.id} value={t.id}>{t.label}</option>
-                  ))}
+                  {/* Allow creating new folder */}
+                  {!uniqueFolders.includes(editFolderPath) && editFolderPath && (
+                    <option value={editFolderPath}>{editFolderPath} (new)</option>
+                  )}
                 </select>
               )}
 
@@ -778,6 +771,16 @@ const NotesFullTab = ({ theme }) => {
                 ) : (
                   <>
                     <button
+                      onClick={handleCreateNew}
+                      style={{
+                        ...buttonStyle,
+                        background: '#10B981',
+                      }}
+                    >
+                      <FaStickyNote size={12} />
+                      New
+                    </button>
+                    <button
                       onClick={() => setIsEditing(true)}
                       style={{ ...buttonStyle, background: '#3B82F6' }}
                     >
@@ -795,21 +798,19 @@ const NotesFullTab = ({ theme }) => {
               </div>
             </div>
 
-            {/* Markdown Editor Content */}
-            <div style={{ flex: 1, padding: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* Markdown Editor Content - Scrollable area */}
+            <div style={{ flex: 1, padding: '16px', overflow: 'auto' }}>
               {isEditing ? (
                 <MDEditor
                   value={editContent}
                   onChange={(val) => setEditContent(val || '')}
                   preview={viewMode === 'edit' ? 'edit' : viewMode === 'preview' ? 'preview' : 'live'}
                   height="100%"
-                  style={{ flex: 1 }}
+                  style={{ minHeight: '300px' }}
                   visibleDragbar={false}
                 />
               ) : (
                 <div style={{
-                  flex: 1,
-                  overflow: 'auto',
                   background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
                   borderRadius: '8px',
                   padding: '16px',
@@ -824,292 +825,158 @@ const NotesFullTab = ({ theme }) => {
                 </div>
               )}
             </div>
+
+            {/* Footer Actions Bar - Fixed at bottom like email Reply/Forward */}
+            {!isCreating && (
+              <div style={{
+                padding: '12px 16px',
+                borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap',
+              }}>
+                {/* Link buttons */}
+                <button
+                  onClick={() => { setLinkType('contact'); setShowLinkModal(true); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                    color: theme === 'dark' ? '#F9FAFB' : '#374151',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaUser size={12} />
+                  Contact {linkedContacts.length > 0 && <span style={{ background: '#3B82F6', color: 'white', padding: '0 6px', borderRadius: '10px', fontSize: '11px' }}>{linkedContacts.length}</span>}
+                </button>
+
+                <button
+                  onClick={() => { setLinkType('company'); setShowLinkModal(true); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                    color: theme === 'dark' ? '#F9FAFB' : '#374151',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaBuilding size={12} />
+                  Company {linkedCompanies.length > 0 && <span style={{ background: '#8B5CF6', color: 'white', padding: '0 6px', borderRadius: '10px', fontSize: '11px' }}>{linkedCompanies.length}</span>}
+                </button>
+
+                <button
+                  onClick={() => { setLinkType('deal'); setShowLinkModal(true); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                    color: theme === 'dark' ? '#F9FAFB' : '#374151',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaDollarSign size={12} />
+                  Deal {linkedDeals.length > 0 && <span style={{ background: '#10B981', color: 'white', padding: '0 6px', borderRadius: '10px', fontSize: '11px' }}>{linkedDeals.length}</span>}
+                </button>
+
+                <button
+                  onClick={() => { setLinkType('introduction'); setShowLinkModal(true); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                    color: theme === 'dark' ? '#F9FAFB' : '#374151',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaHandshake size={12} />
+                  Intro {linkedIntroductions.length > 0 && <span style={{ background: '#EC4899', color: 'white', padding: '0 6px', borderRadius: '10px', fontSize: '11px' }}>{linkedIntroductions.length}</span>}
+                </button>
+
+                {/* Linked items chips */}
+                <div style={{ flex: 1 }} />
+
+                {linkedContacts.map(c => (
+                  <span key={c.contact_id} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '16px', background: '#DBEAFE', color: '#1D4ED8', fontSize: '12px' }}>
+                    <FaUser size={10} /> {c.first_name}
+                    <FaTimes size={10} style={{ cursor: 'pointer', marginLeft: '2px' }} onClick={() => handleUnlinkEntity('contact', c.contact_id)} />
+                  </span>
+                ))}
+                {linkedCompanies.map(c => (
+                  <span key={c.company_id} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '16px', background: '#EDE9FE', color: '#6D28D9', fontSize: '12px' }}>
+                    <FaBuilding size={10} /> {c.name}
+                    <FaTimes size={10} style={{ cursor: 'pointer', marginLeft: '2px' }} onClick={() => handleUnlinkEntity('company', c.company_id)} />
+                  </span>
+                ))}
+                {linkedDeals.map(d => (
+                  <span key={d.deal_id} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '16px', background: '#D1FAE5', color: '#065F46', fontSize: '12px' }}>
+                    <FaDollarSign size={10} /> {d.opportunity}
+                    <FaTimes size={10} style={{ cursor: 'pointer', marginLeft: '2px' }} onClick={() => handleUnlinkEntity('deal', d.deal_id)} />
+                  </span>
+                ))}
+
+                {/* Metadata on the right */}
+                <div style={{ marginLeft: 'auto', fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF' }}>
+                  {selectedNote?.folder_path || 'Inbox'} • {new Date(selectedNote?.last_modified_at || selectedNote?.created_at).toLocaleDateString()}
+                </div>
+              </div>
+            )}
           </>
         ) : (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-          }}>
-            <FaStickyNote size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
-            <div style={{ fontSize: '16px', marginBottom: '8px' }}>Select a note or create a new one</div>
-            <button onClick={handleCreateNew} style={buttonStyle}>
-              <FaPlus size={12} />
-              New Note
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* RIGHT PANEL - Links */}
-      <div style={{ ...panelStyle, width: '20%', minWidth: '240px', borderRight: 'none', borderLeft: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
-        {selectedNote && !isCreating && (
           <>
-            <div style={headerStyle}>
-              <span style={{ fontWeight: 600, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                <FaLink size={12} style={{ marginRight: '8px' }} />
-                Links
-              </span>
-            </div>
-
-            <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
-              {/* Contacts */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}>
-                    <FaUser size={10} /> Contacts ({linkedContacts.length})
-                  </span>
-                  <button
-                    onClick={() => { setLinkType('contact'); setShowLinkModal(true); }}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                      fontSize: '10px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <FaPlus size={8} />
-                  </button>
-                </div>
-                {linkedContacts.map(c => (
-                  <div
-                    key={c.contact_id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      background: theme === 'dark' ? '#374151' : '#F3F4F6',
-                      marginBottom: '4px',
-                      fontSize: '12px',
-                    }}
-                  >
-                    <span style={{ color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                      {c.first_name} {c.last_name}
-                    </span>
-                    <button
-                      onClick={() => handleUnlinkEntity('contact', c.contact_id)}
-                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
-                    >
-                      <FaTimes size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Companies */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}>
-                    <FaBuilding size={10} /> Companies ({linkedCompanies.length})
-                  </span>
-                  <button
-                    onClick={() => { setLinkType('company'); setShowLinkModal(true); }}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                      fontSize: '10px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <FaPlus size={8} />
-                  </button>
-                </div>
-                {linkedCompanies.map(c => (
-                  <div
-                    key={c.company_id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      background: theme === 'dark' ? '#374151' : '#F3F4F6',
-                      marginBottom: '4px',
-                      fontSize: '12px',
-                    }}
-                  >
-                    <span style={{ color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                      {c.name}
-                    </span>
-                    <button
-                      onClick={() => handleUnlinkEntity('company', c.company_id)}
-                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
-                    >
-                      <FaTimes size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Deals */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}>
-                    <FaDollarSign size={10} /> Deals ({linkedDeals.length})
-                  </span>
-                  <button
-                    onClick={() => { setLinkType('deal'); setShowLinkModal(true); }}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                      fontSize: '10px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <FaPlus size={8} />
-                  </button>
-                </div>
-                {linkedDeals.map(d => (
-                  <div
-                    key={d.deal_id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      background: theme === 'dark' ? '#374151' : '#F3F4F6',
-                      marginBottom: '4px',
-                      fontSize: '12px',
-                    }}
-                  >
-                    <span style={{ color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                      {d.opportunity}
-                    </span>
-                    <button
-                      onClick={() => handleUnlinkEntity('deal', d.deal_id)}
-                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
-                    >
-                      <FaTimes size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Introductions */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}>
-                    <FaHandshake size={10} /> Introductions ({linkedIntroductions.length})
-                  </span>
-                  <button
-                    onClick={() => { setLinkType('introduction'); setShowLinkModal(true); }}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
-                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                      fontSize: '10px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <FaPlus size={8} />
-                  </button>
-                </div>
-                {linkedIntroductions.map(i => (
-                  <div
-                    key={i.introduction_id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      background: theme === 'dark' ? '#374151' : '#F3F4F6',
-                      marginBottom: '4px',
-                      fontSize: '12px',
-                    }}
-                  >
-                    <span style={{ color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                      {i.status} - {new Date(i.introduction_date).toLocaleDateString()}
-                    </span>
-                    <button
-                      onClick={() => handleUnlinkEntity('introduction', i.introduction_id)}
-                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
-                    >
-                      <FaTimes size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Metadata footer */}
+            {/* Empty state header with New button on right */}
             <div style={{
               padding: '12px 16px',
-              borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-              fontSize: '11px',
+              borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+            }}>
+              <button
+                onClick={handleCreateNew}
+                style={{
+                  ...buttonStyle,
+                  background: '#10B981',
+                }}
+              >
+                <FaStickyNote size={12} />
+                New
+              </button>
+            </div>
+
+            {/* Empty state content */}
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
               color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
             }}>
-              <div>Folder: {selectedNote.folder_path || 'Inbox'}</div>
-              <div>Created: {new Date(selectedNote.created_at).toLocaleString()}</div>
-              <div>Modified: {new Date(selectedNote.last_modified_at || selectedNote.created_at).toLocaleString()}</div>
-              {selectedNote.synced_at && (
-                <div>Synced: {new Date(selectedNote.synced_at).toLocaleString()}</div>
-              )}
+              <FaStickyNote size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
+              <div style={{ fontSize: '16px' }}>Select a note or create a new one</div>
             </div>
           </>
         )}
