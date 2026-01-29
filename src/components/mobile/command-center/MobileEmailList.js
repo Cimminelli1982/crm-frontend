@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { FaChevronDown, FaChevronRight, FaInbox, FaBolt, FaClock, FaEnvelope } from 'react-icons/fa';
 import { formatDistanceToNow } from 'date-fns';
+import SwipeableEmailItem from './SwipeableEmailItem';
 
 /**
  * MobileEmailList - Email list optimized for mobile
@@ -13,6 +14,7 @@ const MobileEmailList = ({
   onSelectThread,
   onArchive,
   onReply,
+  onRefresh,
   theme = 'dark',
 }) => {
   // Section expansion state
@@ -62,35 +64,41 @@ const MobileEmailList = ({
     const isSelected = selectedThread?.threadId === thread.threadId;
 
     return (
-      <EmailItem
+      <SwipeableEmailItem
         key={thread.threadId || thread.id}
+        onArchive={() => onArchive?.(thread)}
+        onReply={() => onReply?.(thread)}
         theme={theme}
-        $selected={isSelected}
-        onClick={() => onSelectThread(thread)}
       >
-        <EmailAvatar theme={theme}>
-          {(getRelevantPerson(email)?.charAt(0) || '?').toUpperCase()}
-        </EmailAvatar>
-        <EmailContent>
-          <EmailHeader>
-            <EmailSender theme={theme} $unread={!email.is_read}>
-              {getRelevantPerson(email)}
-            </EmailSender>
-            <EmailDate theme={theme}>
-              {formatDate(email.date || email.received_at)}
-            </EmailDate>
-          </EmailHeader>
-          <EmailSubject theme={theme} $unread={!email.is_read}>
-            {email.subject || '(No subject)'}
-          </EmailSubject>
-          <EmailSnippet theme={theme}>
-            {email.snippet || email.body_text?.substring(0, 80) || ''}
-          </EmailSnippet>
-        </EmailContent>
-        {thread.count > 1 && (
-          <ThreadCount theme={theme}>{thread.count}</ThreadCount>
-        )}
-      </EmailItem>
+        <EmailItem
+          theme={theme}
+          $selected={isSelected}
+          onClick={() => onSelectThread(thread)}
+        >
+          <EmailAvatar theme={theme}>
+            {(getRelevantPerson(email)?.charAt(0) || '?').toUpperCase()}
+          </EmailAvatar>
+          <EmailContent>
+            <EmailHeader>
+              <EmailSender theme={theme} $unread={!email.is_read}>
+                {getRelevantPerson(email)}
+              </EmailSender>
+              <EmailDate theme={theme}>
+                {formatDate(email.date || email.received_at)}
+              </EmailDate>
+            </EmailHeader>
+            <EmailSubject theme={theme} $unread={!email.is_read}>
+              {email.subject || '(No subject)'}
+            </EmailSubject>
+            <EmailSnippet theme={theme}>
+              {email.snippet || email.body_text?.substring(0, 80) || ''}
+            </EmailSnippet>
+          </EmailContent>
+          {thread.count > 1 && (
+            <ThreadCount theme={theme}>{thread.count}</ThreadCount>
+          )}
+        </EmailItem>
+      </SwipeableEmailItem>
     );
   };
 

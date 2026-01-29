@@ -53,6 +53,9 @@ const CommandCenterMobile = ({
   onComposeEmail,
   onSendWhatsApp,
   onCreateTask,
+  onArchiveEmail,
+  onReplyEmail,
+  onRefreshEmails,
   // ... more props will be added as we build out
 }) => {
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
@@ -115,6 +118,13 @@ const CommandCenterMobile = ({
           threads={emailThreads || []}
           selectedThread={localSelectedThread}
           onSelectThread={handleSelectThread}
+          onArchive={(thread) => onArchiveEmail?.(thread)}
+          onReply={(thread) => {
+            setLocalSelectedThread(thread);
+            setViewMode('detail');
+            onReplyEmail?.(thread);
+          }}
+          onRefresh={onRefreshEmails}
           theme={theme}
         />
       );

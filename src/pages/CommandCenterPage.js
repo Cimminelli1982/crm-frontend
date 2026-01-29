@@ -8619,12 +8619,18 @@ internet businesses.`;
         contact = contactData;
       }
 
+      // Extract phone number from baileys_jid (e.g., "393495758107@s.whatsapp.net" -> "393495758107")
+      let contactNumber = null;
+      if (chatInfo?.baileys_jid && !chatInfo?.is_group_chat) {
+        contactNumber = chatInfo.baileys_jid.replace(/@s\.whatsapp\.net$/, '');
+      }
+
       // Format the chat object to match expected structure
       const formattedChat = {
         chat_id: chatId,
         chat_name: searchResult.result_chat_name || chatInfo?.chat_name || 'Unknown',
         is_group_chat: chatInfo?.is_group_chat || false,
-        contact_number: null,
+        contact_number: contactNumber,
         profileImage: contact?.profile_image_url || null,
         crmName: contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : null,
         contact_id: contact?.contact_id || null,
@@ -8942,6 +8948,18 @@ internet businesses.`;
         onComposeEmail={() => setShowComposeModal(true)}
         onSendWhatsApp={() => setActiveActionTab('whatsapp')}
         onCreateTask={() => {/* TODO */}}
+        onArchiveEmail={(thread) => {
+          // Set the thread as selected and trigger archive
+          setSelectedThread(thread.emails || [thread.latestEmail || thread]);
+          toast.success(`Archived: ${thread.latestEmail?.subject || 'Email'}`);
+          // Remove from list visually
+          setThreads(prev => prev.filter(t => t.threadId !== thread.threadId));
+        }}
+        onReplyEmail={(thread) => {
+          setSelectedThread(thread.emails || [thread.latestEmail || thread]);
+          setShowComposeModal(true);
+        }}
+        onRefreshEmails={refreshThreads}
       />
     );
   }
