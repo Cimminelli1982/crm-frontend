@@ -6357,17 +6357,35 @@ internet businesses.`;
           }
         };
       } else {
-        const email = selectedThread[0];
+        // Send the entire thread for context, not just the first email
+        const threadMessages = selectedThread.map(email => ({
+          from_email: email.from_email,
+          from_name: email.from_name,
+          to_recipients: email.to_recipients || [],
+          cc_recipients: email.cc_recipients || [],
+          subject: email.subject,
+          body_text: email.body_text,
+          snippet: email.snippet,
+          date: email.date,
+        }));
+
+        // Combine all body_text for full context
+        const fullThreadText = selectedThread
+          .map(e => `From: ${e.from_name || e.from_email}\nDate: ${e.date}\n\n${e.body_text || e.snippet || ''}`)
+          .join('\n\n---\n\n');
+
+        const latestEmail = selectedThread[0];
         requestBody = {
           email: {
-            from_email: email.from_email,
-            from_name: email.from_name,
-            to_recipients: email.to_recipients || [],
-            cc_recipients: email.cc_recipients || [],
-            subject: email.subject,
-            body_text: email.body_text,
-            snippet: email.snippet,
-            date: email.date,
+            from_email: latestEmail.from_email,
+            from_name: latestEmail.from_name,
+            to_recipients: latestEmail.to_recipients || [],
+            cc_recipients: latestEmail.cc_recipients || [],
+            subject: latestEmail.subject,
+            body_text: fullThreadText, // Full thread content
+            snippet: latestEmail.snippet,
+            date: latestEmail.date,
+            thread_messages: threadMessages, // Include all messages
           }
         };
       }
@@ -8945,19 +8963,19 @@ internet businesses.`;
         // Deals
         deals={pipelineDeals}
         // Actions
-        onComposeEmail={() => setShowComposeModal(true)}
+        onComposeEmail={() => openNewCompose()}
         onSendWhatsApp={() => setActiveActionTab('whatsapp')}
         onCreateTask={() => {/* TODO */}}
         onArchiveEmail={(thread) => {
-          // Set the thread as selected and trigger archive
-          setSelectedThread(thread.emails || [thread.latestEmail || thread]);
-          toast.success(`Archived: ${thread.latestEmail?.subject || 'Email'}`);
           // Remove from list visually
           setThreads(prev => prev.filter(t => t.threadId !== thread.threadId));
+          toast.success(`Archived: ${thread.latestEmail?.subject || 'Email'}`);
         }}
         onReplyEmail={(thread) => {
+          // Set selected thread first, then open reply
           setSelectedThread(thread.emails || [thread.latestEmail || thread]);
-          setShowComposeModal(true);
+          // Small delay to ensure selectedThread is set before openReply uses it
+          setTimeout(() => openReply(), 50);
         }}
         onRefreshEmails={refreshThreads}
       />
@@ -16535,6 +16553,15 @@ internet businesses.`;
         setCreateDealAIOpen={setCreateDealAIOpen}
         // Create Deal manual modal
         setCreateDealModalOpen={setCreateDealModalOpen}
+        // Calendar props
+        onExtractCalendarEvent={handleCalendarExtract}
+        pendingCalendarEvent={pendingCalendarEvent}
+        setPendingCalendarEvent={setPendingCalendarEvent}
+        calendarEventEdits={calendarEventEdits}
+        setCalendarEventEdits={setCalendarEventEdits}
+        updateCalendarEventField={updateCalendarEventField}
+        calendarLoading={calendarLoading}
+        handleCreateCalendarEvent={handleCreateCalendarEvent}
       />
 
       {/* Quick Edit Modal */}
