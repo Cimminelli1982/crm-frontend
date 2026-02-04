@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { FaChevronDown, FaChevronRight, FaInbox, FaBolt, FaClock, FaWhatsapp, FaUsers } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaInbox, FaBolt, FaClock, FaWhatsapp, FaUsers, FaSpinner } from 'react-icons/fa';
 import { formatDistanceToNow } from 'date-fns';
 
 /**
@@ -20,6 +20,7 @@ const MobileWhatsAppList = ({
     inbox: true,
     need_actions: true,
     waiting_input: false,
+    archiving: false,
   });
 
   // Filter chats by status
@@ -31,6 +32,7 @@ const MobileWhatsAppList = ({
   const inboxChats = filterByStatus(chats, 'inbox');
   const needActionsChats = filterByStatus(chats, 'need_actions');
   const waitingInputChats = filterByStatus(chats, 'waiting_input');
+  const archivingChats = filterByStatus(chats, 'archiving');
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({
@@ -156,6 +158,7 @@ const MobileWhatsAppList = ({
       {renderSection('Inbox', <FaInbox />, inboxChats, 'inbox', '#25D366')}
       {renderSection('Need Actions', <FaBolt />, needActionsChats, 'need_actions', '#F59E0B')}
       {renderSection('Waiting Input', <FaClock />, waitingInputChats, 'waiting_input', '#8B5CF6')}
+      {archivingChats.length > 0 && renderSection('Archiving', <FaSpinner style={{ animation: 'spin 1s linear infinite' }} />, archivingChats, 'archiving', '#10b981')}
     </Container>
   );
 };

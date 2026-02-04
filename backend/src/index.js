@@ -1187,6 +1187,258 @@ app.post('/email/save-and-archive', async (req, res) => {
   }
 });
 
+// Save and archive WhatsApp messages - background processing
+app.post('/whatsapp/save-and-archive', async (req, res) => {
+  try {
+    const { chatData, messages } = req.body;
+
+    if (!chatData || !messages || messages.length === 0) {
+      return res.status(400).json({ success: false, error: 'Missing chatData or messages' });
+    }
+
+    console.log(`[WhatsAppArchive] Processing ${messages.length} messages for chat: ${chatData.chat_name || chatData.contact_number}`);
+
+    const errors = [];
+
+    // 1. Find or create the chat in chats table
+    let crmChatId = null;
+
+    // First try to find by external_chat_id (TimelinesAI ID)
+    const { data: existingChat, error: chatFindError } = await supabase
+      .from('chats')
+      .select('id')
+      .eq('external_chat_id', chatData.chat_id)
+      .maybeSingle();
+
+    if (chatFindError) {
+      console.error('[WhatsAppArchive] Error finding chat:', chatFindError);
+      errors.push({ step: 'find_chat', error: chatFindError.message });
+    }
+
+    if (existingChat) {
+      crmChatId = existingChat.id;
+    } else if (chatData.is_group_chat && chatData.chat_name) {
+      // For groups: also try to match by chat_name
+      const { data: chatByName, error: nameError } = await supabase
+        .from('chats')
+        .select('id, external_chat_id')
+        .eq('chat_name', chatData.chat_name)
+        .eq('is_group_chat', true)
+        .is('external_chat_id', null)
+        .maybeSingle();
+
+      if (nameError) {
+        console.error('[WhatsAppArchive] Error finding chat by name:', nameError);
+      }
+
+      if (chatByName) {
+        crmChatId = chatByName.id;
+        // Link the external_chat_id
+        await supabase
+          .from('chats')
+          .update({ external_chat_id: chatData.chat_id })
+          .eq('id', chatByName.id);
+        console.log(`[WhatsAppArchive] Linked TimelinesAI chat_id to existing chat ${chatByName.id}`);
+      }
+    }
+
+    // If still no match, create new chat
+    if (!crmChatId) {
+      const { data: newChat, error: chatCreateError } = await supabase
+        .from('chats')
+        .insert({
+          chat_name: chatData.chat_name || chatData.contact_number,
+          is_group_chat: chatData.is_group_chat || false,
+          category: chatData.is_group_chat ? 'group' : 'individual',
+          external_chat_id: chatData.chat_id,
+          created_by: 'Edge Function'
+        })
+        .select('id')
+        .single();
+
+      if (chatCreateError) {
+        console.error('[WhatsAppArchive] Error creating chat:', chatCreateError);
+        return res.status(500).json({ success: false, error: 'Failed to create chat record' });
+      }
+      crmChatId = newChat.id;
+      console.log(`[WhatsAppArchive] Created new chat: ${crmChatId}`);
+    }
+
+    // 2. Find contact by phone number
+    let contactId = null;
+    if (chatData.contact_number && !chatData.is_group_chat) {
+      // Normalize phone: remove spaces, dashes, parentheses
+      const normalizedPhone = chatData.contact_number.replace(/[\s\-\(\)]/g, '');
+      const phoneWithoutPlus = normalizedPhone.replace(/^\+/, '');
+
+      const { data: contactMobile, error: mobileError } = await supabase
+        .from('contact_mobiles')
+        .select('contact_id')
+        .or(`mobile.ilike.%${normalizedPhone}%,mobile.ilike.%${phoneWithoutPlus}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (mobileError) {
+        console.error('[WhatsAppArchive] Error finding contact by phone:', mobileError);
+      } else if (contactMobile) {
+        contactId = contactMobile.contact_id;
+        console.log(`[WhatsAppArchive] Found contact for phone ${chatData.contact_number}: ${contactId}`);
+      }
+    }
+
+    // 3. Link chat to contact
+    if (crmChatId && contactId) {
+      const { error: linkError } = await supabase
+        .from('contact_chats')
+        .upsert({
+          contact_id: contactId,
+          chat_id: crmChatId
+        }, { onConflict: 'contact_id,chat_id' });
+
+      if (linkError) {
+        console.error('[WhatsAppArchive] Error linking chat to contact:', linkError);
+      } else {
+        console.log(`[WhatsAppArchive] Linked chat ${crmChatId} to contact ${contactId}`);
+      }
+    }
+
+    // 4. Save each message as an interaction
+    let latestMessageDate = new Date(0);
+    for (const msg of messages) {
+      const messageUid = msg.message_uid || msg.id;
+      let interactionId = null;
+
+      // Track latest message date
+      const msgDate = new Date(msg.date);
+      if (msgDate > latestMessageDate) {
+        latestMessageDate = msgDate;
+      }
+
+      // Check if interaction already exists
+      const { data: existingInteraction } = await supabase
+        .from('interactions')
+        .select('interaction_id')
+        .eq('external_interaction_id', messageUid)
+        .maybeSingle();
+
+      if (!existingInteraction) {
+        const interactionData = {
+          interaction_type: 'whatsapp',
+          direction: msg.direction || 'received',
+          interaction_date: msg.date,
+          chat_id: crmChatId,
+          summary: msg.body_text || msg.snippet,
+          external_interaction_id: messageUid,
+          created_at: new Date().toISOString()
+        };
+
+        if (contactId) {
+          interactionData.contact_id = contactId;
+        }
+
+        const { data: newInteraction, error: interactionError } = await supabase
+          .from('interactions')
+          .insert(interactionData)
+          .select('interaction_id')
+          .single();
+
+        if (interactionError) {
+          console.error('[WhatsAppArchive] Error creating interaction:', interactionError);
+          errors.push({ step: 'create_interaction', error: interactionError.message, messageUid });
+        } else {
+          interactionId = newInteraction?.interaction_id;
+        }
+      } else {
+        interactionId = existingInteraction.interaction_id;
+      }
+
+      // 4.5 Link attachments to contact, chat, and interaction
+      if (messageUid) {
+        const attachmentUpdate = {
+          chat_id: crmChatId
+        };
+        if (contactId) attachmentUpdate.contact_id = contactId;
+        if (interactionId) attachmentUpdate.interaction_id = interactionId;
+
+        const { error: attachmentLinkError } = await supabase
+          .from('attachments')
+          .update(attachmentUpdate)
+          .eq('external_reference', messageUid);
+
+        if (attachmentLinkError) {
+          console.error('[WhatsAppArchive] Error linking attachments:', attachmentLinkError);
+        }
+      }
+    }
+
+    // 5. Update contact's last_interaction_at
+    if (contactId && latestMessageDate > new Date(0)) {
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({
+          last_interaction_at: latestMessageDate.toISOString(),
+          last_modified_at: new Date().toISOString(),
+          last_modified_by: 'Edge Function'
+        })
+        .eq('contact_id', contactId)
+        .or(`last_interaction_at.is.null,last_interaction_at.lt.${latestMessageDate.toISOString()}`);
+
+      if (updateError) {
+        console.error('[WhatsAppArchive] Error updating last_interaction_at:', updateError);
+      } else {
+        console.log(`[WhatsAppArchive] Updated last_interaction_at for contact ${contactId}`);
+      }
+    }
+
+    // 6. Delete messages from staging (command_center_inbox)
+    const messageIds = messages.map(m => m.id).filter(Boolean);
+    if (messageIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('command_center_inbox')
+        .delete()
+        .in('id', messageIds);
+
+      if (deleteError) {
+        console.error('[WhatsAppArchive] Error deleting from staging:', deleteError);
+        errors.push({ step: 'delete_staging', error: deleteError.message });
+      } else {
+        console.log(`[WhatsAppArchive] Deleted ${messageIds.length} messages from staging`);
+      }
+    }
+
+    // 7. Track this chat as "done" to prevent sent messages from reappearing
+    const sortedMessages = [...messages].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const lastMessageUid = sortedMessages[0]?.message_uid || null;
+
+    const { error: doneError } = await supabase
+      .from('whatsapp_chat_done')
+      .upsert({
+        chat_id: chatData.chat_id,
+        done_at: new Date().toISOString(),
+        last_message_uid: lastMessageUid
+      }, { onConflict: 'chat_id' });
+
+    if (doneError) {
+      console.error('[WhatsAppArchive] Error saving chat done status:', doneError);
+    } else {
+      console.log(`[WhatsAppArchive] Marked chat as done: ${chatData.chat_id}`);
+    }
+
+    console.log(`[WhatsAppArchive] Complete: ${messages.length} messages processed, ${errors.length} errors`);
+
+    res.json({
+      success: true,
+      processedCount: messages.length,
+      errorCount: errors.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (error) {
+    console.error('[WhatsAppArchive] Fatal error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Mark emails as read in Fastmail and Supabase
 app.post('/mark-as-read', async (req, res) => {
   try {

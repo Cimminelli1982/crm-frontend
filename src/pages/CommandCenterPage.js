@@ -8068,6 +8068,112 @@ internet businesses.`;
     }
   };
 
+  // Handle WhatsApp Done async - fast UI with background processing
+  const handleWhatsAppDoneAsync = async () => {
+    if (!selectedWhatsappChat) return;
+
+    // Capture state at time of click (before any updates)
+    const chatToProcess = { ...selectedWhatsappChat };
+    const messages = [...(selectedWhatsappChat.messages || [])];
+    const messageIds = messages.map(m => m.id).filter(Boolean);
+    const chatId = selectedWhatsappChat.chat_id;
+    const currentChatIndex = whatsappChats.findIndex(c => c.chat_id === chatId);
+
+    if (messageIds.length === 0) {
+      toast.error('No messages to archive');
+      return;
+    }
+
+    // 1. SYNC: Update DB status to 'archiving' (fast ~200ms, ensures consistency)
+    const { error: updateError } = await supabase
+      .from('command_center_inbox')
+      .update({ status: 'archiving' })
+      .in('id', messageIds);
+
+    if (updateError) {
+      console.error('Failed to set archiving status:', updateError);
+      toast.error('Failed to archive');
+      return;
+    }
+
+    // 2. Update local state - move chat to archiving status
+    setWhatsappChats(prev => prev.map(chat =>
+      chat.chat_id === chatId
+        ? { ...chat, status: 'archiving', messages: chat.messages.map(m => ({ ...m, status: 'archiving' })) }
+        : chat
+    ));
+
+    // 3. Select next chat (from inbox only, excluding archiving)
+    const remainingInboxChats = whatsappChats.filter(c =>
+      c.chat_id !== chatId && c.status !== 'archiving'
+    );
+
+    if (remainingInboxChats.length > 0) {
+      const nextIndex = Math.min(currentChatIndex, remainingInboxChats.length - 1);
+      setSelectedWhatsappChat(remainingInboxChats[nextIndex]);
+    } else {
+      setSelectedWhatsappChat(null);
+    }
+
+    // 4. ASYNC: Call backend for full processing (non-blocking)
+    fetch(`${BACKEND_URL}/whatsapp/save-and-archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatData: {
+          chat_id: chatToProcess.chat_id,
+          chat_name: chatToProcess.chat_name,
+          contact_number: chatToProcess.contact_number,
+          is_group_chat: chatToProcess.is_group_chat || false,
+          chat_jid: chatToProcess.chat_jid
+        },
+        messages: messages.map(m => ({
+          id: m.id,
+          message_uid: m.message_uid || m.id,
+          body_text: m.body_text || m.snippet,
+          direction: m.direction || 'received',
+          date: m.date,
+          has_attachments: m.has_attachments || false,
+          attachments: m.attachments || []
+        }))
+      })
+    })
+    .then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Backend processing failed');
+      }
+
+      // SUCCESS: Remove from local state (backend deleted from DB)
+      setWhatsappChats(prev => prev.filter(c => c.chat_id !== chatId));
+      setWhatsappMessages(prev => prev.filter(m => m.chat_id !== chatId));
+
+      toast.success('WhatsApp archived successfully');
+    })
+    .catch(async (error) => {
+      console.error('WhatsApp archive backend error:', error);
+      toast.error(`Archive failed: ${error.message}`);
+
+      // ROLLBACK: Move back to Inbox (DB has reliable 'archiving' status to rollback from)
+      const { error: rollbackError } = await supabase
+        .from('command_center_inbox')
+        .update({ status: null })
+        .in('id', messageIds);
+
+      if (rollbackError) {
+        console.error('Rollback failed:', rollbackError);
+        toast.error('Please refresh the page');
+      } else {
+        // Update local state back to inbox
+        setWhatsappChats(prev => prev.map(chat =>
+          chat.chat_id === chatId
+            ? { ...chat, status: null, messages: chat.messages.map(m => ({ ...m, status: null })) }
+            : chat
+        ));
+      }
+    });
+  };
+
   // Search contacts for new WhatsApp message
   const handleNewWhatsAppSearch = async (query) => {
     setNewWhatsAppSearchQuery(query);
@@ -9644,8 +9750,9 @@ internet businesses.`;
                     )
                   )}
 
-                  {/* Archiving Section - emails being processed in background */}
-                  {activeTab === 'email' && filterByStatus(threads, 'archiving').length > 0 && (
+                  {/* Archiving Section - items being processed in background */}
+                  {((activeTab === 'email' && filterByStatus(threads, 'archiving').length > 0) ||
+                    (activeTab === 'whatsapp' && filterByStatus(whatsappChats, 'archiving').length > 0)) && (
                     <>
                       <div
                         onClick={() => toggleStatusSection('archiving')}
@@ -9667,29 +9774,41 @@ internet businesses.`;
                         <FaChevronDown style={{ transform: statusSections.archiving ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
                         <span style={{ color: '#10b981' }}>Archiving</span>
                         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
-                          {filterByStatus(threads, 'archiving').length}
+                          {activeTab === 'email' ? filterByStatus(threads, 'archiving').length : filterByStatus(whatsappChats, 'archiving').length}
                         </span>
                       </div>
                       {statusSections.archiving && (
-                        filterByStatus(threads, 'archiving').map(thread => (
-                          <EmailItem
-                            key={thread.threadId}
+                        activeTab === 'email' ? (
+                          filterByStatus(threads, 'archiving').map(thread => (
+                            <EmailItem
+                              key={thread.threadId}
+                              theme={theme}
+                              $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
+                              onClick={() => handleSelectThread(thread.emails)}
+                              style={{ opacity: 0.6 }}
+                            >
+                              <EmailSender theme={theme}>
+                                <FaSpinner style={{ animation: 'spin 1s linear infinite', marginRight: '4px' }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {getRelevantPerson(thread.latestEmail)}
+                                </span>
+                                {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
+                              </EmailSender>
+                              <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
+                              <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>
+                            </EmailItem>
+                          ))
+                        ) : (
+                          <WhatsAppChatList
                             theme={theme}
-                            $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
-                            onClick={() => handleSelectThread(thread.emails)}
-                            style={{ opacity: 0.6 }}
-                          >
-                            <EmailSender theme={theme}>
-                              <FaSpinner style={{ animation: 'spin 1s linear infinite', marginRight: '4px' }} />
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {getRelevantPerson(thread.latestEmail)}
-                              </span>
-                              {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
-                            </EmailSender>
-                            <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
-                            <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>
-                          </EmailItem>
-                        ))
+                            chats={filterByStatus(whatsappChats, 'archiving')}
+                            selectedChat={selectedWhatsappChat}
+                            onSelectChat={setSelectedWhatsappChat}
+                            loading={false}
+                            contacts={emailContacts}
+                            archiving={true}
+                          />
+                        )
                       )}
                     </>
                   )}
@@ -11056,7 +11175,7 @@ internet businesses.`;
             <WhatsAppTab
               theme={theme}
               selectedChat={selectedWhatsappChat}
-              onDone={handleWhatsAppDone}
+              onDone={handleWhatsAppDoneAsync}
               onSpam={handleWhatsAppSpam}
               onStatusChange={updateItemStatus}
               saving={saving}
