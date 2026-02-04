@@ -814,6 +814,379 @@ app.post('/archive', async (req, res) => {
   }
 });
 
+// Save & Archive email - full CRM processing and Fastmail archive (called by frontend saveAndArchiveAsync)
+app.post('/email/save-and-archive', async (req, res) => {
+  const MY_EMAIL = 'simone@cimminelli.com';
+
+  try {
+    const { threadData, contactsData, keepStatus } = req.body;
+
+    if (!threadData || threadData.length === 0) {
+      return res.status(400).json({ success: false, error: 'Missing threadData' });
+    }
+
+    console.log(`[SaveAndArchive] Processing ${threadData.length} emails with ${contactsData?.length || 0} contacts`);
+
+    const errors = [];
+    const successfullySavedEmails = [];
+
+    // Process each email in the thread
+    for (const email of threadData) {
+      console.log(`[SaveAndArchive] Processing email: ${email.subject}`);
+      let crmSaveSuccess = true;
+
+      // 1. Create or get email_thread
+      let emailThreadId = null;
+      try {
+        const { data: existingThread, error: checkError } = await supabase
+          .from('email_threads')
+          .select('email_thread_id')
+          .eq('thread_id', email.thread_id)
+          .maybeSingle();
+
+        if (checkError) {
+          console.error('[SaveAndArchive] Error checking thread:', checkError);
+          errors.push({ step: 'check_thread', error: checkError.message });
+          crmSaveSuccess = false;
+        }
+
+        if (existingThread) {
+          emailThreadId = existingThread.email_thread_id;
+
+          // Update last_message_timestamp if newer
+          await supabase
+            .from('email_threads')
+            .update({
+              last_message_timestamp: email.date,
+              updated_at: new Date().toISOString()
+            })
+            .eq('email_thread_id', emailThreadId)
+            .lt('last_message_timestamp', email.date);
+        } else {
+          // Create new thread
+          const { data: newThread, error: insertError } = await supabase
+            .from('email_threads')
+            .insert({
+              thread_id: email.thread_id,
+              subject: email.subject?.replace(/^(Re: |Fwd: )+/i, ''),
+              last_message_timestamp: email.date,
+            })
+            .select('email_thread_id')
+            .single();
+
+          if (insertError) {
+            console.error('[SaveAndArchive] Error creating thread:', insertError);
+            errors.push({ step: 'create_thread', error: insertError.message });
+            crmSaveSuccess = false;
+          } else {
+            emailThreadId = newThread.email_thread_id;
+          }
+        }
+      } catch (threadError) {
+        console.error('[SaveAndArchive] Thread operation failed:', threadError);
+        errors.push({ step: 'thread', error: threadError.message });
+        crmSaveSuccess = false;
+      }
+
+      // 2. Get sender contact_id
+      const senderEmail = email.from_email?.toLowerCase();
+      let senderContactId = null;
+
+      // First check provided contacts
+      const senderContact = contactsData?.find(c => c.email?.toLowerCase() === senderEmail);
+      if (senderContact?.contact_id) {
+        senderContactId = senderContact.contact_id;
+      } else {
+        // Look up in DB
+        try {
+          const { data: contactEmail } = await supabase
+            .from('contact_emails')
+            .select('contact_id')
+            .eq('email', senderEmail)
+            .maybeSingle();
+          senderContactId = contactEmail?.contact_id || null;
+        } catch (e) {
+          console.error('[SaveAndArchive] Failed to look up sender:', e.message);
+        }
+      }
+
+      // 3. Create email record if not exists
+      let emailId = null;
+      try {
+        const { data: existingEmail, error: checkEmailError } = await supabase
+          .from('emails')
+          .select('email_id')
+          .eq('gmail_id', email.fastmail_id)
+          .maybeSingle();
+
+        if (checkEmailError) {
+          console.error('[SaveAndArchive] Error checking email:', checkEmailError);
+          errors.push({ step: 'check_email', error: checkEmailError.message });
+          crmSaveSuccess = false;
+        }
+
+        if (existingEmail) {
+          emailId = existingEmail.email_id;
+        } else {
+          const isSentByMe = senderEmail === MY_EMAIL;
+          const direction = isSentByMe ? 'sent' : 'received';
+
+          const emailRecord = {
+            gmail_id: email.fastmail_id,
+            thread_id: email.thread_id,
+            email_thread_id: emailThreadId,
+            subject: email.subject,
+            body_plain: email.body_text,
+            body_html: email.body_html,
+            message_timestamp: email.date,
+            direction: direction,
+            has_attachments: email.has_attachments || false,
+            attachment_count: email.attachments?.length || 0,
+            is_read: email.is_read || false,
+            is_starred: email.is_starred || false,
+            created_by: 'Edge Function',
+          };
+
+          if (senderContactId) {
+            emailRecord.sender_contact_id = senderContactId;
+          }
+
+          const { data: newEmail, error: insertEmailError } = await supabase
+            .from('emails')
+            .insert(emailRecord)
+            .select('email_id')
+            .single();
+
+          if (insertEmailError) {
+            console.error('[SaveAndArchive] Error creating email:', insertEmailError);
+            errors.push({ step: 'create_email', error: insertEmailError.message });
+            crmSaveSuccess = false;
+          } else {
+            emailId = newEmail.email_id;
+          }
+        }
+      } catch (emailError) {
+        console.error('[SaveAndArchive] Email operation failed:', emailError);
+        errors.push({ step: 'email', error: emailError.message });
+        crmSaveSuccess = false;
+      }
+
+      // 4. Create email_participants
+      if (emailId) {
+        try {
+          const participants = [];
+
+          // Sender
+          if (senderContactId) {
+            participants.push({ contact_id: senderContactId, participant_type: 'sender' });
+          }
+
+          // To recipients
+          for (const recipient of (email.to_recipients || [])) {
+            const recipientContact = contactsData?.find(c =>
+              c.email?.toLowerCase() === recipient.email?.toLowerCase()
+            );
+            if (recipientContact?.contact_id) {
+              participants.push({ contact_id: recipientContact.contact_id, participant_type: 'to' });
+            }
+          }
+
+          // CC recipients
+          for (const recipient of (email.cc_recipients || [])) {
+            const recipientContact = contactsData?.find(c =>
+              c.email?.toLowerCase() === recipient.email?.toLowerCase()
+            );
+            if (recipientContact?.contact_id) {
+              participants.push({ contact_id: recipientContact.contact_id, participant_type: 'cc' });
+            }
+          }
+
+          // Insert participants
+          for (const participant of participants) {
+            const { data: existing } = await supabase
+              .from('email_participants')
+              .select('participant_id')
+              .eq('email_id', emailId)
+              .eq('contact_id', participant.contact_id)
+              .maybeSingle();
+
+            if (!existing) {
+              await supabase
+                .from('email_participants')
+                .insert({
+                  email_id: emailId,
+                  contact_id: participant.contact_id,
+                  participant_type: participant.participant_type,
+                });
+            }
+          }
+        } catch (participantError) {
+          console.error('[SaveAndArchive] Participant operation failed:', participantError);
+          errors.push({ step: 'participants', error: participantError.message });
+        }
+      }
+
+      // 5. Create interactions for contacts
+      if (emailThreadId && contactsData?.length > 0) {
+        try {
+          const isSentByMe = senderEmail === MY_EMAIL;
+
+          for (const contactEntry of contactsData) {
+            const contactId = contactEntry.contact_id;
+            if (!contactId) continue;
+
+            // Check if interaction already exists
+            const { data: existingInteraction } = await supabase
+              .from('interactions')
+              .select('interaction_id')
+              .eq('contact_id', contactId)
+              .eq('email_thread_id', emailThreadId)
+              .maybeSingle();
+
+            if (existingInteraction) continue;
+
+            const direction = isSentByMe ? 'sent' : 'received';
+
+            await supabase
+              .from('interactions')
+              .insert({
+                contact_id: contactId,
+                interaction_type: 'email',
+                direction: direction,
+                interaction_date: email.date,
+                email_thread_id: emailThreadId,
+                summary: email.subject || email.snippet?.substring(0, 100),
+              });
+          }
+        } catch (interactionError) {
+          console.error('[SaveAndArchive] Interaction operation failed:', interactionError);
+          errors.push({ step: 'interactions', error: interactionError.message });
+        }
+      }
+
+      // 6. Link thread to contacts via contact_email_threads
+      if (emailThreadId && contactsData?.length > 0) {
+        try {
+          for (const contactEntry of contactsData) {
+            const contactId = contactEntry.contact_id;
+            if (!contactId) continue;
+
+            const { data: existing } = await supabase
+              .from('contact_email_threads')
+              .select('contact_id')
+              .eq('contact_id', contactId)
+              .eq('email_thread_id', emailThreadId)
+              .maybeSingle();
+
+            if (!existing) {
+              await supabase
+                .from('contact_email_threads')
+                .insert({ contact_id: contactId, email_thread_id: emailThreadId });
+            }
+          }
+        } catch (linkError) {
+          console.error('[SaveAndArchive] Thread link operation failed:', linkError);
+          errors.push({ step: 'thread_links', error: linkError.message });
+        }
+      }
+
+      // 7. Update last_interaction_at on contacts
+      if (contactsData?.length > 0) {
+        try {
+          for (const contactEntry of contactsData) {
+            const contactId = contactEntry.contact_id;
+            if (!contactId) continue;
+
+            await supabase
+              .from('contacts')
+              .update({
+                last_interaction_at: email.date,
+                last_modified_at: new Date().toISOString(),
+                last_modified_by: 'Edge Function'
+              })
+              .eq('contact_id', contactId)
+              .or(`last_interaction_at.is.null,last_interaction_at.lt.${email.date}`);
+          }
+        } catch (updateError) {
+          console.error('[SaveAndArchive] Contact update operation failed:', updateError);
+          errors.push({ step: 'contacts_update', error: updateError.message });
+        }
+      }
+
+      // Only proceed with archive if CRM save was successful
+      if (crmSaveSuccess) {
+        // 8. Archive in Fastmail
+        try {
+          const jmap = new JMAPClient(
+            process.env.FASTMAIL_USERNAME,
+            process.env.FASTMAIL_API_TOKEN
+          );
+          await jmap.init();
+
+          await jmap.archiveEmail(email.fastmail_id);
+
+          // Stamp with $crm_done
+          try {
+            await jmap.addKeyword(email.fastmail_id, '$crm_done');
+          } catch (stampError) {
+            console.error('[SaveAndArchive] Error stamping email:', stampError.message);
+          }
+
+          console.log(`[SaveAndArchive] Archived in Fastmail: ${email.fastmail_id}`);
+        } catch (archiveError) {
+          console.error('[SaveAndArchive] Fastmail archive failed:', archiveError);
+          errors.push({ step: 'fastmail_archive', error: archiveError.message });
+        }
+
+        // 9. Remove from command_center_inbox OR update status
+        try {
+          if (keepStatus) {
+            await supabase
+              .from('command_center_inbox')
+              .update({ status: keepStatus })
+              .eq('id', email.id);
+            console.log(`[SaveAndArchive] Updated status to '${keepStatus}' for ${email.id}`);
+          } else {
+            await supabase
+              .from('command_center_inbox')
+              .delete()
+              .eq('id', email.id);
+            console.log(`[SaveAndArchive] Deleted from inbox: ${email.id}`);
+          }
+        } catch (opError) {
+          console.error('[SaveAndArchive] Inbox operation failed:', opError);
+          errors.push({ step: 'inbox_operation', error: opError.message });
+        }
+
+        successfullySavedEmails.push(email.id);
+      } else {
+        console.log(`[SaveAndArchive] Skipping archive due to CRM save failure for email ${email.id}`);
+      }
+    }
+
+    console.log(`[SaveAndArchive] Complete: ${successfullySavedEmails.length} saved, ${errors.length} errors`);
+
+    if (successfullySavedEmails.length === 0) {
+      return res.status(500).json({
+        success: false,
+        error: 'No emails were saved successfully',
+        errors: errors
+      });
+    }
+
+    res.json({
+      success: true,
+      savedCount: successfullySavedEmails.length,
+      errorCount: errors.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (error) {
+    console.error('[SaveAndArchive] Fatal error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Mark emails as read in Fastmail and Supabase
 app.post('/mark-as-read', async (req, res) => {
   try {

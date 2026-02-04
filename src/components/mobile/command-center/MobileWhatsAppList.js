@@ -1,20 +1,18 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { FaChevronDown, FaChevronRight, FaInbox, FaBolt, FaClock, FaEnvelope, FaSpinner } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaInbox, FaBolt, FaClock, FaWhatsapp, FaUsers } from 'react-icons/fa';
 import { formatDistanceToNow } from 'date-fns';
-import SwipeableEmailItem from './SwipeableEmailItem';
 
 /**
- * MobileEmailList - Email list optimized for mobile
- * Shows threads grouped by status: Inbox, Need Actions, Waiting Input
+ * MobileWhatsAppList - WhatsApp chat list optimized for mobile
+ * Shows chats grouped by status: Inbox, Need Actions, Waiting Input
  */
-const MobileEmailList = ({
-  threads = [],
-  selectedThread,
-  onSelectThread,
+const MobileWhatsAppList = ({
+  chats = [],
+  selectedChat,
+  onSelectChat,
   onArchive,
   onReply,
-  onRefresh,
   theme = 'dark',
 }) => {
   // Section expansion state
@@ -22,19 +20,17 @@ const MobileEmailList = ({
     inbox: true,
     need_actions: true,
     waiting_input: false,
-    archiving: false,
   });
 
-  // Filter threads by status
+  // Filter chats by status
   const filterByStatus = (items, status) => {
     if (status === 'inbox') return items.filter(item => !item.status);
     return items.filter(item => item.status === status);
   };
 
-  const inboxThreads = filterByStatus(threads, 'inbox');
-  const needActionsThreads = filterByStatus(threads, 'need_actions');
-  const waitingInputThreads = filterByStatus(threads, 'waiting_input');
-  const archivingThreads = filterByStatus(threads, 'archiving');
+  const inboxChats = filterByStatus(chats, 'inbox');
+  const needActionsChats = filterByStatus(chats, 'need_actions');
+  const waitingInputChats = filterByStatus(chats, 'waiting_input');
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({
@@ -52,61 +48,72 @@ const MobileEmailList = ({
     }
   };
 
-  const getRelevantPerson = (email) => {
-    if (!email) return 'Unknown';
-    // If sent by me, show recipient; otherwise show sender
-    if (email.direction === 'sent') {
-      return email.to_name || email.to_email || 'Unknown';
-    }
-    return email.from_name || email.from_email || 'Unknown';
+  const getDisplayName = (chat) => {
+    return chat.chat_name || chat.contact_number || 'Unknown';
   };
 
-  const renderEmailItem = (thread) => {
-    const email = thread.latestEmail || thread;
-    const isSelected = selectedThread?.threadId === thread.threadId;
+  const getInitials = (chat) => {
+    const name = getDisplayName(chat);
+    if (chat.is_group_chat) {
+      return name.substring(0, 2).toUpperCase();
+    }
+    return name.charAt(0).toUpperCase();
+  };
+
+  const getLatestMessage = (chat) => {
+    const msg = chat.latestMessage || chat.messages?.[0];
+    if (!msg) return 'No messages';
+    return msg.body_text || msg.snippet || (msg.has_attachments ? '📎 Attachment' : 'No message');
+  };
+
+  const renderChatItem = (chat) => {
+    const isSelected = selectedChat?.chat_id === chat.chat_id;
+    const latestMsg = chat.latestMessage || chat.messages?.[0];
+    const hasUnread = chat.messages?.some(m => m.is_read === false);
 
     return (
-      <SwipeableEmailItem
-        key={thread.threadId || thread.id}
-        onArchive={() => onArchive?.(thread)}
-        onReply={() => onReply?.(thread)}
+      <ChatItem
+        key={chat.chat_id}
         theme={theme}
+        $selected={isSelected}
+        onClick={() => onSelectChat(chat)}
       >
-        <EmailItem
-          theme={theme}
-          $selected={isSelected}
-          onClick={() => onSelectThread(thread)}
-        >
-          <EmailAvatar theme={theme}>
-            {(getRelevantPerson(email)?.charAt(0) || '?').toUpperCase()}
-          </EmailAvatar>
-          <EmailContent>
-            <EmailHeader>
-              <EmailSender theme={theme} $unread={!email.is_read}>
-                {getRelevantPerson(email)}
-              </EmailSender>
-              <EmailDate theme={theme}>
-                {formatDate(email.date || email.received_at)}
-              </EmailDate>
-            </EmailHeader>
-            <EmailSubject theme={theme} $unread={!email.is_read}>
-              {email.subject || '(No subject)'}
-            </EmailSubject>
-            <EmailSnippet theme={theme}>
-              {email.snippet || email.body_text?.substring(0, 80) || ''}
-            </EmailSnippet>
-          </EmailContent>
-          {thread.count > 1 && (
-            <ThreadCount theme={theme}>{thread.count}</ThreadCount>
+        <ChatAvatar theme={theme} $isGroup={chat.is_group_chat}>
+          {getInitials(chat)}
+          {chat.is_group_chat && (
+            <GroupBadge theme={theme}>
+              <FaUsers size={8} />
+            </GroupBadge>
           )}
-        </EmailItem>
-      </SwipeableEmailItem>
+        </ChatAvatar>
+        <ChatContent>
+          <ChatHeader>
+            <ChatName theme={theme} $unread={hasUnread}>
+              {getDisplayName(chat)}
+            </ChatName>
+            <ChatDate theme={theme}>
+              {formatDate(latestMsg?.date)}
+            </ChatDate>
+          </ChatHeader>
+          <ChatPreview theme={theme} $unread={hasUnread}>
+            {getLatestMessage(chat)}
+          </ChatPreview>
+          {chat.contact_number && !chat.is_group_chat && (
+            <ChatNumber theme={theme}>
+              {chat.contact_number}
+            </ChatNumber>
+          )}
+        </ChatContent>
+        {hasUnread && (
+          <UnreadBadge>{chat.messages?.filter(m => !m.is_read).length || ''}</UnreadBadge>
+        )}
+      </ChatItem>
     );
   };
 
-  const renderSection = (title, icon, threads, sectionKey, color) => {
+  const renderSection = (title, icon, chats, sectionKey, color) => {
     const isExpanded = expandedSections[sectionKey];
-    const count = threads.length;
+    const count = chats.length;
 
     if (count === 0) return null;
 
@@ -127,18 +134,18 @@ const MobileEmailList = ({
         </SectionHeader>
         {isExpanded && (
           <SectionContent>
-            {threads.map(renderEmailItem)}
+            {chats.map(renderChatItem)}
           </SectionContent>
         )}
       </Section>
     );
   };
 
-  if (threads.length === 0) {
+  if (chats.length === 0) {
     return (
       <EmptyState theme={theme}>
-        <FaEnvelope size={48} style={{ opacity: 0.3 }} />
-        <EmptyTitle theme={theme}>No emails</EmptyTitle>
+        <FaWhatsapp size={48} style={{ opacity: 0.3, color: '#25D366' }} />
+        <EmptyTitle theme={theme}>No WhatsApp chats</EmptyTitle>
         <EmptyText theme={theme}>Your inbox is empty</EmptyText>
       </EmptyState>
     );
@@ -146,10 +153,9 @@ const MobileEmailList = ({
 
   return (
     <Container>
-      {renderSection('Inbox', <FaInbox />, inboxThreads, 'inbox', '#3B82F6')}
-      {renderSection('Need Actions', <FaBolt />, needActionsThreads, 'need_actions', '#F59E0B')}
-      {renderSection('Waiting Input', <FaClock />, waitingInputThreads, 'waiting_input', '#8B5CF6')}
-      {archivingThreads.length > 0 && renderSection('Archiving', <FaSpinner style={{ animation: 'spin 1s linear infinite' }} />, archivingThreads, 'archiving', '#10b981')}
+      {renderSection('Inbox', <FaInbox />, inboxChats, 'inbox', '#25D366')}
+      {renderSection('Need Actions', <FaBolt />, needActionsChats, 'need_actions', '#F59E0B')}
+      {renderSection('Waiting Input', <FaClock />, waitingInputChats, 'waiting_input', '#8B5CF6')}
     </Container>
   );
 };
@@ -206,13 +212,13 @@ const ChevronIcon = styled.span`
 
 const SectionContent = styled.div``;
 
-const EmailItem = styled.div`
+const ChatItem = styled.div`
   display: flex;
   align-items: flex-start;
   gap: 12px;
   padding: 14px 16px;
   background: ${props => props.$selected
-    ? (props.theme === 'light' ? '#EBF5FF' : '#1E3A5F')
+    ? (props.theme === 'light' ? '#D1FAE5' : '#064E3B')
     : (props.theme === 'light' ? '#FFFFFF' : '#111827')
   };
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#1F2937'};
@@ -224,34 +230,54 @@ const EmailItem = styled.div`
   }
 `;
 
-const EmailAvatar = styled.div`
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
-  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+const ChatAvatar = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background: ${props => props.$isGroup
+    ? (props.theme === 'light' ? '#DBEAFE' : '#1E3A5F')
+    : (props.theme === 'light' ? '#D1FAE5' : '#064E3B')};
+  color: ${props => props.$isGroup
+    ? (props.theme === 'light' ? '#3B82F6' : '#60A5FA')
+    : '#25D366'};
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   flex-shrink: 0;
+  position: relative;
 `;
 
-const EmailContent = styled.div`
+const GroupBadge = styled.div`
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  color: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid ${props => props.theme === 'light' ? '#FFFFFF' : '#111827'};
+`;
+
+const ChatContent = styled.div`
   flex: 1;
   min-width: 0;
   overflow: hidden;
 `;
 
-const EmailHeader = styled.div`
+const ChatHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2px;
 `;
 
-const EmailSender = styled.span`
+const ChatName = styled.span`
   font-size: 15px;
   font-weight: ${props => props.$unread ? '600' : '400'};
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
@@ -261,14 +287,14 @@ const EmailSender = styled.span`
   max-width: 200px;
 `;
 
-const EmailDate = styled.span`
+const ChatDate = styled.span`
   font-size: 12px;
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   white-space: nowrap;
   flex-shrink: 0;
 `;
 
-const EmailSubject = styled.div`
+const ChatPreview = styled.div`
   font-size: 14px;
   font-weight: ${props => props.$unread ? '500' : '400'};
   color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
@@ -278,21 +304,20 @@ const EmailSubject = styled.div`
   margin-bottom: 2px;
 `;
 
-const EmailSnippet = styled.div`
-  font-size: 13px;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+const ChatNumber = styled.div`
+  font-size: 12px;
+  color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
 `;
 
-const ThreadCount = styled.span`
-  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+const UnreadBadge = styled.div`
+  background: #25D366;
+  color: white;
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 8px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
   flex-shrink: 0;
   align-self: center;
 `;
@@ -319,4 +344,4 @@ const EmptyText = styled.p`
   margin: 0;
 `;
 
-export default MobileEmailList;
+export default MobileWhatsAppList;

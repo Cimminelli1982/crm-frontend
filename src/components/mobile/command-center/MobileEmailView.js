@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
-import { FaReply, FaArchive, FaEllipsisV, FaPaperclip } from 'react-icons/fa';
+import { FaReply, FaArchive, FaEllipsisV, FaPaperclip, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { format } from 'date-fns';
+import MobileContextPanel from './MobileContextPanel';
 
 /**
  * MobileEmailView - Email detail view for mobile
@@ -15,7 +16,25 @@ const MobileEmailView = ({
   onArchive,
   onMoreActions,
   theme = 'dark',
+  // Context panel props
+  contact,
+  company,
+  tasks = [],
+  deals = [],
+  notes = [],
+  introductions = [],
+  files = [],
+  onSendEmail,
+  onSendWhatsApp,
+  onCreateTask,
+  onCreateNote,
+  onViewFiles,
+  onViewContact,
+  onViewCompany,
+  onViewDeals,
+  onViewIntroductions,
 }) => {
+  const [showContext, setShowContext] = useState(true);
   if (!thread) {
     return (
       <EmptyState theme={theme}>
@@ -110,6 +129,38 @@ const MobileEmailView = ({
         ))}
       </MessagesContainer>
 
+      {/* Context Panel Toggle */}
+      {(contact || company) && (
+        <ContextToggle theme={theme} onClick={() => setShowContext(!showContext)}>
+          <span>Context & Actions</span>
+          {showContext ? <FaChevronDown size={12} /> : <FaChevronUp size={12} />}
+        </ContextToggle>
+      )}
+
+      {/* Context Panel */}
+      {showContext && (contact || company) && (
+        <MobileContextPanel
+          theme={theme}
+          contact={contact}
+          company={company}
+          tasks={tasks}
+          deals={deals}
+          notes={notes}
+          introductions={introductions}
+          files={files}
+          onSendEmail={onSendEmail}
+          onSendWhatsApp={onSendWhatsApp}
+          onCreateTask={onCreateTask}
+          onCreateNote={onCreateNote}
+          onViewFiles={onViewFiles}
+          onViewContact={onViewContact}
+          onViewCompany={onViewCompany}
+          onViewDeals={onViewDeals}
+          onViewIntroductions={onViewIntroductions}
+          defaultExpanded={['quickActions']}
+        />
+      )}
+
       {/* Quick Actions */}
       <QuickActions theme={theme}>
         <QuickActionButton theme={theme} onClick={onReply}>
@@ -128,6 +179,22 @@ const MobileEmailView = ({
     </Container>
   );
 };
+
+const ContextToggle = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#1F2937'};
+  border: none;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+`;
 
 // Styled Components
 const Container = styled.div`

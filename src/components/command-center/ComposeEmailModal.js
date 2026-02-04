@@ -77,7 +77,7 @@ const getSectionsForProject = (project) => {
   ];
 };
 
-// Wide modal content for 2-column layout
+// Wide modal content for 2-column layout (responsive)
 const WideModalContent = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-radius: 12px;
@@ -88,6 +88,13 @@ const WideModalContent = styled.div`
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+
+  @media (max-width: 768px) {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
 `;
 
 const ModalBody = styled.div`
@@ -95,6 +102,10 @@ const ModalBody = styled.div`
   flex: 1;
   overflow: hidden;
   min-height: 0;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
 `;
 
 const ComposeColumn = styled.div`
@@ -103,6 +114,11 @@ const ComposeColumn = styled.div`
   overflow-y: auto;
   border-right: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   min-width: 0;
+
+  @media (max-width: 768px) {
+    padding: 16px;
+    border-right: none;
+  }
 `;
 
 const ChatColumn = styled.div`
@@ -111,6 +127,10 @@ const ChatColumn = styled.div`
   display: flex;
   flex-direction: column;
   background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+
+  @media (max-width: 768px) {
+    display: none; /* Hide AI chat on mobile for now */
+  }
 `;
 
 const ChatHeader = styled.div`
@@ -302,16 +322,31 @@ const ModalFooter = styled.div`
   gap: 12px;
   padding: 16px 20px;
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+
+  @media (max-width: 768px) {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
 `;
 
 const FooterLeft = styled.div`
   display: flex;
   gap: 12px;
+
+  @media (max-width: 768px) {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 `;
 
 const FooterRight = styled.div`
   display: flex;
   gap: 12px;
+
+  @media (max-width: 768px) {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 `;
 
 const SendAIDraftButton = styled.button`
@@ -1744,7 +1779,7 @@ ${draftPart}`;
                 onChange={handleComposeFileSelect}
                 style={{ display: 'none' }}
               />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: composeAttachments.length > 0 ? '8px' : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: composeAttachments.length > 0 ? '8px' : 0, flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => composeFileInputRef.current?.click()}

@@ -92,7 +92,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarAlt, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList, FaSyncAlt } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarAlt, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList, FaSyncAlt, FaSpinner } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -128,6 +128,7 @@ import ManageContactListsModal from '../components/modals/ManageContactListsModa
 import MergeCompanyModal from '../components/modals/MergeCompanyModal';
 import CompanyTagsModal from '../components/modals/CompanyTagsModal';
 import CompanyCityModal from '../components/modals/CompanyCityModal';
+import CompanyMainModal from '../components/modals/CompanyMainModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
@@ -209,11 +210,12 @@ const CommandCenterPage = ({ theme }) => {
   const [baileysStatus, setBaileysStatus] = useState({ status: 'unknown', hasQR: false });
   const [showBaileysQRModal, setShowBaileysQRModal] = useState(false);
 
-  // Expanded sections state for left panel (inbox, need_actions, waiting_input)
+  // Expanded sections state for left panel (inbox, need_actions, waiting_input, archiving)
   const [statusSections, setStatusSections] = useState({
     inbox: true,
     need_actions: false,
-    waiting_input: false
+    waiting_input: false,
+    archiving: false
   });
 
   // Toggle section expansion
@@ -416,6 +418,10 @@ const CommandCenterPage = ({ theme }) => {
   // Right panel company merge/duplicate modal state
   const [companyMergeModalOpen, setCompanyMergeModalOpen] = useState(false);
   const [companyMergeCompany, setCompanyMergeCompany] = useState(null);
+
+  // Company main modal (for mobile view company)
+  const [companyMainModalOpen, setCompanyMainModalOpen] = useState(false);
+  const [companyMainModalId, setCompanyMainModalId] = useState(null);
 
   // Right panel email tab - pre-selected email
   const [initialSelectedEmail, setInitialSelectedEmail] = useState(null);
@@ -7002,11 +7008,11 @@ internet businesses.`;
         setAttachmentModalOpen(true);
       } else {
         // All attachments are images or ICS, skip modal
-        saveAndArchive();
+        saveAndArchiveAsync();
       }
     } else {
       // No attachments, proceed directly
-      saveAndArchive();
+      saveAndArchiveAsync();
     }
   };
 
@@ -7015,7 +7021,7 @@ internet businesses.`;
     setAttachmentModalOpen(false);
     setPendingAttachments([]);
     // Continue with save and archive
-    saveAndArchive();
+    saveAndArchiveAsync();
   };
 
   // Import calendar invitation from email to "Living with Intention" calendar
@@ -7123,11 +7129,11 @@ internet businesses.`;
         setAttachmentModalOpen(true);
       } else {
         // All attachments are images or ICS, skip modal
-        saveAndArchive();
+        saveAndArchiveAsync();
       }
     } else {
       // No attachments, proceed directly with saveAndArchive
-      saveAndArchive();
+      saveAndArchiveAsync();
     }
   };
 
@@ -7642,6 +7648,126 @@ internet businesses.`;
     } finally {
       setSaving(false);
     }
+  };
+
+  // ASYNC Save & Archive - DB update is sync (safe), backend is async (fast)
+  const saveAndArchiveAsync = async () => {
+    if (!selectedThread || selectedThread.length === 0) return;
+
+    // Capture state at time of click (before any updates)
+    const threadToProcess = [...selectedThread];
+    const emailIds = threadToProcess.map(e => e.id);
+    const keepStatus = pendingInboxStatusRef.current;
+    const currentThreadId = threadToProcess[0]?.thread_id;
+    const currentThreadIndex = threads.findIndex(t => t.emails[0]?.thread_id === currentThreadId);
+
+    // Get contacts to pass to backend (excluding me)
+    const contactsToProcess = emailContacts
+      .filter(p => p.contact?.contact_id && p.email?.toLowerCase() !== MY_EMAIL)
+      .map(p => ({
+        email: p.email,
+        contact_id: p.contact.contact_id,
+        first_name: p.contact.first_name,
+        last_name: p.contact.last_name
+      }));
+
+    // Clear pending status ref early
+    pendingInboxStatusRef.current = null;
+
+    // 1. SYNC: Update DB status to 'archiving' (fast ~200ms, ensures consistency)
+    const { error: updateError } = await supabase
+      .from('command_center_inbox')
+      .update({ status: 'archiving' })
+      .in('id', emailIds);
+
+    if (updateError) {
+      console.error('Failed to set archiving status:', updateError);
+      toast.error('Failed to archive');
+      return;
+    }
+
+    // 2. Update local state
+    setEmails(prev => prev.map(e =>
+      emailIds.includes(e.id) ? { ...e, status: 'archiving' } : e
+    ));
+    setThreads(prev => prev.map(t => ({
+      ...t,
+      emails: t.emails.map(e =>
+        emailIds.includes(e.id) ? { ...e, status: 'archiving' } : e
+      ),
+      status: t.emails.some(e => emailIds.includes(e.id)) ? 'archiving' : t.status
+    })));
+
+    // 3. Select next thread
+    const remainingInboxThreads = threads.filter(t =>
+      !t.emails.some(e => emailIds.includes(e.id)) && t.status !== 'archiving'
+    );
+
+    if (remainingInboxThreads.length > 0) {
+      const nextIndex = Math.min(currentThreadIndex, remainingInboxThreads.length - 1);
+      setSelectedThread(remainingInboxThreads[nextIndex].emails);
+    } else {
+      setSelectedThread(null);
+    }
+
+    // 4. ASYNC: Call backend for full processing (non-blocking)
+    fetch(`${BACKEND_URL}/email/save-and-archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        threadData: threadToProcess,
+        contactsData: contactsToProcess,
+        keepStatus: keepStatus
+      })
+    })
+    .then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Backend processing failed');
+      }
+
+      // SUCCESS: Remove from local state (backend deleted from DB)
+      setEmails(prev => prev.filter(e => !emailIds.includes(e.id)));
+      setThreads(prev => prev
+        .map(t => ({
+          ...t,
+          emails: t.emails.filter(e => !emailIds.includes(e.id)),
+          count: t.emails.filter(e => !emailIds.includes(e.id)).length
+        }))
+        .filter(t => t.emails.length > 0)
+        .map(t => ({ ...t, latestEmail: t.emails[0] }))
+      );
+
+      const action = keepStatus ? `Saved & moved to '${keepStatus}'` : 'Saved & Archived';
+      toast.success(`${action} successfully`);
+    })
+    .catch(async (error) => {
+      console.error('Archive backend error:', error);
+      toast.error(`Archive failed: ${error.message}`);
+
+      // ROLLBACK: Move back to Inbox (DB has reliable 'archiving' status to rollback from)
+      const { error: rollbackError } = await supabase
+        .from('command_center_inbox')
+        .update({ status: null })
+        .in('id', emailIds);
+
+      if (rollbackError) {
+        console.error('Rollback failed:', rollbackError);
+        toast.error('Please refresh the page');
+      } else {
+        // Update local state back to inbox
+        setEmails(prev => prev.map(e =>
+          emailIds.includes(e.id) ? { ...e, status: null } : e
+        ));
+        setThreads(prev => prev.map(t => ({
+          ...t,
+          emails: t.emails.map(e =>
+            emailIds.includes(e.id) ? { ...e, status: null } : e
+          ),
+          status: t.emails.some(e => emailIds.includes(e.id)) ? null : t.status
+        })));
+      }
+    });
   };
 
   // Update status of selected thread/chat (for Need Actions / Waiting Input)
@@ -8936,9 +9062,8 @@ internet businesses.`;
     { id: 'lists', label: 'Lists', icon: FaList, count: 0, hasUnread: false },
   ];
 
-  // Mobile: Render mobile-optimized version
-  if (viewport.isMobile) {
-    return (
+  // Mobile: Render mobile-optimized version (but continue to render modals below)
+  const mobileContent = viewport.isMobile ? (
       <CommandCenterMobile
         theme={theme}
         tabs={tabs}
@@ -8962,28 +9087,114 @@ internet businesses.`;
         keepInTouchContacts={keepInTouchContacts}
         // Deals
         deals={pipelineDeals}
-        // Actions
-        onComposeEmail={() => openNewCompose()}
-        onSendWhatsApp={() => setActiveActionTab('whatsapp')}
-        onCreateTask={() => {/* TODO */}}
-        onArchiveEmail={(thread) => {
-          // Remove from list visually
-          setThreads(prev => prev.filter(t => t.threadId !== thread.threadId));
-          toast.success(`Archived: ${thread.latestEmail?.subject || 'Email'}`);
+        // Context data for right panel actions
+        emailContacts={emailContacts}
+        emailCompanies={emailCompanies}
+        // Contact selector (same as web right panel)
+        availableContacts={enrichedRightPanelContacts}
+        selectedContactId={selectedRightPanelContactId}
+        onSelectContact={setSelectedRightPanelContactId}
+        // Data integrity for warning bar
+        dataIntegrityCount={
+          notInCrmEmails.length +
+          notInCrmDomains.length +
+          holdContacts.length +
+          holdCompanies.length +
+          incompleteContacts.length +
+          incompleteCompanies.length +
+          duplicateContacts.length +
+          duplicateCompanies.length +
+          missingCompanyLinks.length +
+          contactsMissingCompany.length
+        }
+        // Contact/Company view actions
+        onViewContact={(contactId) => {
+          if (contactId) {
+            setSelectedRightPanelContactId(contactId);
+            // Find contact in emailContacts to populate quick edit
+            const contactData = emailContacts?.find(c => c.contact?.contact_id === contactId)?.contact;
+            if (contactData) {
+              handleOpenQuickEditModal(contactData);
+            }
+          }
+        }}
+        onViewCompany={(companyId) => {
+          if (companyId) {
+            setSelectedRightPanelCompanyId(companyId);
+            setCompanyMainModalId(companyId);
+            setCompanyMainModalOpen(true);
+          }
+        }}
+        // Email actions
+        onComposeEmail={(contact) => {
+          if (contact?.email) {
+            setComposeTo([{ email: contact.email, name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() }]);
+          }
+          openNewCompose();
+        }}
+        onArchiveEmail={async (thread) => {
+          try {
+            const emails = thread.emails || [thread.latestEmail || thread];
+            for (const email of emails) {
+              if (email.fastmail_id) {
+                await archiveInFastmail(email.fastmail_id);
+              }
+            }
+            const emailIds = emails.map(e => e.id).filter(Boolean);
+            if (emailIds.length > 0) {
+              await supabase
+                .from('command_center_inbox')
+                .delete()
+                .in('id', emailIds);
+            }
+            setThreads(prev => prev.filter(t => t.threadId !== thread.threadId));
+            toast.success(`Archived: ${thread.latestEmail?.subject || 'Email'}`);
+          } catch (error) {
+            console.error('Archive error:', error);
+            toast.error('Failed to archive email');
+          }
         }}
         onReplyEmail={(thread) => {
-          // Set selected thread first, then open reply
           setSelectedThread(thread.emails || [thread.latestEmail || thread]);
-          // Small delay to ensure selectedThread is set before openReply uses it
           setTimeout(() => openReply(), 50);
         }}
         onRefreshEmails={refreshThreads}
+        // WhatsApp actions
+        onSendWhatsApp={(contact) => {
+          if (contact) {
+            setNewWhatsAppContact(contact);
+            setNewWhatsAppModalOpen(true);
+          }
+        }}
+        // Task actions
+        onCreateTask={(contactId) => {
+          // Pre-fill task with contact if provided
+          setTaskModalOpen(true);
+        }}
+        onCompleteTask={handleCompleteTask}
+        // Note actions
+        onCreateNote={(contactId) => {
+          setNoteModalOpen(true);
+        }}
+        // Deal actions
+        onCreateDeal={() => {
+          setCreateDealAIOpen(true);
+        }}
+        // View actions (navigate to tabs)
+        onViewDeals={() => {
+          setActiveTab('deals');
+        }}
+        onViewIntroductions={() => {
+          setActiveTab('introductions');
+        }}
+        onViewFiles={() => {
+          setActiveTab('files');
+        }}
       />
-    );
-  }
+  ) : null;
 
   // Desktop: Render full 3-panel layout
-  return (
+  const desktopContent = !viewport.isMobile ? (
     <PageContainer theme={theme}>
       {/* Header with Tabs */}
       <Header theme={theme}>
@@ -9431,6 +9642,56 @@ internet businesses.`;
                         contacts={emailContacts}
                       />
                     )
+                  )}
+
+                  {/* Archiving Section - emails being processed in background */}
+                  {activeTab === 'email' && filterByStatus(threads, 'archiving').length > 0 && (
+                    <>
+                      <div
+                        onClick={() => toggleStatusSection('archiving')}
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontWeight: 600,
+                          fontSize: '13px',
+                          backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                          borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 1
+                        }}
+                      >
+                        <FaChevronDown style={{ transform: statusSections.archiving ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                        <span style={{ color: '#10b981' }}>Archiving</span>
+                        <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                          {filterByStatus(threads, 'archiving').length}
+                        </span>
+                      </div>
+                      {statusSections.archiving && (
+                        filterByStatus(threads, 'archiving').map(thread => (
+                          <EmailItem
+                            key={thread.threadId}
+                            theme={theme}
+                            $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
+                            onClick={() => handleSelectThread(thread.emails)}
+                            style={{ opacity: 0.6 }}
+                          >
+                            <EmailSender theme={theme}>
+                              <FaSpinner style={{ animation: 'spin 1s linear infinite', marginRight: '4px' }} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {getRelevantPerson(thread.latestEmail)}
+                              </span>
+                              {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
+                            </EmailSender>
+                            <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
+                            <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>
+                          </EmailItem>
+                        ))
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -16504,8 +16765,16 @@ internet businesses.`;
         </ActionsPanel>
         )}
       </MainContent>
+    </PageContainer>
+  ) : null;
 
-      {/* Compose Modal */}
+  // Return either mobile or desktop content, plus all modals (needed for both)
+  return (
+    <>
+      {mobileContent}
+      {desktopContent}
+
+      {/* Compose Modal - needed for both mobile and desktop */}
       <ComposeEmailModal
         theme={theme}
         composeModal={composeModal}
@@ -18262,6 +18531,18 @@ internet businesses.`;
         company={companyMergeCompany}
       />
 
+      {/* Company Main Modal (for mobile) */}
+      {companyMainModalOpen && companyMainModalId && (
+        <CompanyMainModal
+          isOpen={companyMainModalOpen}
+          onClose={() => {
+            setCompanyMainModalOpen(false);
+            setCompanyMainModalId(null);
+          }}
+          companyId={companyMainModalId}
+        />
+      )}
+
       {/* Company Tags Modal */}
       <CompanyTagsModal
         isOpen={companyTagsModalOpen}
@@ -19444,7 +19725,7 @@ internet businesses.`;
           </ModalContent>
         </ModalOverlay>
       )}
-    </PageContainer>
+    </>
   );
 };
 
