@@ -1073,7 +1073,7 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
       : !!selectedChat?.contact_number;
 
     if ((!hasText && !hasFile) || !hasTarget || sending || uploading) {
-      return;
+      return false;
     }
 
     setSending(true);
@@ -1196,12 +1196,50 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
       if (fileToSend) {
         toast.success('Message with attachment sent!');
       }
+      return true; // Success
     } catch (error) {
       console.error('Send message error:', error);
       toast.error(error.message || 'Failed to send message');
+      return false; // Failure
     } finally {
       setSending(false);
       setUploading(false);
+    }
+  };
+
+  // Send message and set status (or just set status if no message)
+  const handleSendAndStatus = async (status) => {
+    const hasText = replyText.trim().length > 0;
+    const hasFile = !!selectedFile;
+
+    if (hasText || hasFile) {
+      // Send first, then set status
+      const success = await handleSendMessage();
+      if (success) {
+        // Small delay to let the sent message appear before status change
+        setTimeout(() => onStatusChange?.(status), 200);
+      }
+    } else {
+      // No message - just set status
+      onStatusChange?.(status);
+    }
+  };
+
+  // Send message and archive chat in one action (or just archive if no message)
+  const handleSendAndArchive = async () => {
+    const hasText = replyText.trim().length > 0;
+    const hasFile = !!selectedFile;
+
+    if (hasText || hasFile) {
+      // Send first, then archive
+      const success = await handleSendMessage();
+      if (success) {
+        // Small delay to let the sent message appear before archiving
+        setTimeout(() => onDone?.(), 200);
+      }
+    } else {
+      // No message - just archive (same as Done button)
+      onDone?.();
     }
   };
 
@@ -1776,13 +1814,58 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           $hasText={replyText.trim().length > 0 || !!selectedFile}
           onClick={handleSendMessage}
           disabled={(!replyText.trim() && !selectedFile) || sending || uploading}
-          title={replyText.trim() || selectedFile ? 'Send message' : 'Type a message or attach a file'}
+          title={replyText.trim() || selectedFile ? 'Send (Enter)' : 'Type a message'}
         >
           {sending || uploading ? (
             <SendingIndicator />
           ) : (
-            <FaPaperPlane size={16} />
+            <FaPaperPlane size={14} />
           )}
+        </SendButton>
+        <SendButton
+          theme={theme}
+          $hasText={true}
+          onClick={() => handleSendAndStatus('need_actions')}
+          disabled={sending || uploading}
+          title={(replyText.trim() || selectedFile) ? 'Send + Need Actions' : 'Need Actions'}
+          style={{
+            background: theme === 'light' ? '#F59E0B' : '#B45309',
+            width: '36px',
+            height: '36px',
+            marginLeft: '6px'
+          }}
+        >
+          <FaBolt size={12} />
+        </SendButton>
+        <SendButton
+          theme={theme}
+          $hasText={true}
+          onClick={() => handleSendAndStatus('waiting_input')}
+          disabled={sending || uploading}
+          title={(replyText.trim() || selectedFile) ? 'Send + Waiting Input' : 'Waiting Input'}
+          style={{
+            background: theme === 'light' ? '#8B5CF6' : '#6D28D9',
+            width: '36px',
+            height: '36px',
+            marginLeft: '6px'
+          }}
+        >
+          <FaClock size={12} />
+        </SendButton>
+        <SendButton
+          theme={theme}
+          $hasText={true}
+          onClick={handleSendAndArchive}
+          disabled={sending || uploading}
+          title={(replyText.trim() || selectedFile) ? 'Send + Archive (Shift+Enter)' : 'Archive'}
+          style={{
+            background: theme === 'light' ? '#059669' : '#065F46',
+            width: '36px',
+            height: '36px',
+            marginLeft: '6px'
+          }}
+        >
+          <FaCheck size={12} />
         </SendButton>
       </ReplyContainer>
     </WhatsAppContainer>
