@@ -34,7 +34,7 @@ const MobileEmailView = ({
   onViewDeals,
   onViewIntroductions,
 }) => {
-  const [showContext, setShowContext] = useState(true);
+  const [showContext, setShowContext] = useState(false);
   if (!thread) {
     return (
       <EmptyState theme={theme}>
@@ -205,7 +205,7 @@ const Container = styled.div`
 `;
 
 const Header = styled.div`
-  padding: 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#1F2937'};
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   position: sticky;
@@ -214,7 +214,7 @@ const Header = styled.div`
 `;
 
 const Subject = styled.h1`
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   margin: 0 0 4px 0;
@@ -328,7 +328,7 @@ const MessageBody = styled.div`
 const QuickActions = styled.div`
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 8px 12px;
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
 `;
@@ -339,7 +339,7 @@ const QuickActionButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px;
+  padding: 8px;
   background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
   border: none;
   border-radius: 8px;
@@ -347,7 +347,7 @@ const QuickActionButton = styled.button`
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  min-height: 44px;
+  min-height: 36px;
 
   &:active {
     background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};

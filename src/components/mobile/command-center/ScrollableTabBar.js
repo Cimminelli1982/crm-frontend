@@ -73,7 +73,7 @@ const ScrollableTabBar = ({ tabs, activeTab, onTabChange, theme = 'dark' }) => {
               onClick={() => onTabChange(tab.id)}
             >
               <IconWrapper>
-                <Icon size={18} />
+                <Icon size={14} />
                 {tab.count > 0 && (
                   <CountBadge theme={theme} $active={isActive}>
                     {tab.count > 99 ? '99+' : tab.count}
@@ -108,7 +108,7 @@ const ScrollContainer = styled.div`
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  padding: 8px 12px;
+  padding: 4px 8px;
   gap: 4px;
 
   &::-webkit-scrollbar {
@@ -120,13 +120,13 @@ const TabButton = styled.button`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 16px;
+  gap: 2px;
+  padding: 4px 10px;
   border: none;
   border-radius: 12px;
   cursor: pointer;
   min-width: fit-content;
-  min-height: 60px;
+  min-height: 36px;
   transition: all 0.2s ease;
   flex-shrink: 0;
 
@@ -177,7 +177,7 @@ const UnreadDot = styled.span`
 `;
 
 const TabLabel = styled.span`
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 500;
   white-space: nowrap;
 `;

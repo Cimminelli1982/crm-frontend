@@ -93,7 +93,7 @@ const Container = styled.div`
   bottom: 70px; /* Above app's bottom navigation */
   left: 0;
   right: 0;
-  height: 56px;
+  height: 44px;
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
@@ -150,9 +150,9 @@ const ActionButton = styled.button`
 const PrimaryButton = styled.button`
   background: #3B82F6;
   border: none;
-  width: 48px;
-  height: 48px;
-  border-radius: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
   color: #FFFFFF;
   cursor: pointer;
   display: flex;

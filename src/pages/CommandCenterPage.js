@@ -14255,7 +14255,7 @@ internet businesses.`;
           ) : activeTab === 'tasks' ? (
             <TasksFullTab theme={theme} onLinkedContactsChange={setTasksLinkedContacts} onLinkedChatsChange={setTasksLinkedChats} onLinkedCompaniesChange={setTasksLinkedCompanies} onLinkedDealsChange={setTasksLinkedDeals} />
           ) : selectedThread && selectedThread.length > 0 ? (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               {/* Thread subject */}
               <div style={{
                 display: 'flex',
@@ -14845,7 +14845,7 @@ internet businesses.`;
                   </EmailActions>
                 );
               })()}
-            </>
+            </div>
           ) : threads.length === 0 ? (
             <EmptyState theme={theme} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
               <img

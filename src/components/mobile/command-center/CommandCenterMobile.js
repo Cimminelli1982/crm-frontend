@@ -529,20 +529,22 @@ const CommandCenterMobile = ({
       />
 
       {/* Main Content Area */}
-      <ContentArea>
+      <ContentArea $detailView={viewMode === 'detail'}>
         {renderContent()}
       </ContentArea>
 
-      {/* Bottom: Action Bar */}
-      <BottomActionBar
-        activeTab={activeTab}
-        showBack={viewMode === 'detail'}
-        onBack={handleBack}
-        onPrimaryAction={handlePrimaryAction}
-        onMoreActions={() => setActionSheetOpen(true)}
-        theme={theme}
-        hasSelection={viewMode === 'detail'}
-      />
+      {/* Bottom: Action Bar (hidden in detail view - MobileEmailView has its own QuickActions) */}
+      {viewMode === 'list' && (
+        <BottomActionBar
+          activeTab={activeTab}
+          showBack={false}
+          onBack={handleBack}
+          onPrimaryAction={handlePrimaryAction}
+          onMoreActions={() => setActionSheetOpen(true)}
+          theme={theme}
+          hasSelection={false}
+        />
+      )}
 
       {/* Action Sheet (replaces right panel) */}
       <ActionSheet
@@ -668,7 +670,7 @@ const ContentArea = styled.div`
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 140px; /* Space for action bar (56px) + app nav (70px) + margin */
+  padding-bottom: ${props => props.$detailView ? '16px' : '60px'};
 `;
 
 const PlaceholderContent = styled.div`
