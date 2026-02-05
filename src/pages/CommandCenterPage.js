@@ -173,6 +173,92 @@ const sanitizeEmailHtml = (html) => {
     .replace(/<a\s+(?![^>]*target=)/gi, '<a target="_blank" rel="noopener noreferrer" ');
 };
 
+// Parse date from selected text (Italian and English formats)
+const parseDateFromText = (text) => {
+  if (!text || text.length > 100) return null;
+
+  const monthsIT = {
+    'gennaio': 0, 'febbraio': 1, 'marzo': 2, 'aprile': 3,
+    'maggio': 4, 'giugno': 5, 'luglio': 6, 'agosto': 7,
+    'settembre': 8, 'ottobre': 9, 'novembre': 10, 'dicembre': 11
+  };
+
+  const monthsEN = {
+    'january': 0, 'february': 1, 'march': 2, 'april': 3,
+    'may': 4, 'june': 5, 'july': 6, 'august': 7,
+    'september': 8, 'october': 9, 'november': 10, 'december': 11
+  };
+
+  const monthsShortEN = {
+    'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3,
+    'jun': 5, 'jul': 6, 'aug': 7,
+    'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11
+  };
+
+  const normalizedText = text.toLowerCase().trim();
+  const currentYear = new Date().getFullYear();
+  let match, day, month, year;
+
+  // Pattern 1: "25 febbraio 2026" or "25 February 2026" (day month year)
+  match = normalizedText.match(/(\d{1,2})\s+([a-zàèéìòù]+)\s+(\d{4})/i);
+  if (match) {
+    day = parseInt(match[1], 10);
+    const monthName = match[2].toLowerCase();
+    year = parseInt(match[3], 10);
+    month = monthsIT[monthName] ?? monthsEN[monthName] ?? monthsShortEN[monthName];
+    if (month !== undefined && day >= 1 && day <= 31 && year >= 2000 && year <= 2100) {
+      return new Date(year, month, day);
+    }
+  }
+
+  // Pattern 2: "February 25, 2026" or "Feb 25, 2026" (month day year - US format)
+  match = normalizedText.match(/([a-z]+)\s+(\d{1,2}),?\s+(\d{4})/i);
+  if (match) {
+    const monthName = match[1].toLowerCase();
+    day = parseInt(match[2], 10);
+    year = parseInt(match[3], 10);
+    month = monthsEN[monthName] ?? monthsShortEN[monthName];
+    if (month !== undefined && day >= 1 && day <= 31 && year >= 2000 && year <= 2100) {
+      return new Date(year, month, day);
+    }
+  }
+
+  // Pattern 3: "25/02/2026" or "25-02-2026" (European DD/MM/YYYY)
+  match = normalizedText.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (match) {
+    day = parseInt(match[1], 10);
+    month = parseInt(match[2], 10) - 1; // JS months are 0-indexed
+    year = parseInt(match[3], 10);
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31 && year >= 2000 && year <= 2100) {
+      return new Date(year, month, day);
+    }
+  }
+
+  // Pattern 4: "Feb 26" or "February 26" or "March 5th" (month day, NO year - assume current year)
+  match = normalizedText.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\.?$/i);
+  if (match) {
+    const monthName = match[1].toLowerCase();
+    day = parseInt(match[2], 10);
+    month = monthsEN[monthName] ?? monthsShortEN[monthName] ?? monthsIT[monthName];
+    if (month !== undefined && day >= 1 && day <= 31) {
+      return new Date(currentYear, month, day);
+    }
+  }
+
+  // Pattern 5: "26 Feb" or "26 febbraio" or "5th March" (day month, NO year - assume current year)
+  match = normalizedText.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-zàèéìòù]+)\.?$/i);
+  if (match) {
+    day = parseInt(match[1], 10);
+    const monthName = match[2].toLowerCase();
+    month = monthsIT[monthName] ?? monthsEN[monthName] ?? monthsShortEN[monthName];
+    if (month !== undefined && day >= 1 && day <= 31) {
+      return new Date(currentYear, month, day);
+    }
+  }
+
+  return null;
+};
+
 // Main Component
 const CommandCenterPage = ({ theme }) => {
   const navigate = useNavigate();
@@ -386,6 +472,7 @@ const CommandCenterPage = ({ theme }) => {
   // Spam menu state
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
   const [activeActionTab, setActiveActionTab] = useState('crm');
+  const [calendarTargetDate, setCalendarTargetDate] = useState(null); // For navigating calendar from email text selection
   const [crmSubTab, setCrmSubTab] = useState('contacts'); // 'contacts' or 'companies' - sub-menu inside CRM tab
 
   // Right panel contact selector state
@@ -7809,6 +7896,72 @@ internet businesses.`;
     }
   };
 
+  // Global keyboard shortcuts for Email/WhatsApp - right panel tabs
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Only for email or whatsapp tabs
+      if (activeTab !== 'email' && activeTab !== 'whatsapp') return;
+
+      // Ignore if typing in an input/textarea/contenteditable
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+      if (!e.altKey) return;
+
+      // Option+T: open Tasks tab (right panel)
+      if (e.code === 'KeyT') {
+        e.preventDefault();
+        setActiveActionTab('tasks');
+        return;
+      }
+      // Option+C: open Calendar tab (right panel)
+      if (e.code === 'KeyC') {
+        e.preventDefault();
+        setActiveActionTab('calendarPanel');
+        return;
+      }
+      // Option+I: open Introductions tab (right panel)
+      if (e.code === 'KeyI') {
+        e.preventDefault();
+        setActiveActionTab('introductions');
+        return;
+      }
+      // Option+A: open AI Chat tab (right panel)
+      if (e.code === 'KeyA') {
+        e.preventDefault();
+        setActiveActionTab('chat');
+        return;
+      }
+      // Option+D: open Deals tab (right panel)
+      if (e.code === 'KeyD') {
+        e.preventDefault();
+        setActiveActionTab('deals');
+        return;
+      }
+    };
+
+    // Use capture phase to catch event before any component can stop it
+    document.addEventListener('keydown', handleGlobalKeyDown, true);
+
+    // Listen for custom events from email iframe
+    const handleIframeShortcut = (e) => {
+      const { code } = e.detail;
+      if (code === 'KeyT') setActiveActionTab('tasks');
+      else if (code === 'KeyC') setActiveActionTab('calendarPanel');
+      else if (code === 'KeyI') setActiveActionTab('introductions');
+      else if (code === 'KeyA') setActiveActionTab('chat');
+      else if (code === 'KeyD') setActiveActionTab('deals');
+      else if (code === 'Digit1') updateItemStatus('need_actions');
+      else if (code === 'Digit2') updateItemStatus('waiting_input');
+      else if (code === 'Digit3') handleDoneClick();
+    };
+    window.addEventListener('emailIframeShortcut', handleIframeShortcut);
+
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown, true);
+      window.removeEventListener('emailIframeShortcut', handleIframeShortcut);
+    };
+  }, [activeTab, setActiveActionTab, updateItemStatus, handleDoneClick]);
+
   // Handle WhatsApp Done - save messages to CRM and remove from staging
   const handleWhatsAppDone = async () => {
     if (!selectedWhatsappChat) return;
@@ -14478,6 +14631,33 @@ internet businesses.`;
                         const iframe = e.target;
                         if (iframe.contentDocument?.body) {
                           iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px';
+
+                          // Add keyboard shortcuts listener inside iframe - dispatch to parent
+                          iframe.contentDocument.addEventListener('keydown', (ev) => {
+                            if (!ev.altKey) return;
+                            const validCodes = ['KeyT', 'KeyC', 'KeyI', 'KeyA', 'KeyD', 'Digit1', 'Digit2', 'Digit3'];
+                            if (validCodes.includes(ev.code)) {
+                              ev.preventDefault();
+                              // Dispatch custom event to parent document
+                              window.dispatchEvent(new CustomEvent('emailIframeShortcut', { detail: { code: ev.code } }));
+                            }
+                          }, true);
+
+                          // Add selection listener for date detection
+                          iframe.contentDocument.addEventListener('mouseup', () => {
+                            const selection = iframe.contentWindow.getSelection();
+                            const selectedText = selection?.toString()?.trim();
+                            if (selectedText && selectedText.length > 3 && selectedText.length < 100) {
+                              const parsedDate = parseDateFromText(selectedText);
+                              if (parsedDate) {
+                                setCalendarTargetDate(parsedDate);
+                                // Auto-switch to calendar panel if not already active
+                                if (activeActionTab !== 'calendarPanel') {
+                                  setActiveActionTab('calendarPanel');
+                                }
+                              }
+                            }
+                          });
                         }
                       }}
                     />
@@ -16874,7 +17054,13 @@ internet businesses.`;
               )}
 
               {activeActionTab === 'calendarPanel' && (
-                <CalendarPanelTab theme={theme} />
+                <CalendarPanelTab
+                  theme={theme}
+                  targetDate={calendarTargetDate}
+                  onTargetDateHandled={() => setCalendarTargetDate(null)}
+                  emailContext={selectedThread?.[0]}
+                  contactContext={rightPanelContactDetails}
+                />
               )}
 
             </>
