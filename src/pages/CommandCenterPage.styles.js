@@ -383,6 +383,7 @@ const ActionsPanelTabs = styled.div`
 `;
 
 const ActionTabIcon = styled.button`
+  position: relative;
   width: 36px;
   height: 36px;
   border-radius: 8px;

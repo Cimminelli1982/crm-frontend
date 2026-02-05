@@ -7907,36 +7907,30 @@ internet businesses.`;
 
       if (!e.altKey) return;
 
-      // Option+T: open Tasks tab (right panel)
-      if (e.code === 'KeyT') {
-        e.preventDefault();
-        setActiveActionTab('tasks');
-        return;
-      }
-      // Option+C: open Calendar tab (right panel)
-      if (e.code === 'KeyC') {
-        e.preventDefault();
-        setActiveActionTab('calendarPanel');
-        return;
-      }
-      // Option+I: open Introductions tab (right panel)
-      if (e.code === 'KeyI') {
-        e.preventDefault();
-        setActiveActionTab('introductions');
-        return;
-      }
-      // Option+A: open AI Chat tab (right panel)
-      if (e.code === 'KeyA') {
-        e.preventDefault();
-        setActiveActionTab('chat');
-        return;
-      }
-      // Option+D: open Deals tab (right panel)
-      if (e.code === 'KeyD') {
-        e.preventDefault();
-        setActiveActionTab('deals');
-        return;
-      }
+      // Option+P: Contact Details
+      if (e.code === 'KeyP') { e.preventDefault(); setActiveActionTab('crm'); return; }
+      // Option+O: Company Details
+      if (e.code === 'KeyO') { e.preventDefault(); setActiveActionTab('company'); return; }
+      // Option+E: Send Email
+      if (e.code === 'KeyE') { e.preventDefault(); setActiveActionTab('email'); return; }
+      // Option+W: WhatsApp
+      if (e.code === 'KeyW') { e.preventDefault(); setActiveActionTab('whatsapp'); return; }
+      // Option+C: Calendar
+      if (e.code === 'KeyC') { e.preventDefault(); setActiveActionTab('calendarPanel'); return; }
+      // Option+T: Tasks
+      if (e.code === 'KeyT') { e.preventDefault(); setActiveActionTab('tasks'); return; }
+      // Option+D: Deals
+      if (e.code === 'KeyD') { e.preventDefault(); setActiveActionTab('deals'); return; }
+      // Option+I: Introductions
+      if (e.code === 'KeyI') { e.preventDefault(); setActiveActionTab('introductions'); return; }
+      // Option+N: Notes
+      if (e.code === 'KeyN') { e.preventDefault(); setActiveActionTab('notes'); return; }
+      // Option+A: AI Chat
+      if (e.code === 'KeyA') { e.preventDefault(); setActiveActionTab('chat'); return; }
+      // Option+F: Files
+      if (e.code === 'KeyF') { e.preventDefault(); setActiveActionTab('files'); return; }
+      // Option+R: Related by Tag
+      if (e.code === 'KeyR') { e.preventDefault(); setActiveActionTab('related'); return; }
     };
 
     // Use capture phase to catch event before any component can stop it
@@ -7945,11 +7939,18 @@ internet businesses.`;
     // Listen for custom events from email iframe
     const handleIframeShortcut = (e) => {
       const { code } = e.detail;
-      if (code === 'KeyT') setActiveActionTab('tasks');
+      if (code === 'KeyP') setActiveActionTab('crm');
+      else if (code === 'KeyO') setActiveActionTab('company');
+      else if (code === 'KeyE') setActiveActionTab('email');
+      else if (code === 'KeyW') setActiveActionTab('whatsapp');
       else if (code === 'KeyC') setActiveActionTab('calendarPanel');
-      else if (code === 'KeyI') setActiveActionTab('introductions');
-      else if (code === 'KeyA') setActiveActionTab('chat');
+      else if (code === 'KeyT') setActiveActionTab('tasks');
       else if (code === 'KeyD') setActiveActionTab('deals');
+      else if (code === 'KeyI') setActiveActionTab('introductions');
+      else if (code === 'KeyN') setActiveActionTab('notes');
+      else if (code === 'KeyA') setActiveActionTab('chat');
+      else if (code === 'KeyF') setActiveActionTab('files');
+      else if (code === 'KeyR') setActiveActionTab('related');
       else if (code === 'Digit1') updateItemStatus('need_actions');
       else if (code === 'Digit2') updateItemStatus('waiting_input');
       else if (code === 'Digit3') handleDoneClick();
@@ -14635,7 +14636,7 @@ internet businesses.`;
                           // Add keyboard shortcuts listener inside iframe - dispatch to parent
                           iframe.contentDocument.addEventListener('keydown', (ev) => {
                             if (!ev.altKey) return;
-                            const validCodes = ['KeyT', 'KeyC', 'KeyI', 'KeyA', 'KeyD', 'Digit1', 'Digit2', 'Digit3'];
+                            const validCodes = ['KeyP', 'KeyO', 'KeyE', 'KeyW', 'KeyC', 'KeyT', 'KeyD', 'KeyI', 'KeyN', 'KeyA', 'KeyF', 'KeyR', 'Digit1', 'Digit2', 'Digit3'];
                             if (validCodes.includes(ev.code)) {
                               ev.preventDefault();
                               // Dispatch custom event to parent document
@@ -14952,41 +14953,41 @@ internet businesses.`;
               </CollapseButton>
               {!rightPanelCollapsed && (
                 <>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details">
-                    <FaUser />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details (⌥P)">
+                    <FaUser /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>P</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'company'} onClick={() => setActiveActionTab('company')} title="Company Details">
-                    <FaBuilding />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'company'} onClick={() => setActiveActionTab('company')} title="Company Details (⌥O)">
+                    <FaBuilding /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>O</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'email'} onClick={() => setActiveActionTab('email')} title="Send Email" style={{ color: activeActionTab === 'email' ? '#3B82F6' : undefined }}>
-                    <FaEnvelope />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'email'} onClick={() => setActiveActionTab('email')} title="Send Email (⌥E)" style={{ color: activeActionTab === 'email' ? '#3B82F6' : undefined }}>
+                    <FaEnvelope /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>E</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'whatsapp'} onClick={() => setActiveActionTab('whatsapp')} title="WhatsApp Chat" style={{ color: activeActionTab === 'whatsapp' ? '#22C55E' : undefined }}>
-                    <FaWhatsapp />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'whatsapp'} onClick={() => setActiveActionTab('whatsapp')} title="WhatsApp Chat (⌥W)" style={{ color: activeActionTab === 'whatsapp' ? '#22C55E' : undefined }}>
+                    <FaWhatsapp /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>W</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'calendarPanel'} onClick={() => setActiveActionTab('calendarPanel')} title="Calendar View" style={{ color: activeActionTab === 'calendarPanel' ? '#F59E0B' : undefined }}>
-                    <FaCalendarAlt />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'calendarPanel'} onClick={() => setActiveActionTab('calendarPanel')} title="Calendar View (⌥C)" style={{ color: activeActionTab === 'calendarPanel' ? '#F59E0B' : undefined }}>
+                    <FaCalendarAlt /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>C</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks" style={{ color: activeActionTab === 'tasks' ? '#10B981' : undefined }}>
-                    <FaTasks />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks (⌥T)" style={{ color: activeActionTab === 'tasks' ? '#10B981' : undefined }}>
+                    <FaTasks /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>T</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals" style={{ color: activeActionTab === 'deals' ? '#10B981' : undefined }}>
-                    <FaDollarSign />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals (⌥D)" style={{ color: activeActionTab === 'deals' ? '#10B981' : undefined }}>
+                    <FaDollarSign /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>D</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions" style={{ color: activeActionTab === 'introductions' ? '#EC4899' : undefined }}>
-                    <FaHandshake />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions (⌥I)" style={{ color: activeActionTab === 'introductions' ? '#EC4899' : undefined }}>
+                    <FaHandshake /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>I</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes" style={{ color: activeActionTab === 'notes' ? '#F59E0B' : undefined }}>
-                    <FaStickyNote />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes (⌥N)" style={{ color: activeActionTab === 'notes' ? '#F59E0B' : undefined }}>
+                    <FaStickyNote /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>N</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
-                    <FaRobot />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude (⌥A)" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
+                    <FaRobot /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>A</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'files'} onClick={() => setActiveActionTab('files')} title="Files" style={{ color: activeActionTab === 'files' ? '#3B82F6' : undefined }}>
-                    <FaPaperclip />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'files'} onClick={() => setActiveActionTab('files')} title="Files (⌥F)" style={{ color: activeActionTab === 'files' ? '#3B82F6' : undefined }}>
+                    <FaPaperclip /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>F</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'related'} onClick={() => setActiveActionTab('related')} title="Related by Tag" style={{ color: activeActionTab === 'related' ? '#F59E0B' : undefined }}>
-                    <FaTag />
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'related'} onClick={() => setActiveActionTab('related')} title="Related by Tag (⌥R)" style={{ color: activeActionTab === 'related' ? '#F59E0B' : undefined }}>
+                    <FaTag /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>R</span>
                   </ActionTabIcon>
                 </>
               )}
