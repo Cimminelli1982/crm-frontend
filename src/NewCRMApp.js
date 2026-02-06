@@ -83,7 +83,7 @@ const ContentContainer = styled.main`
 
   /* Mobile: Add bottom padding for mobile nav */
   @media (max-width: 767px) {
-    padding-bottom: 80px;
+    padding-bottom: 40px;
   }
 
   /* Tablet: Add left margin for side nav */

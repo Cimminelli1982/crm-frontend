@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import styled from 'styled-components';
-import { FaReply, FaArchive, FaEllipsisV, FaCheck, FaCheckDouble, FaPaperPlane, FaUsers, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import styled, { css } from 'styled-components';
+import { FaArrowLeft, FaEllipsisV, FaCheck, FaCheckDouble, FaPaperPlane, FaUsers, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { format } from 'date-fns';
 import MobileContextPanel from './MobileContextPanel';
 
@@ -34,7 +34,7 @@ const MobileWhatsAppView = ({
 }) => {
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
-  const [showContext, setShowContext] = useState(false); // Default collapsed for chat
+  const [showContext, setShowContext] = useState(false);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -75,9 +75,9 @@ const MobileWhatsAppView = ({
       const now = new Date();
       const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
 
-      if (diffDays === 0) return 'Today';
-      if (diffDays === 1) return 'Yesterday';
-      return format(date, 'MMMM d, yyyy');
+      if (diffDays === 0) return 'TODAY';
+      if (diffDays === 1) return 'YESTERDAY';
+      return format(date, 'MMMM d, yyyy').toUpperCase();
     } catch {
       return '';
     }
@@ -119,94 +119,96 @@ const MobileWhatsAppView = ({
     messagesByDate[dateKey].push(msg);
   });
 
+  // Helper: check if previous message is same direction (for grouping bubbles)
+  const isSameGroup = (msgs, idx) => {
+    if (idx === 0) return false;
+    return msgs[idx].direction === msgs[idx - 1].direction;
+  };
+
   return (
     <Container theme={theme}>
-      {/* Header */}
+      {/* WhatsApp Teal Header */}
       <Header theme={theme}>
-        <HeaderInfo>
-          <Avatar theme={theme} $isGroup={chat.is_group_chat}>
-            {chat.is_group_chat ? (
-              <FaUsers size={16} />
-            ) : (
-              getDisplayName(chat).charAt(0).toUpperCase()
-            )}
-          </Avatar>
-          <HeaderText>
-            <ChatName theme={theme}>{getDisplayName(chat)}</ChatName>
-            <ChatInfo theme={theme}>
-              {chat.is_group_chat ? 'Group' : chat.contact_number}
-            </ChatInfo>
-          </HeaderText>
-        </HeaderInfo>
+        <BackButton onClick={onBack} theme={theme}>
+          <FaArrowLeft size={18} />
+        </BackButton>
+        <Avatar theme={theme} $isGroup={chat.is_group_chat}>
+          {chat.profile_image_url && !chat.is_group_chat ? (
+            <AvatarImg src={chat.profile_image_url} alt={getDisplayName(chat)} />
+          ) : chat.is_group_chat ? (
+            <FaUsers size={16} />
+          ) : (
+            getDisplayName(chat).charAt(0).toUpperCase()
+          )}
+        </Avatar>
+        <HeaderText>
+          <ChatName theme={theme}>{getDisplayName(chat)}</ChatName>
+          <ChatSubtitle theme={theme}>
+            {chat.is_group_chat ? 'Group chat' : 'tap here for contact info'}
+          </ChatSubtitle>
+        </HeaderText>
+        <HeaderActions>
+          <HeaderIconButton onClick={onDone} theme={theme} title="Done">
+            <FaCheck size={16} />
+          </HeaderIconButton>
+          <HeaderIconButton onClick={onMoreActions} theme={theme} title="More">
+            <FaEllipsisV size={16} />
+          </HeaderIconButton>
+        </HeaderActions>
       </Header>
 
-      {/* Messages */}
+      {/* Messages with wallpaper background */}
       <MessagesContainer theme={theme}>
         {Object.entries(messagesByDate)
           .sort(([a], [b]) => new Date(a) - new Date(b))
           .map(([dateKey, msgs]) => (
             <div key={dateKey}>
               <DateDivider theme={theme}>
-                {formatDateDivider(msgs[0].date)}
+                <DatePill theme={theme}>
+                  {formatDateDivider(msgs[0].date)}
+                </DatePill>
               </DateDivider>
-              {msgs.map((msg, idx) => (
-                <MessageBubble
-                  key={msg.id || msg.message_uid || idx}
-                  theme={theme}
-                  $isSent={msg.direction === 'sent'}
-                >
-                  {chat.is_group_chat && msg.direction !== 'sent' && msg.first_name && (
-                    <SenderName $name={msg.first_name}>
-                      {msg.first_name}
-                    </SenderName>
-                  )}
-                  <MessageText>
-                    {msg.body_text || msg.snippet || ''}
-                  </MessageText>
-                  <MessageMeta $isSent={msg.direction === 'sent'}>
-                    <MessageTime theme={theme}>
-                      {formatMessageTime(msg.date)}
-                    </MessageTime>
-                    {msg.direction === 'sent' && (
-                      msg.is_read ? (
-                        <FaCheckDouble size={12} style={{ color: '#60A5FA' }} />
-                      ) : (
-                        <FaCheck size={12} style={{ color: '#9CA3AF' }} />
-                      )
-                    )}
-                  </MessageMeta>
-                </MessageBubble>
-              ))}
+              {msgs.map((msg, idx) => {
+                const isSent = msg.direction === 'sent';
+                const grouped = isSameGroup(msgs, idx);
+                return (
+                  <BubbleRow key={msg.id || msg.message_uid || idx} $isSent={isSent} $grouped={grouped}>
+                    <MessageBubble
+                      theme={theme}
+                      $isSent={isSent}
+                      $grouped={grouped}
+                    >
+                      {chat.is_group_chat && !isSent && msg.first_name && !grouped && (
+                        <SenderName $name={msg.first_name}>
+                          {msg.first_name}
+                        </SenderName>
+                      )}
+                      <MessageContent>
+                        <MessageText>
+                          {msg.body_text || msg.snippet || ''}
+                        </MessageText>
+                        <MessageMeta $isSent={isSent}>
+                          <MessageTime theme={theme} $isSent={isSent}>
+                            {formatMessageTime(msg.date)}
+                          </MessageTime>
+                          {isSent && (
+                            msg.is_read ? (
+                              <FaCheckDouble size={13} style={{ color: '#53BDEB' }} />
+                            ) : (
+                              <FaCheckDouble size={13} style={{ color: theme === 'light' ? '#8696A0' : '#8696A0' }} />
+                            )
+                          )}
+                        </MessageMeta>
+                      </MessageContent>
+                    </MessageBubble>
+                  </BubbleRow>
+                );
+              })}
             </div>
           ))
         }
         <div ref={messagesEndRef} />
       </MessagesContainer>
-
-      {/* Reply Input */}
-      <ReplyContainer theme={theme}>
-        <ReplyInput
-          ref={textareaRef}
-          theme={theme}
-          value={replyText}
-          onChange={(e) => setReplyText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          rows={1}
-        />
-        <SendButton
-          theme={theme}
-          $hasText={replyText.trim().length > 0}
-          onClick={handleSend}
-          disabled={!replyText.trim() || sending}
-        >
-          {sending ? (
-            <SendingIndicator />
-          ) : (
-            <FaPaperPlane size={16} />
-          )}
-        </SendButton>
-      </ReplyContainer>
 
       {/* Context Panel Toggle */}
       {(contact || company) && (
@@ -228,7 +230,7 @@ const MobileWhatsAppView = ({
           introductions={introductions}
           files={files}
           onSendEmail={onSendEmail}
-          onSendWhatsApp={null} // Already in WhatsApp
+          onSendWhatsApp={null}
           onCreateTask={onCreateTask}
           onCreateNote={onCreateNote}
           onViewFiles={onViewFiles}
@@ -240,218 +242,334 @@ const MobileWhatsAppView = ({
         />
       )}
 
-      {/* Quick Actions */}
-      <QuickActions theme={theme}>
-        <QuickActionButton theme={theme} onClick={onDone}>
-          <FaCheck />
-          <span>Done</span>
-        </QuickActionButton>
-        <QuickActionButton theme={theme} onClick={onMoreActions}>
-          <FaEllipsisV />
-          <span>More</span>
-        </QuickActionButton>
-      </QuickActions>
+      {/* WhatsApp-style Input Bar */}
+      <InputBar theme={theme}>
+        <InputField
+          ref={textareaRef}
+          theme={theme}
+          value={replyText}
+          onChange={(e) => setReplyText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message"
+          rows={1}
+        />
+        <SendButton
+          theme={theme}
+          $hasText={replyText.trim().length > 0}
+          onClick={handleSend}
+          disabled={!replyText.trim() || sending}
+        >
+          {sending ? (
+            <SendingIndicator />
+          ) : (
+            <FaPaperPlane size={18} />
+          )}
+        </SendButton>
+      </InputBar>
     </Container>
   );
 };
 
-const ContextToggle = styled.button`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 14px 16px;
-  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#1F2937'};
-  border: none;
-  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  min-height: 48px;
-`;
+// ─── Styled Components ──────────────────────────────────────────────
 
-// Styled Components
 const Container = styled.div`
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#111827'};
+  background: ${p => p.theme === 'light' ? '#ECE5DD' : '#0B141A'};
 `;
 
 const Header = styled.div`
-  padding: 12px 16px;
-  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#1F2937'};
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-`;
-
-const HeaderInfo = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  padding: 8px 6px;
+  background: ${p => p.theme === 'light' ? '#008069' : '#1F2C34'};
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  z-index: 2;
+  min-height: 56px;
+`;
+
+const BackButton = styled.button`
+  background: none;
+  border: none;
+  color: ${p => p.theme === 'light' ? '#FFFFFF' : '#AEBAC1'};
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+
+  &:active {
+    background: rgba(255,255,255,0.1);
+  }
 `;
 
 const Avatar = styled.div`
   width: 40px;
   height: 40px;
-  border-radius: 20px;
-  background: ${props => props.$isGroup
-    ? (props.theme === 'light' ? '#DBEAFE' : '#1E3A5F')
-    : (props.theme === 'light' ? '#D1FAE5' : '#064E3B')};
-  color: ${props => props.$isGroup
-    ? (props.theme === 'light' ? '#3B82F6' : '#60A5FA')
-    : '#25D366'};
+  border-radius: 50%;
+  background: ${p => p.$isGroup
+    ? (p.theme === 'light' ? '#00A884' : '#00A884')
+    : (p.theme === 'light' ? '#DFE5E7' : '#6B7C85')};
+  color: ${p => p.$isGroup
+    ? '#FFFFFF'
+    : (p.theme === 'light' ? '#FFFFFF' : '#CFD8DC')};
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 500;
+  flex-shrink: 0;
+`;
+
+const AvatarImg = styled.img`
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 `;
 
 const HeaderText = styled.div`
   flex: 1;
+  min-width: 0;
 `;
 
 const ChatName = styled.div`
   font-size: 16px;
-  font-weight: 600;
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-weight: 500;
+  color: ${p => p.theme === 'light' ? '#FFFFFF' : '#E9EDEF'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
-const ChatInfo = styled.div`
+const ChatSubtitle = styled.div`
   font-size: 12px;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  color: ${p => p.theme === 'light' ? 'rgba(255,255,255,0.7)' : '#8696A0'};
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+`;
+
+const HeaderIconButton = styled.button`
+  background: none;
+  border: none;
+  color: ${p => p.theme === 'light' ? '#FFFFFF' : '#AEBAC1'};
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+
+  &:active {
+    background: rgba(255,255,255,0.1);
+  }
 `;
 
 const MessagesContainer = styled.div`
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 16px;
-  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#111827'};
+  padding: 6px 12px 8px;
+  background: ${p => p.theme === 'light' ? '#ECE5DD' : '#0B141A'};
   display: flex;
   flex-direction: column;
-  gap: 8px;
 `;
 
 const DateDivider = styled.div`
-  text-align: center;
-  padding: 8px 0;
-  font-size: 12px;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  
-  &::before, &::after {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 6px;
+`;
+
+const DatePill = styled.div`
+  background: ${p => p.theme === 'light' ? '#E1F2FB' : '#182229'};
+  color: ${p => p.theme === 'light' ? '#54656F' : '#8696A0'};
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+`;
+
+const BubbleRow = styled.div`
+  display: flex;
+  justify-content: ${p => p.$isSent ? 'flex-end' : 'flex-start'};
+  margin-top: ${p => p.$grouped ? '2px' : '8px'};
+  padding: 0 6px;
+`;
+
+const bubbleTailSent = css`
+  &::after {
     content: '';
-    flex: 1;
-    height: 1px;
-    background: ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+    position: absolute;
+    top: 0;
+    right: -8px;
+    width: 0;
+    height: 0;
+    border-left: 8px solid ${p => p.theme === 'light' ? '#D9FDD3' : '#005C4B'};
+    border-bottom: 8px solid transparent;
+  }
+`;
+
+const bubbleTailReceived = css`
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -8px;
+    width: 0;
+    height: 0;
+    border-right: 8px solid ${p => p.theme === 'light' ? '#FFFFFF' : '#202C33'};
+    border-bottom: 8px solid transparent;
   }
 `;
 
 const MessageBubble = styled.div`
+  position: relative;
   max-width: 80%;
-  padding: 8px 12px;
-  border-radius: 12px;
-  align-self: ${props => props.$isSent ? 'flex-end' : 'flex-start'};
-  background: ${props => props.$isSent
-    ? (props.theme === 'light' ? '#DCF8C6' : '#054640')
-    : (props.theme === 'light' ? '#FFFFFF' : '#1F2937')};
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  padding: 6px 8px 4px;
+  border-radius: 8px;
+
+  ${p => p.$isSent
+    ? css`
+      background: ${p.theme === 'light' ? '#D9FDD3' : '#005C4B'};
+      border-top-right-radius: ${p.$grouped ? '8px' : '0'};
+      color: ${p.theme === 'light' ? '#111B21' : '#E9EDEF'};
+      ${!p.$grouped && bubbleTailSent}
+    `
+    : css`
+      background: ${p.theme === 'light' ? '#FFFFFF' : '#202C33'};
+      border-top-left-radius: ${p.$grouped ? '8px' : '0'};
+      color: ${p.theme === 'light' ? '#111B21' : '#E9EDEF'};
+      ${!p.$grouped && bubbleTailReceived}
+    `
+  }
+
+  box-shadow: 0 1px 0.5px rgba(11,20,26,0.13);
 `;
 
 const SenderName = styled.div`
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  margin-bottom: 4px;
-  color: ${props => {
-    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
-    const hash = props.$name?.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) || 0;
+  margin-bottom: 2px;
+  color: ${p => {
+    const colors = ['#06CF9C', '#25D366', '#53BDEB', '#FFB74D', '#E57373', '#BA68C8', '#4FC3F7', '#FF8A65'];
+    const hash = p.$name?.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) || 0;
     return colors[hash % colors.length];
   }};
 `;
 
-const MessageText = styled.div`
-  font-size: 14px;
-  line-height: 1.4;
-  word-break: break-word;
-  color: inherit;
+const MessageContent = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
 `;
 
-const MessageMeta = styled.div`
-  display: flex;
+const MessageText = styled.span`
+  font-size: 14.2px;
+  line-height: 1.35;
+  word-break: break-word;
+  white-space: pre-wrap;
+`;
+
+const MessageMeta = styled.span`
+  display: inline-flex;
   align-items: center;
-  justify-content: ${props => props.$isSent ? 'flex-end' : 'flex-start'};
-  gap: 4px;
-  margin-top: 4px;
+  gap: 3px;
+  margin-left: 8px;
+  flex-shrink: 0;
+  float: right;
+  padding-top: 4px;
 `;
 
 const MessageTime = styled.span`
   font-size: 11px;
-  color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  color: ${p => p.$isSent
+    ? (p.theme === 'light' ? '#667781' : '#8696A0')
+    : (p.theme === 'light' ? '#667781' : '#8696A0')};
 `;
 
-const ReplyContainer = styled.div`
+const ContextToggle = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px;
+  background: ${p => p.theme === 'light' ? '#F0F2F5' : '#1F2C34'};
+  border: none;
+  border-top: 1px solid ${p => p.theme === 'light' ? '#E9EDEF' : '#2A373F'};
+  color: ${p => p.theme === 'light' ? '#54656F' : '#8696A0'};
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 40px;
+`;
+
+const InputBar = styled.div`
   display: flex;
   align-items: flex-end;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  gap: 6px;
+  padding: 5px 6px;
+  background: ${p => p.theme === 'light' ? '#F0F2F5' : '#1F2C34'};
 `;
 
-const ReplyInput = styled.textarea`
+const InputField = styled.textarea`
   flex: 1;
-  min-height: 40px;
+  min-height: 42px;
   max-height: 120px;
   padding: 10px 14px;
-  border-radius: 20px;
-  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
-  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
-  font-size: 14px;
-  line-height: 1.4;
+  border-radius: 24px;
+  border: none;
+  background: ${p => p.theme === 'light' ? '#FFFFFF' : '#2A3942'};
+  color: ${p => p.theme === 'light' ? '#111B21' : '#E9EDEF'};
+  font-size: 15px;
+  line-height: 1.35;
   resize: none;
   outline: none;
   font-family: inherit;
-
-  &:focus {
-    border-color: #25D366;
-  }
+  box-shadow: 0 1px 1px rgba(0,0,0,0.06);
 
   &::placeholder {
-    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+    color: ${p => p.theme === 'light' ? '#8696A0' : '#8696A0'};
   }
 `;
 
 const SendButton = styled.button`
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: none;
-  background: ${props => props.$hasText
-    ? '#25D366'
-    : (props.theme === 'light' ? '#E5E7EB' : '#374151')};
-  color: ${props => props.$hasText ? 'white' : (props.theme === 'light' ? '#9CA3AF' : '#6B7280')};
-  cursor: ${props => props.$hasText ? 'pointer' : 'default'};
+  background: ${p => p.$hasText ? '#00A884' : '#00A884'};
+  color: ${p => p.theme === 'light' ? '#FFFFFF' : '#E9EDEF'};
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease;
   flex-shrink: 0;
 
   &:active {
-    transform: ${props => props.$hasText ? 'scale(0.95)' : 'none'};
+    background: #008069;
   }
 
   &:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     cursor: not-allowed;
   }
 `;
 
 const SendingIndicator = styled.div`
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: 2px solid white;
   border-top-color: transparent;
   border-radius: 50%;
@@ -462,41 +580,12 @@ const SendingIndicator = styled.div`
   }
 `;
 
-const QuickActions = styled.div`
-  display: flex;
-  gap: 8px;
-  padding: 12px 16px;
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-`;
-
-const QuickActionButton = styled.button`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
-  border: none;
-  border-radius: 8px;
-  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  min-height: 44px;
-
-  &:active {
-    background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
-  }
-`;
-
 const EmptyState = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  color: ${p => p.theme === 'light' ? '#667781' : '#8696A0'};
 `;
 
 export default MobileWhatsAppView;

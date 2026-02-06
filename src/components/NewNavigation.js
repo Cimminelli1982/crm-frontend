@@ -113,7 +113,7 @@ const NewNavigation = ({
               >
                 <MobileNavIconContainer>
                   <MobileNavIcon theme={theme} $isActive={isActive}>
-                    <Icon size={20} />
+                    <Icon size={16} />
                   </MobileNavIcon>
                   {item.count > 0 && (
                     <CountBadge theme={theme} $isActive={isActive} $isInbox={item.isInbox}>
@@ -121,9 +121,6 @@ const NewNavigation = ({
                     </CountBadge>
                   )}
                 </MobileNavIconContainer>
-                <MobileNavLabel theme={theme} $isActive={isActive}>
-                  {item.label}
-                </MobileNavLabel>
               </MobileNavItem>
             );
           })}
@@ -283,30 +280,27 @@ const MobileNavBar = styled.nav`
   bottom: 0;
   left: 0;
   right: 0;
-  height: 80px;
+  height: 40px;
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 8px 16px 20px 16px;
+  padding: 2px 16px env(safe-area-inset-bottom, 4px) 16px;
   z-index: 999;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
 `;
 
 const MobileNavItem = styled.button`
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 8px 4px;
+  padding: 6px 12px;
   border-radius: 8px;
   transition: all 0.2s ease;
-  flex: 1;
-  max-width: 80px;
 
   ${props => props.$isActive && `
     background: ${props.theme === 'light'

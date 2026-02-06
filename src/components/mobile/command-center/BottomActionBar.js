@@ -90,7 +90,7 @@ const BottomActionBar = ({
 // Styled Components
 const Container = styled.div`
   position: fixed;
-  bottom: 70px; /* Above app's bottom navigation */
+  bottom: 40px; /* Above app's bottom navigation */
   left: 0;
   right: 0;
   height: 44px;

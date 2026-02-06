@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { FaChevronDown, FaChevronRight, FaInbox, FaBolt, FaClock, FaWhatsapp, FaUsers, FaSpinner } from 'react-icons/fa';
-import { formatDistanceToNow } from 'date-fns';
+import { format, isToday, isYesterday } from 'date-fns';
 
 /**
  * MobileWhatsAppList - WhatsApp chat list optimized for mobile
@@ -44,7 +44,10 @@ const MobileWhatsAppList = ({
   const formatDate = (dateString) => {
     if (!dateString) return '';
     try {
-      return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+      const date = new Date(dateString);
+      if (isToday(date)) return format(date, 'HH:mm');
+      if (isYesterday(date)) return 'Yesterday';
+      return format(date, 'dd/MM/yy');
     } catch {
       return '';
     }
@@ -71,7 +74,8 @@ const MobileWhatsAppList = ({
   const renderChatItem = (chat) => {
     const isSelected = selectedChat?.chat_id === chat.chat_id;
     const latestMsg = chat.latestMessage || chat.messages?.[0];
-    const hasUnread = chat.messages?.some(m => m.is_read === false);
+    const unreadCount = chat.messages?.filter(m => !m.is_read).length || 0;
+    const hasUnread = unreadCount > 0;
 
     return (
       <ChatItem
@@ -81,34 +85,32 @@ const MobileWhatsAppList = ({
         onClick={() => onSelectChat(chat)}
       >
         <ChatAvatar theme={theme} $isGroup={chat.is_group_chat}>
-          {getInitials(chat)}
-          {chat.is_group_chat && (
-            <GroupBadge theme={theme}>
-              <FaUsers size={8} />
-            </GroupBadge>
+          {chat.profile_image_url && !chat.is_group_chat ? (
+            <AvatarImg src={chat.profile_image_url} alt={getDisplayName(chat)} />
+          ) : chat.is_group_chat ? (
+            <FaUsers size={20} />
+          ) : (
+            getInitials(chat)
           )}
         </ChatAvatar>
-        <ChatContent>
-          <ChatHeader>
+        <ChatBody>
+          <ChatTopRow>
             <ChatName theme={theme} $unread={hasUnread}>
               {getDisplayName(chat)}
             </ChatName>
-            <ChatDate theme={theme}>
+            <ChatTime theme={theme} $unread={hasUnread}>
               {formatDate(latestMsg?.date)}
-            </ChatDate>
-          </ChatHeader>
-          <ChatPreview theme={theme} $unread={hasUnread}>
-            {getLatestMessage(chat)}
-          </ChatPreview>
-          {chat.contact_number && !chat.is_group_chat && (
-            <ChatNumber theme={theme}>
-              {chat.contact_number}
-            </ChatNumber>
-          )}
-        </ChatContent>
-        {hasUnread && (
-          <UnreadBadge>{chat.messages?.filter(m => !m.is_read).length || ''}</UnreadBadge>
-        )}
+            </ChatTime>
+          </ChatTopRow>
+          <ChatBottomRow>
+            <ChatPreview theme={theme} $unread={hasUnread}>
+              {getLatestMessage(chat)}
+            </ChatPreview>
+            {hasUnread && (
+              <UnreadBadge>{unreadCount}</UnreadBadge>
+            )}
+          </ChatBottomRow>
+        </ChatBody>
       </ChatItem>
     );
   };
@@ -126,13 +128,10 @@ const MobileWhatsAppList = ({
           onClick={() => toggleSection(sectionKey)}
         >
           <SectionLeft>
-            <SectionIcon style={{ color }}>{icon}</SectionIcon>
-            <SectionTitle theme={theme}>{title}</SectionTitle>
+            {isExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+            <SectionLabel theme={theme}>{title.toUpperCase()}</SectionLabel>
             <SectionCount theme={theme}>{count}</SectionCount>
           </SectionLeft>
-          <ChevronIcon theme={theme}>
-            {isExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-          </ChevronIcon>
         </SectionHeader>
         {isExpanded && (
           <SectionContent>
@@ -154,7 +153,7 @@ const MobileWhatsAppList = ({
   }
 
   return (
-    <Container>
+    <Container theme={theme}>
       {renderSection('Inbox', <FaInbox />, inboxChats, 'inbox', '#25D366')}
       {renderSection('Need Actions', <FaBolt />, needActionsChats, 'need_actions', '#F59E0B')}
       {renderSection('Waiting Input', <FaClock />, waitingInputChats, 'waiting_input', '#8B5CF6')}
@@ -163,22 +162,21 @@ const MobileWhatsAppList = ({
   );
 };
 
-// Styled Components
+// ─── Styled Components ──────────────────────────────────────────────
+
 const Container = styled.div`
-  padding: 8px 0;
+  padding: 0;
 `;
 
-const Section = styled.div`
-  margin-bottom: 8px;
-`;
+const Section = styled.div``;
 
 const SectionHeader = styled.button`
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#1F2937'};
+  justify-content: flex-start;
+  padding: 10px 20px 10px 16px;
+  background: ${p => p.theme === 'light' ? '#F0F2F5' : '#111B21'};
   border: none;
   cursor: pointer;
 `;
@@ -187,142 +185,140 @@ const SectionLeft = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+  color: inherit;
 `;
 
-const SectionIcon = styled.span`
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-`;
-
-const SectionTitle = styled.span`
-  font-size: 14px;
-  font-weight: 600;
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+const SectionLabel = styled.span`
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: ${p => p.theme === 'light' ? '#008069' : '#00A884'};
 `;
 
 const SectionCount = styled.span`
-  font-size: 12px;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  padding: 2px 8px;
-  border-radius: 10px;
-`;
-
-const ChevronIcon = styled.span`
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 11px;
+  color: ${p => p.theme === 'light' ? '#667781' : '#8696A0'};
 `;
 
 const SectionContent = styled.div``;
 
 const ChatItem = styled.div`
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  background: ${props => props.$selected
-    ? (props.theme === 'light' ? '#D1FAE5' : '#064E3B')
-    : (props.theme === 'light' ? '#FFFFFF' : '#111827')
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: ${p => p.$selected
+    ? (p.theme === 'light' ? '#F0F2F5' : '#2A3942')
+    : (p.theme === 'light' ? '#FFFFFF' : '#111B21')
   };
-  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#1F2937'};
   cursor: pointer;
-  min-height: 72px;
+  position: relative;
 
   &:active {
-    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#1F2937'};
+    background: ${p => p.theme === 'light' ? '#F5F6F6' : '#1F2C34'};
+  }
+
+  /* Inset divider (past avatar) */
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 80px;
+    right: 0;
+    height: 1px;
+    background: ${p => p.theme === 'light' ? '#E9EDEF' : '#222D34'};
   }
 `;
 
 const ChatAvatar = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 24px;
-  background: ${props => props.$isGroup
-    ? (props.theme === 'light' ? '#DBEAFE' : '#1E3A5F')
-    : (props.theme === 'light' ? '#D1FAE5' : '#064E3B')};
-  color: ${props => props.$isGroup
-    ? (props.theme === 'light' ? '#3B82F6' : '#60A5FA')
-    : '#25D366'};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: 600;
-  flex-shrink: 0;
-  position: relative;
-`;
-
-const GroupBadge = styled.div`
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
-  color: white;
-  width: 18px;
-  height: 18px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
+  background: ${p => p.$isGroup
+    ? (p.theme === 'light' ? '#00A884' : '#00A884')
+    : (p.theme === 'light' ? '#DFE5E7' : '#6B7C85')};
+  color: ${p => p.$isGroup
+    ? '#FFFFFF'
+    : (p.theme === 'light' ? '#FFFFFF' : '#CFD8DC')};
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid ${props => props.theme === 'light' ? '#FFFFFF' : '#111827'};
+  font-size: 20px;
+  font-weight: 500;
+  flex-shrink: 0;
 `;
 
-const ChatContent = styled.div`
+const AvatarImg = styled.img`
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+`;
+
+const ChatBody = styled.div`
   flex: 1;
   min-width: 0;
   overflow: hidden;
 `;
 
-const ChatHeader = styled.div`
+const ChatTopRow = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2px;
+  align-items: baseline;
+  margin-bottom: 3px;
 `;
 
 const ChatName = styled.span`
-  font-size: 15px;
-  font-weight: ${props => props.$unread ? '600' : '400'};
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 16px;
+  font-weight: ${p => p.$unread ? '500' : '400'};
+  color: ${p => p.theme === 'light' ? '#111B21' : '#E9EDEF'};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  flex: 1;
+  min-width: 0;
 `;
 
-const ChatDate = styled.span`
+const ChatTime = styled.span`
   font-size: 12px;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  color: ${p => p.$unread
+    ? '#00A884'
+    : (p.theme === 'light' ? '#667781' : '#8696A0')};
   white-space: nowrap;
   flex-shrink: 0;
+  margin-left: 6px;
+`;
+
+const ChatBottomRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 `;
 
 const ChatPreview = styled.div`
   font-size: 14px;
-  font-weight: ${props => props.$unread ? '500' : '400'};
-  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  font-weight: ${p => p.$unread ? '400' : '400'};
+  color: ${p => p.theme === 'light' ? '#667781' : '#8696A0'};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 2px;
-`;
-
-const ChatNumber = styled.div`
-  font-size: 12px;
-  color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  flex: 1;
+  min-width: 0;
 `;
 
 const UnreadBadge = styled.div`
-  background: #25D366;
-  color: white;
+  background: #00A884;
+  color: #111B21;
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 12px;
-  min-width: 20px;
-  text-align: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  align-self: center;
 `;
 
 const EmptyState = styled.div`
@@ -331,19 +327,19 @@ const EmptyState = styled.div`
   align-items: center;
   justify-content: center;
   padding: 48px 24px;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  color: ${p => p.theme === 'light' ? '#667781' : '#8696A0'};
 `;
 
 const EmptyTitle = styled.h3`
   font-size: 18px;
   font-weight: 600;
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  color: ${p => p.theme === 'light' ? '#111B21' : '#E9EDEF'};
   margin: 16px 0 8px;
 `;
 
 const EmptyText = styled.p`
   font-size: 14px;
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  color: ${p => p.theme === 'light' ? '#667781' : '#8696A0'};
   margin: 0;
 `;
 
