@@ -49,6 +49,10 @@ const useCalendarData = (activeTab) => {
   const [meetingContactSearchResults, setMeetingContactSearchResults] = useState([]);
   const [meetingContactSearchLoading, setMeetingContactSearchLoading] = useState(false);
 
+  // Triggers for CalendarPanelTab (from left panel buttons)
+  const [addEventTrigger, setAddEventTrigger] = useState(0);
+  const [weekViewTrigger, setWeekViewTrigger] = useState(0);
+
   // Fetch Calendar events from Supabase (all events - upcoming and past)
   useEffect(() => {
     const fetchCalendarEvents = async () => {
@@ -966,6 +970,10 @@ const useCalendarData = (activeTab) => {
     handleUpdateMeetingDescription,
     handleUpdateMeetingScore,
     handleUpdateMeetingNotes,
+    addEventTrigger,
+    setAddEventTrigger,
+    weekViewTrigger,
+    setWeekViewTrigger,
   };
 };
 

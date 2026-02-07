@@ -776,7 +776,7 @@ const WeekEventBlock = styled.div`
   }
 `;
 
-const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext, contactContext }) => {
+const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext, contactContext, addEventTrigger, weekViewTrigger }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -786,6 +786,15 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [showWeekModal, setShowWeekModal] = useState(false);
+
+  // React to external triggers (from left panel buttons)
+  useEffect(() => {
+    if (addEventTrigger > 0) setShowAddModal(true);
+  }, [addEventTrigger]);
+
+  useEffect(() => {
+    if (weekViewTrigger > 0) setShowWeekModal(true);
+  }, [weekViewTrigger]);
 
   // Attendees state
   const [attendees, setAttendees] = useState([]); // [{contact_id, name, email, suggested}]

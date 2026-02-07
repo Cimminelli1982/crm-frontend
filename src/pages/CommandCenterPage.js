@@ -2289,7 +2289,7 @@ const CommandCenterPage = ({ theme }) => {
   const localStateBundle = useMemo(() => ({
     activeTab, setActiveTab, viewport, isMobile,
     listCollapsed, setListCollapsed, rightPanelCollapsed, setRightPanelCollapsed,
-    statusSections, toggleStatusSection, filterByStatus,
+    statusSections, setStatusSections, toggleStatusSection, filterByStatus,
     emailSearchQuery, setEmailSearchQuery, emailSearchResults, setEmailSearchResults,
     emailSearchLoading, isSearchingEmails, setIsSearchingEmails,
     contactDeals, companyDeals, contactIntroductions, contactTasks,

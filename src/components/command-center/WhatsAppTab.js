@@ -1466,33 +1466,6 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           </div>
         </ChatHeaderInfo>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* New WhatsApp Message */}
-          {onNewWhatsApp && (
-            <button
-              onClick={onNewWhatsApp}
-              title="New WhatsApp Message"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                padding: '0 12px',
-                height: '36px',
-                borderRadius: '8px',
-                border: 'none',
-                background: theme === 'light' ? '#10B981' : '#059669',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                fontWeight: 600,
-                fontSize: '13px',
-              }}
-            >
-              <FaPaperPlane size={12} />
-              New
-            </button>
-          )}
-
           {/* Skip / Spam */}
           <button
             onClick={onSpam}
