@@ -64,7 +64,11 @@ const DesktopRightPanel = ({
   } = localHandlers;
 
   // Destructure whatsAppHook
-  const { selectedWhatsappChat } = whatsAppHook;
+  const {
+    selectedWhatsappChat,
+    setNewWhatsAppModalOpen, setNewWhatsAppMode,
+    setNewGroupContacts, setNewGroupName,
+  } = whatsAppHook;
 
   // Destructure calendarHook
   const {
@@ -1585,6 +1589,8 @@ const DesktopRightPanel = ({
                 <RightPanelWhatsAppTab
                   theme={theme}
                   contactId={selectedRightPanelContactId}
+                  contactName={rightPanelContactDetails?.contact ? `${rightPanelContactDetails.contact.first_name || ''} ${rightPanelContactDetails.contact.last_name || ''}`.trim() : ''}
+                  contactImageUrl={rightPanelContactDetails?.contact?.profile_image_url}
                   mobiles={rightPanelContactDetails?.mobiles || []}
                   initialSelectedMobile={initialSelectedMobile}
                   directChats={activeTab === 'tasks' ? tasksLinkedChats : undefined}
@@ -1594,6 +1600,25 @@ const DesktopRightPanel = ({
                       toast.success('Message sent!');
                     }
                     setInitialSelectedMobile(null); // Reset after sending
+                  }}
+                  onCreateGroup={() => {
+                    const contact = rightPanelContactDetails?.contact;
+                    const primaryMobile = (rightPanelContactDetails?.mobiles || []).find(m => m.is_primary) || (rightPanelContactDetails?.mobiles || [])[0];
+                    // Pre-populate group with current contact
+                    const preselected = [];
+                    if (contact && primaryMobile) {
+                      preselected.push({
+                        contact_id: contact.contact_id,
+                        first_name: contact.first_name,
+                        last_name: contact.last_name,
+                        phone: primaryMobile.mobile,
+                        profile_image_url: contact.profile_image_url,
+                      });
+                    }
+                    setNewGroupContacts(preselected);
+                    setNewGroupName('');
+                    setNewWhatsAppMode('group');
+                    setNewWhatsAppModalOpen(true);
                   }}
                 />
               )}

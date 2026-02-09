@@ -491,8 +491,16 @@ const CommandCenterPage = ({ theme }) => {
     groupWhatsAppByChat,
     handleWhatsAppDone, handleWhatsAppDoneAsync,
     handleNewWhatsAppSearch, handleSendNewWhatsApp,
+    handleNewGroupSearch, handleCreateGroupAndSend,
+    resetNewWhatsAppModal,
     handleWhatsAppSpam, searchSavedWhatsapp,
     handleSelectWhatsappSearchResult,
+    newWhatsAppMode, setNewWhatsAppMode,
+    newGroupName, setNewGroupName,
+    newGroupContacts, setNewGroupContacts,
+    newGroupMessage, setNewGroupMessage,
+    newGroupSearchQuery, setNewGroupSearchQuery, newGroupSearchResults, setNewGroupSearchResults,
+    creatingGroup,
   } = whatsAppHook;
 
 
@@ -5079,86 +5087,367 @@ const CommandCenterPage = ({ theme }) => {
         </ModalOverlay>
       )}
 
-      {/* New WhatsApp Message Modal */}
+      {/* New WhatsApp Modal (Choice / Message / Group) */}
       {newWhatsAppModalOpen && (
-        <ModalOverlay onClick={() => {
-          setNewWhatsAppModalOpen(false);
-          setNewWhatsAppContact(null);
-          setNewWhatsAppMessage('');
-          setNewWhatsAppSearchQuery('');
-          setNewWhatsAppSearchResults([]);
-        }}>
+        <ModalOverlay onClick={resetNewWhatsAppModal}>
           <ModalContent theme={theme} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <ModalHeader theme={theme}>
-              <ModalTitle theme={theme}>
+              <ModalTitle theme={theme} style={{ display: 'flex', alignItems: 'center' }}>
+                {newWhatsAppMode && (
+                  <button
+                    onClick={() => {
+                      setNewWhatsAppMode(null);
+                      setNewWhatsAppContact(null);
+                      setNewWhatsAppMessage('');
+                      setNewWhatsAppSearchQuery('');
+                      setNewWhatsAppSearchResults([]);
+                      setNewGroupName('');
+                      setNewGroupContacts([]);
+                      setNewGroupMessage('');
+                      setNewGroupSearchQuery('');
+                      setNewGroupSearchResults([]);
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme === 'light' ? '#374151' : '#D1D5DB', padding: '4px', marginRight: '8px', display: 'flex', alignItems: 'center' }}
+                  >
+                    <FaChevronLeft size={14} />
+                  </button>
+                )}
                 <FaWhatsapp style={{ marginRight: '8px', color: '#25D366' }} />
-                New WhatsApp Message
+                {!newWhatsAppMode ? 'New WhatsApp' : newWhatsAppMode === 'message' ? 'New Message' : 'New Group Chat'}
               </ModalTitle>
-              <CloseButton theme={theme} onClick={() => {
-                setNewWhatsAppModalOpen(false);
-                setNewWhatsAppContact(null);
-                setNewWhatsAppMessage('');
-                setNewWhatsAppSearchQuery('');
-                setNewWhatsAppSearchResults([]);
-              }}>
+              <CloseButton theme={theme} onClick={resetNewWhatsAppModal}>
                 <FaTimes />
               </CloseButton>
             </ModalHeader>
             <ModalBody theme={theme}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {/* Contact Search */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                    To *
-                  </label>
-                  {newWhatsAppContact ? (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      background: theme === 'light' ? '#D1FAE5' : '#064E3B',
-                      color: theme === 'light' ? '#065F46' : '#6EE7B7'
-                    }}>
-                      {newWhatsAppContact.profile_image_url ? (
-                        <img src={newWhatsAppContact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
-                      ) : (
-                        <div style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: '50%',
-                          background: theme === 'light' ? '#10B981' : '#065F46',
-                          color: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '12px',
-                          fontWeight: 600
-                        }}>
-                          {(newWhatsAppContact.first_name?.[0] || '') + (newWhatsAppContact.last_name?.[0] || '')}
+
+              {/* Screen 1: Choice */}
+              {!newWhatsAppMode && (
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <div
+                    onClick={() => setNewWhatsAppMode('message')}
+                    style={{
+                      flex: 1,
+                      padding: '24px 16px',
+                      borderRadius: '12px',
+                      border: `2px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#25D366'; e.currentTarget.style.background = theme === 'light' ? '#F0FDF4' : '#064E3B'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = theme === 'light' ? '#E5E7EB' : '#374151'; e.currentTarget.style.background = theme === 'light' ? '#FFFFFF' : '#1F2937'; }}
+                  >
+                    <FaUser size={28} style={{ color: '#25D366', marginBottom: '12px' }} />
+                    <div style={{ fontWeight: 600, fontSize: '15px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>New Message</div>
+                    <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>Send to one contact</div>
+                  </div>
+                  <div
+                    onClick={() => setNewWhatsAppMode('group')}
+                    style={{
+                      flex: 1,
+                      padding: '24px 16px',
+                      borderRadius: '12px',
+                      border: `2px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#25D366'; e.currentTarget.style.background = theme === 'light' ? '#F0FDF4' : '#064E3B'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = theme === 'light' ? '#E5E7EB' : '#374151'; e.currentTarget.style.background = theme === 'light' ? '#FFFFFF' : '#1F2937'; }}
+                  >
+                    <FaUsers size={28} style={{ color: '#25D366', marginBottom: '12px' }} />
+                    <div style={{ fontWeight: 600, fontSize: '15px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>New Group Chat</div>
+                    <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>Create a group with contacts</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Screen 2: New Message (existing flow) */}
+              {newWhatsAppMode === 'message' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Contact Search */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      To *
+                    </label>
+                    {newWhatsAppContact ? (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        background: theme === 'light' ? '#D1FAE5' : '#064E3B',
+                        color: theme === 'light' ? '#065F46' : '#6EE7B7'
+                      }}>
+                        {newWhatsAppContact.profile_image_url ? (
+                          <img src={newWhatsAppContact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                        ) : (
+                          <div style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: '50%',
+                            background: theme === 'light' ? '#10B981' : '#065F46',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12px',
+                            fontWeight: 600
+                          }}>
+                            {(newWhatsAppContact.first_name?.[0] || '') + (newWhatsAppContact.last_name?.[0] || '')}
+                          </div>
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: '14px' }}>
+                            {newWhatsAppContact.first_name} {newWhatsAppContact.last_name}
+                          </div>
+                          <div style={{ fontSize: '12px', opacity: 0.8 }}>{newWhatsAppContact.phone}</div>
                         </div>
-                      )}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: '14px' }}>
-                          {newWhatsAppContact.first_name} {newWhatsAppContact.last_name}
-                        </div>
-                        <div style={{ fontSize: '12px', opacity: 0.8 }}>{newWhatsAppContact.phone}</div>
+                        <button
+                          onClick={() => setNewWhatsAppContact(null)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '4px' }}
+                        >
+                          <FaTimes size={14} />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => setNewWhatsAppContact(null)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '4px' }}
-                      >
-                        <FaTimes size={14} />
-                      </button>
-                    </div>
-                  ) : (
+                    ) : (
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          value={newWhatsAppSearchQuery}
+                          onChange={(e) => handleNewWhatsAppSearch(e.target.value)}
+                          placeholder="Search contact by name..."
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            background: theme === 'light' ? '#FFFFFF' : '#374151',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB',
+                            fontSize: '14px'
+                          }}
+                          autoFocus
+                        />
+                        {newWhatsAppSearchResults.length > 0 && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                            borderRadius: '8px',
+                            marginTop: '4px',
+                            maxHeight: '200px',
+                            overflowY: 'auto',
+                            zIndex: 10,
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                          }}>
+                            {newWhatsAppSearchResults.map(contact => (
+                              <div
+                                key={contact.contact_id}
+                                onClick={() => {
+                                  setNewWhatsAppContact(contact);
+                                  setNewWhatsAppSearchQuery('');
+                                  setNewWhatsAppSearchResults([]);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '10px 12px',
+                                  cursor: 'pointer',
+                                  borderBottom: `1px solid ${theme === 'light' ? '#F3F4F6' : '#374151'}`
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = theme === 'light' ? '#F9FAFB' : '#374151'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                              >
+                                {contact.profile_image_url ? (
+                                  <img src={contact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                                ) : (
+                                  <div style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: '50%',
+                                    background: '#25D366',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '12px',
+                                    fontWeight: 600
+                                  }}>
+                                    {(contact.first_name?.[0] || '') + (contact.last_name?.[0] || '')}
+                                  </div>
+                                )}
+                                <div>
+                                  <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                    {contact.first_name} {contact.last_name}
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                    {contact.phone}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      Message *
+                    </label>
+                    <textarea
+                      value={newWhatsAppMessage}
+                      onChange={(e) => setNewWhatsAppMessage(e.target.value)}
+                      placeholder="Type your message..."
+                      rows={5}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#FFFFFF' : '#374151',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                    <button
+                      onClick={resetNewWhatsAppModal}
+                      style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: 'transparent',
+                        color: theme === 'light' ? '#374151' : '#D1D5DB',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: 500
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSendNewWhatsApp}
+                      disabled={!newWhatsAppContact || !newWhatsAppMessage.trim() || newWhatsAppSending}
+                      style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: newWhatsAppContact && newWhatsAppMessage.trim() && !newWhatsAppSending ? '#25D366' : '#9CA3AF',
+                        color: 'white',
+                        cursor: newWhatsAppContact && newWhatsAppMessage.trim() && !newWhatsAppSending ? 'pointer' : 'not-allowed',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <FaPaperPlane size={14} />
+                      {newWhatsAppSending ? 'Sending...' : 'Send'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Screen 3: New Group Chat */}
+              {newWhatsAppMode === 'group' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Group Name */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      Group Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="Enter group name..."
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#FFFFFF' : '#374151',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Members */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      Members * {newGroupContacts.length > 0 && <span style={{ fontWeight: 400, opacity: 0.7 }}>({newGroupContacts.length})</span>}
+                    </label>
+
+                    {/* Selected contacts as chips */}
+                    {newGroupContacts.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                        {newGroupContacts.map(contact => (
+                          <div key={contact.contact_id} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px 4px 6px',
+                            borderRadius: '20px',
+                            background: theme === 'light' ? '#D1FAE5' : '#064E3B',
+                            color: theme === 'light' ? '#065F46' : '#6EE7B7',
+                            fontSize: '13px'
+                          }}>
+                            {contact.profile_image_url ? (
+                              <img src={contact.profile_image_url} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                            ) : (
+                              <div style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: '50%',
+                                background: theme === 'light' ? '#10B981' : '#065F46',
+                                color: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '10px',
+                                fontWeight: 600
+                              }}>
+                                {(contact.first_name?.[0] || '') + (contact.last_name?.[0] || '')}
+                              </div>
+                            )}
+                            <span style={{ fontWeight: 500 }}>{contact.first_name} {contact.last_name?.[0]}.</span>
+                            <span style={{ fontSize: '11px', opacity: 0.7 }}>{contact.phone}</span>
+                            <button
+                              onClick={() => setNewGroupContacts(prev => prev.filter(c => c.contact_id !== contact.contact_id))}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '0 2px', display: 'flex', alignItems: 'center' }}
+                            >
+                              <FaTimes size={10} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Search input */}
                     <div style={{ position: 'relative' }}>
                       <input
                         type="text"
-                        value={newWhatsAppSearchQuery}
-                        onChange={(e) => handleNewWhatsAppSearch(e.target.value)}
-                        placeholder="Search contact by name..."
+                        value={newGroupSearchQuery}
+                        onChange={(e) => handleNewGroupSearch(e.target.value)}
+                        placeholder="Search contacts to add..."
                         style={{
                           width: '100%',
                           padding: '10px 12px',
@@ -5168,9 +5457,8 @@ const CommandCenterPage = ({ theme }) => {
                           color: theme === 'light' ? '#111827' : '#F9FAFB',
                           fontSize: '14px'
                         }}
-                        autoFocus
                       />
-                      {newWhatsAppSearchResults.length > 0 && (
+                      {newGroupSearchResults.length > 0 && (
                         <div style={{
                           position: 'absolute',
                           top: '100%',
@@ -5185,13 +5473,13 @@ const CommandCenterPage = ({ theme }) => {
                           zIndex: 10,
                           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                         }}>
-                          {newWhatsAppSearchResults.map(contact => (
+                          {newGroupSearchResults.map(contact => (
                             <div
                               key={contact.contact_id}
                               onClick={() => {
-                                setNewWhatsAppContact(contact);
-                                setNewWhatsAppSearchQuery('');
-                                setNewWhatsAppSearchResults([]);
+                                setNewGroupContacts(prev => [...prev, contact]);
+                                setNewGroupSearchQuery('');
+                                setNewGroupSearchResults([]);
                               }}
                               style={{
                                 display: 'flex',
@@ -5235,77 +5523,77 @@ const CommandCenterPage = ({ theme }) => {
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Message */}
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                    Message *
-                  </label>
-                  <textarea
-                    value={newWhatsAppMessage}
-                    onChange={(e) => setNewWhatsAppMessage(e.target.value)}
-                    placeholder="Type your message..."
-                    rows={5}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                      background: theme === 'light' ? '#FFFFFF' : '#374151',
-                      color: theme === 'light' ? '#111827' : '#F9FAFB',
-                      fontSize: '14px',
-                      resize: 'vertical'
-                    }}
-                  />
-                </div>
+                  {/* First Message (optional) */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      First Message <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span>
+                    </label>
+                    <textarea
+                      value={newGroupMessage}
+                      onChange={(e) => setNewGroupMessage(e.target.value)}
+                      placeholder="Type a message to send after creating the group..."
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#FFFFFF' : '#374151',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                  <button
-                    onClick={() => {
-                      setNewWhatsAppModalOpen(false);
-                      setNewWhatsAppContact(null);
-                      setNewWhatsAppMessage('');
-                      setNewWhatsAppSearchQuery('');
-                      setNewWhatsAppSearchResults([]);
-                    }}
-                    style={{
-                      padding: '10px 20px',
-                      borderRadius: '8px',
-                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                      background: 'transparent',
-                      color: theme === 'light' ? '#374151' : '#D1D5DB',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 500
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSendNewWhatsApp}
-                    disabled={!newWhatsAppContact || !newWhatsAppMessage.trim() || newWhatsAppSending}
-                    style={{
-                      padding: '10px 20px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: newWhatsAppContact && newWhatsAppMessage.trim() && !newWhatsAppSending ? '#25D366' : '#9CA3AF',
-                      color: 'white',
-                      cursor: newWhatsAppContact && newWhatsAppMessage.trim() && !newWhatsAppSending ? 'pointer' : 'not-allowed',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    <FaPaperPlane size={14} />
-                    {newWhatsAppSending ? 'Sending...' : 'Send'}
-                  </button>
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                    <button
+                      onClick={resetNewWhatsAppModal}
+                      style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: 'transparent',
+                        color: theme === 'light' ? '#374151' : '#D1D5DB',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: 500
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleCreateGroupAndSend}
+                      disabled={!newGroupName.trim() || newGroupContacts.length === 0 || creatingGroup}
+                      style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: newGroupName.trim() && newGroupContacts.length > 0 && !creatingGroup ? '#25D366' : '#9CA3AF',
+                        color: 'white',
+                        cursor: newGroupName.trim() && newGroupContacts.length > 0 && !creatingGroup ? 'pointer' : 'not-allowed',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      {creatingGroup ? (
+                        <><FaSpinner size={14} style={{ animation: 'spin 1s linear infinite' }} /> Creating...</>
+                      ) : newGroupMessage.trim() ? (
+                        <><FaPaperPlane size={14} /> Create & Send</>
+                      ) : (
+                        <><FaUsers size={14} /> Create Group</>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
+
             </ModalBody>
           </ModalContent>
         </ModalOverlay>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FaWhatsapp, FaPaperPlane, FaClock, FaCheckDouble, FaMagic, FaUsers, FaUser } from 'react-icons/fa';
+import { FaWhatsapp, FaPaperPlane, FaClock, FaCheckDouble, FaMagic, FaUsers, FaUser, FaPlus, FaChevronDown } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 
@@ -19,8 +19,11 @@ const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const RightPanelWhatsAppTab = ({
   theme,
   contactId,
+  contactName,
+  contactImageUrl,
   mobiles = [],
   onMessageSent,
+  onCreateGroup,
   initialSelectedMobile,
   directChats,
 }) => {
@@ -121,12 +124,25 @@ const RightPanelWhatsAppTab = ({
 
           const mobileSuffixes = mobiles.map(m => getLast9Digits(m.mobile));
 
+          // Build a lookup: external_chat_id → linked chat map key (UUID)
+          // so inbox messages can merge into already-linked chats
+          const externalIdToKey = new Map();
+          for (const [key, chat] of chatMap.entries()) {
+            if (chat.external_chat_id) {
+              externalIdToKey.set(String(chat.external_chat_id), key);
+            }
+          }
+
           (inboxMessages || []).forEach(msg => {
             const msgPhoneSuffix = getLast9Digits(msg.contact_number || '');
             if (msgPhoneSuffix.length < 9) return;
             if (!mobileSuffixes.includes(msgPhoneSuffix)) return;
 
-            const key = msg.chat_id || msg.contact_number;
+            // Check if this inbox chat matches a linked chat by external_chat_id
+            const inboxChatId = msg.chat_id ? String(msg.chat_id) : null;
+            const linkedKey = inboxChatId ? externalIdToKey.get(inboxChatId) : null;
+            const key = linkedKey || inboxChatId || msg.contact_number;
+
             if (!chatMap.has(key)) {
               chatMap.set(key, {
                 id: key,
@@ -383,17 +399,22 @@ ${input.trim()}`
     }
   };
 
-  // Styles
-  const selectStyle = {
-    width: '100%',
-    padding: '10px 12px',
-    borderRadius: '8px',
-    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-    background: theme === 'dark' ? '#374151' : '#FFFFFF',
-    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-    fontSize: '13px',
-    cursor: 'pointer'
-  };
+  // Custom dropdown state for chat selector (must be before any early returns)
+  const [chatDropdownOpen, setChatDropdownOpen] = useState(false);
+  const chatDropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (chatDropdownRef.current && !chatDropdownRef.current.contains(e.target)) {
+        setChatDropdownOpen(false);
+      }
+    };
+    if (chatDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [chatDropdownOpen]);
 
   // No contact selected
   if (!contactId) {
@@ -450,55 +471,156 @@ ${input.trim()}`
             ? 'No chat history found for this contact'
             : 'Add a phone number to start chatting'}
         </div>
+        {onCreateGroup && mobiles.length > 0 && (
+          <button
+            onClick={onCreateGroup}
+            style={{
+              marginTop: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              background: '#25D366',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            <FaPlus size={11} />
+            New Group Chat
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Chat Selector (if multiple chats) */}
-      {chats.length > 1 && (
-        <div style={{
-          padding: '12px',
-          borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-          background: theme === 'dark' ? '#1F2937' : '#F9FAFB'
-        }}>
-          <select
-            value={selectedChatId || ''}
-            onChange={(e) => handleChatSelect(e.target.value)}
-            style={selectStyle}
-          >
-            {chats.map(chat => (
-              <option key={chat.id} value={chat.id}>
-                {chat.is_group_chat ? '👥 ' : '👤 '}{chat.chat_name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Single chat header (if only one chat) */}
-      {chats.length === 1 && (
+      {/* Chat Selector Header */}
+      {chats.length >= 1 && (
         <div style={{
           padding: '12px',
           borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
           background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
-          {selectedChat?.is_group_chat ? (
-            <FaUsers size={14} color="#22C55E" />
-          ) : (
-            <FaUser size={14} color="#22C55E" />
+          position: 'relative'
+        }} ref={chatDropdownRef}>
+          <div
+            onClick={() => setChatDropdownOpen(!chatDropdownOpen)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: chats.length > 1 ? '10px 12px' : '0',
+              borderRadius: chats.length > 1 ? '8px' : '0',
+              border: chats.length > 1 ? `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}` : 'none',
+              background: chats.length > 1 ? (theme === 'dark' ? '#374151' : '#FFFFFF') : 'transparent',
+              cursor: 'pointer',
+            }}
+          >
+            {selectedChat?.is_group_chat ? (
+              <FaUsers size={14} color="#22C55E" />
+            ) : (
+              <FaUser size={14} color="#22C55E" />
+            )}
+            <span style={{
+              fontSize: '13px',
+              fontWeight: 500,
+              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}>
+              {selectedChat?.chat_name}
+            </span>
+            <FaChevronDown size={10} style={{
+              color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+              transition: 'transform 0.2s',
+              transform: chatDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)'
+            }} />
+          </div>
+
+          {/* Custom Dropdown */}
+          {chatDropdownOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: '12px',
+              right: '12px',
+              background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+              border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+              borderRadius: '8px',
+              marginTop: '4px',
+              maxHeight: '250px',
+              overflowY: 'auto',
+              zIndex: 20,
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+            }}>
+              {chats.map(chat => (
+                <div
+                  key={chat.id}
+                  onClick={() => {
+                    handleChatSelect(chat.id);
+                    setChatDropdownOpen(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    background: chat.id === selectedChatId ? (theme === 'dark' ? '#374151' : '#F0FDF4') : 'transparent',
+                    borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#F3F4F6'}`
+                  }}
+                  onMouseEnter={e => { if (chat.id !== selectedChatId) e.currentTarget.style.background = theme === 'dark' ? '#374151' : '#F9FAFB'; }}
+                  onMouseLeave={e => { if (chat.id !== selectedChatId) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {chat.is_group_chat ? (
+                    <FaUsers size={12} color="#22C55E" />
+                  ) : (
+                    <FaUser size={12} color="#22C55E" />
+                  )}
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: chat.id === selectedChatId ? 600 : 400,
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {chat.chat_name}
+                  </span>
+                </div>
+              ))}
+
+              {/* Add Group Chat option */}
+              {onCreateGroup && (
+                <div
+                  onClick={() => {
+                    setChatDropdownOpen(false);
+                    onCreateGroup();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    borderTop: `1px solid ${theme === 'dark' ? '#4B5563' : '#E5E7EB'}`,
+                    color: '#25D366',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = theme === 'dark' ? '#374151' : '#F9FAFB'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <FaPlus size={12} />
+                  <span style={{ fontSize: '13px', fontWeight: 500 }}>New Group Chat</span>
+                </div>
+              )}
+            </div>
           )}
-          <span style={{
-            fontSize: '13px',
-            fontWeight: 500,
-            color: theme === 'dark' ? '#F9FAFB' : '#111827'
-          }}>
-            {selectedChat?.chat_name}
-          </span>
         </div>
       )}
 

@@ -25,11 +25,20 @@ const useWhatsAppData = (activeTab) => {
 
   // New WhatsApp message modal
   const [newWhatsAppModalOpen, setNewWhatsAppModalOpen] = useState(false);
+  const [newWhatsAppMode, setNewWhatsAppMode] = useState(null); // null = choice screen, 'message', 'group'
   const [newWhatsAppContact, setNewWhatsAppContact] = useState(null);
   const [newWhatsAppMessage, setNewWhatsAppMessage] = useState('');
   const [newWhatsAppSearchQuery, setNewWhatsAppSearchQuery] = useState('');
   const [newWhatsAppSearchResults, setNewWhatsAppSearchResults] = useState([]);
   const [newWhatsAppSending, setNewWhatsAppSending] = useState(false);
+
+  // Group creation state
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupContacts, setNewGroupContacts] = useState([]); // [{contact_id, first_name, last_name, phone, profile_image_url}]
+  const [newGroupMessage, setNewGroupMessage] = useState('');
+  const [newGroupSearchQuery, setNewGroupSearchQuery] = useState('');
+  const [newGroupSearchResults, setNewGroupSearchResults] = useState([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   // --- Helper Functions ---
 
@@ -635,17 +644,131 @@ const useWhatsAppData = (activeTab) => {
       toast.success(`Message sent to ${newWhatsAppContact.first_name} ${newWhatsAppContact.last_name}`);
 
       // Reset and close modal
-      setNewWhatsAppModalOpen(false);
-      setNewWhatsAppContact(null);
-      setNewWhatsAppMessage('');
-      setNewWhatsAppSearchQuery('');
-      setNewWhatsAppSearchResults([]);
+      resetNewWhatsAppModal();
     } catch (error) {
       console.error('Error sending WhatsApp:', error);
       toast.error('Failed to send WhatsApp message');
     } finally {
       setNewWhatsAppSending(false);
     }
+  };
+
+  // Search contacts for new WhatsApp group (filters out already-selected contacts)
+  const handleNewGroupSearch = async (query) => {
+    setNewGroupSearchQuery(query);
+    if (!query || query.length < 2) {
+      setNewGroupSearchResults([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select(`
+          contact_id,
+          first_name,
+          last_name,
+          profile_image_url,
+          contact_mobiles(mobile, is_primary)
+        `)
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      const selectedIds = new Set(newGroupContacts.map(c => c.contact_id));
+      const contactsWithPhone = (data || []).filter(c =>
+        c.contact_mobiles && c.contact_mobiles.length > 0 && !selectedIds.has(c.contact_id)
+      ).map(c => ({
+        ...c,
+        phone: c.contact_mobiles.find(m => m.is_primary)?.mobile || c.contact_mobiles[0]?.mobile
+      }));
+
+      setNewGroupSearchResults(contactsWithPhone);
+    } catch (error) {
+      console.error('Error searching contacts for group:', error);
+    }
+  };
+
+  // Create WhatsApp group and optionally send first message
+  const handleCreateGroupAndSend = async () => {
+    if (!newGroupName.trim() || newGroupContacts.length === 0) return;
+
+    setCreatingGroup(true);
+    try {
+      const phones = newGroupContacts.map(c => c.phone);
+      const contactIds = newGroupContacts.map(c => c.contact_id);
+
+      // 1. Create the group
+      const response = await fetch(`${BACKEND_URL}/whatsapp/create-group`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newGroupName.trim(),
+          phones,
+          contactIds,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create group');
+      }
+
+      // 2. If message provided, send it to the new group
+      if (newGroupMessage.trim() && data.groupJid) {
+        const sendRes = await fetch(`${BACKEND_URL}/whatsapp/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: data.groupJid,
+            message: newGroupMessage.trim()
+          }),
+        });
+
+        const sendData = await sendRes.json();
+        if (!sendRes.ok || !sendData.success) {
+          // Group created but message failed
+          toast.success(`Group "${newGroupName.trim()}" created!`);
+          toast.error('Failed to send first message');
+          resetNewWhatsAppModal();
+          return;
+        }
+      }
+
+      toast.success(
+        newGroupMessage.trim()
+          ? `Group "${newGroupName.trim()}" created and message sent!`
+          : `Group "${newGroupName.trim()}" created!`
+      );
+
+      if (data.invalidPhones?.length > 0) {
+        toast(`${data.invalidPhones.length} number(s) not on WhatsApp`, { icon: '⚠️' });
+      }
+
+      resetNewWhatsAppModal();
+    } catch (error) {
+      console.error('Error creating WhatsApp group:', error);
+      toast.error(error.message || 'Failed to create WhatsApp group');
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  // Reset all new WhatsApp modal state
+  const resetNewWhatsAppModal = () => {
+    setNewWhatsAppModalOpen(false);
+    setNewWhatsAppMode(null);
+    setNewWhatsAppContact(null);
+    setNewWhatsAppMessage('');
+    setNewWhatsAppSearchQuery('');
+    setNewWhatsAppSearchResults([]);
+    setNewGroupName('');
+    setNewGroupContacts([]);
+    setNewGroupMessage('');
+    setNewGroupSearchQuery('');
+    setNewGroupSearchResults([]);
   };
 
   // Handle WhatsApp Spam - add to spam list and delete messages + attachments
@@ -892,6 +1015,8 @@ const useWhatsAppData = (activeTab) => {
     // New WhatsApp message modal state
     newWhatsAppModalOpen,
     setNewWhatsAppModalOpen,
+    newWhatsAppMode,
+    setNewWhatsAppMode,
     newWhatsAppContact,
     setNewWhatsAppContact,
     newWhatsAppMessage,
@@ -903,12 +1028,28 @@ const useWhatsAppData = (activeTab) => {
     newWhatsAppSending,
     setNewWhatsAppSending,
 
+    // Group creation state
+    newGroupName,
+    setNewGroupName,
+    newGroupContacts,
+    setNewGroupContacts,
+    newGroupMessage,
+    setNewGroupMessage,
+    newGroupSearchQuery,
+    setNewGroupSearchQuery,
+    newGroupSearchResults,
+    setNewGroupSearchResults,
+    creatingGroup,
+
     // Handlers
     groupWhatsAppByChat,
     handleWhatsAppDone,        // Requires setSaving parameter from CommandCenterPage
     handleWhatsAppDoneAsync,
     handleNewWhatsAppSearch,
     handleSendNewWhatsApp,
+    handleNewGroupSearch,
+    handleCreateGroupAndSend,
+    resetNewWhatsAppModal,
     handleWhatsAppSpam,        // Requires setSaving parameter from CommandCenterPage
     searchSavedWhatsapp,
     handleSelectWhatsappSearchResult, // Requires { setSelectedRightPanelContactId, setListCollapsed } parameter
