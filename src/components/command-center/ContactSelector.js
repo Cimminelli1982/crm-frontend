@@ -18,7 +18,6 @@ import { FaPlus, FaChevronDown } from 'react-icons/fa';
 const Container = styled.div`
   position: relative;
   width: 100%;
-  margin-bottom: 8px;
 `;
 
 const DropdownButton = styled.button`
@@ -26,13 +25,13 @@ const DropdownButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 4px 10px;
   background: ${props => props.theme === 'dark' ? '#2a2a2a' : '#f5f5f5'};
   border: 1px solid ${props => props.theme === 'dark' ? '#444' : '#ddd'};
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   color: ${props => props.theme === 'dark' ? '#fff' : '#333'};
-  font-size: 13px;
+  font-size: 12px;
   transition: all 0.2s;
 
   &:hover {
@@ -55,14 +54,14 @@ const SelectedContact = styled.div`
 `;
 
 const Avatar = styled.div`
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: ${props => props.$hasImage ? 'transparent' : (props.theme === 'dark' ? '#444' : '#ddd')};
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: ${props => props.theme === 'dark' ? '#aaa' : '#666'};
   flex-shrink: 0;

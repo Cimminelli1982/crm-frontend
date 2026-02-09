@@ -3012,6 +3012,86 @@ const DesktopCenterPanel = ({
                   {selectedThread.length > 1 && <span style={{ opacity: 0.6, marginLeft: '8px' }}>({selectedThread.length} messages)</span>}
                 </EmailSubjectFull>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* Spam - only for received emails */}
+                  {selectedThread[0]?.from_email?.toLowerCase() !== MY_EMAIL && (
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => setSpamMenuOpen(!spamMenuOpen)}
+                        disabled={saving}
+                        title="Mark as spam"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                          color: theme === 'light' ? '#DC2626' : '#FCA5A5',
+                          cursor: saving ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s ease',
+                          opacity: saving ? 0.5 : 1,
+                          fontSize: '16px',
+                        }}
+                      >
+                        🚫
+                      </button>
+                      {spamMenuOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: '4px',
+                          background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          overflow: 'hidden',
+                          zIndex: 100,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <button
+                            onClick={() => markAsSpam('email')}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              padding: '10px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              fontSize: '14px',
+                              textAlign: 'left',
+                              cursor: 'pointer'
+                            }}
+                            onMouseOver={(e) => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                            onMouseOut={(e) => e.target.style.background = 'transparent'}
+                          >
+                            Block Email: {selectedThread[0]?.from_email}
+                          </button>
+                          <button
+                            onClick={() => markAsSpam('domain')}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              padding: '10px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              fontSize: '14px',
+                              textAlign: 'left',
+                              cursor: 'pointer'
+                            }}
+                            onMouseOver={(e) => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                            onMouseOut={(e) => e.target.style.background = 'transparent'}
+                          >
+                            Block Domain: {selectedThread[0]?.from_email?.split('@')[1]}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Add to Calendar - only for invitation emails */}
                   {isCalendarInvitation() && (
                     <button
@@ -3447,75 +3527,8 @@ const DesktopCenterPanel = ({
                       Assign
                     </ActionBtn>
 
-                    {/* Spam and Delete buttons */}
+                    {/* Delete button */}
                     <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
-                      {/* Spam button with dropdown */}
-                      {!isSentByMe && (
-                        <div style={{ position: 'relative' }}>
-                        <ActionBtn
-                          theme={theme}
-                          onClick={() => setSpamMenuOpen(!spamMenuOpen)}
-                          style={{
-                            background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
-                            color: theme === 'light' ? '#DC2626' : '#FCA5A5'
-                          }}
-                        >
-                          Spam
-                        </ActionBtn>
-                        {spamMenuOpen && (
-                          <div style={{
-                            position: 'absolute',
-                            bottom: '100%',
-                            right: 0,
-                            marginBottom: '4px',
-                            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                            overflow: 'hidden',
-                            zIndex: 100
-                          }}>
-                            <button
-                              onClick={() => markAsSpam('email')}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                padding: '10px 16px',
-                                border: 'none',
-                                background: 'transparent',
-                                color: theme === 'light' ? '#111827' : '#F9FAFB',
-                                fontSize: '14px',
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                              }}
-                              onMouseOver={(e) => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
-                              onMouseOut={(e) => e.target.style.background = 'transparent'}
-                            >
-                              Block Email: {latestEmail.from_email}
-                            </button>
-                            <button
-                              onClick={() => markAsSpam('domain')}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                padding: '10px 16px',
-                                border: 'none',
-                                background: 'transparent',
-                                color: theme === 'light' ? '#111827' : '#F9FAFB',
-                                fontSize: '14px',
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                              }}
-                              onMouseOver={(e) => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
-                              onMouseOut={(e) => e.target.style.background = 'transparent'}
-                            >
-                              Block Domain: {latestEmail.from_email?.split('@')[1]}
-                            </button>
-                          </div>
-                        )}
-                        </div>
-                      )}
-
                       <ActionBtn
                         theme={theme}
                         onClick={deleteEmail}

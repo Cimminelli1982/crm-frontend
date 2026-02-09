@@ -21,7 +21,9 @@ const ChatHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: 0 24px;
+  height: 56px;
+  min-height: 56px;
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
 `;
@@ -209,11 +211,11 @@ const DoneButton = styled.button`
 // Reply input styled components
 const ReplyContainer = styled.div`
   display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#111827'};
 `;
 
 const ReplyInputWrapper = styled.div`
@@ -281,8 +283,8 @@ const ReplyInput = styled.textarea`
 `;
 
 const SendButton = styled.button`
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
   background: ${props => props.$hasText
@@ -324,8 +326,8 @@ const SendingIndicator = styled.div`
 `;
 
 const AttachButton = styled.button`
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
   background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
@@ -1803,9 +1805,6 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           title={(replyText.trim() || selectedFile) ? 'Send + Need Actions' : 'Need Actions'}
           style={{
             background: theme === 'light' ? '#F59E0B' : '#B45309',
-            width: '36px',
-            height: '36px',
-            marginLeft: '6px'
           }}
         >
           <FaBolt size={12} />
@@ -1818,9 +1817,6 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           title={(replyText.trim() || selectedFile) ? 'Send + Waiting Input' : 'Waiting Input'}
           style={{
             background: theme === 'light' ? '#8B5CF6' : '#6D28D9',
-            width: '36px',
-            height: '36px',
-            marginLeft: '6px'
           }}
         >
           <FaClock size={12} />
@@ -1833,9 +1829,6 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           title={(replyText.trim() || selectedFile) ? 'Send + Archive (Shift+Enter)' : 'Archive'}
           style={{
             background: theme === 'light' ? '#059669' : '#065F46',
-            width: '36px',
-            height: '36px',
-            marginLeft: '6px'
           }}
         >
           <FaCheck size={12} />

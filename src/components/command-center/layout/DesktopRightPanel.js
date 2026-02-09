@@ -232,7 +232,15 @@ const DesktopRightPanel = ({
           )}
           {/* Contact Selector Dropdown - show only when not collapsed and has contacts */}
           {!rightPanelCollapsed && enrichedRightPanelContacts.length > 0 && (
-            <div style={{ padding: '8px 12px 0 12px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 12px',
+              height: '56px',
+              minHeight: '56px',
+              borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+            }}>
               <ContactSelector
                 contacts={enrichedRightPanelContacts}
                 selectedContactId={selectedRightPanelContactId}

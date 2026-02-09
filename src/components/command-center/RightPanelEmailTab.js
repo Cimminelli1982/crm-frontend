@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FaEnvelope, FaPaperPlane, FaClock, FaFileAlt, FaPlus, FaReply } from 'react-icons/fa';
+import { FaEnvelope, FaPaperPlane, FaClock, FaFileAlt, FaPlus, FaReply, FaTimes, FaEdit, FaTrash } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 
@@ -43,8 +43,30 @@ const RightPanelEmailTab = ({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [selectedEmail, setSelectedEmail] = useState('');
+  const [composeCc, setComposeCc] = useState([]); // Array of { email, name }
+  const [composeBcc, setComposeBcc] = useState([]);
+  const [ccInput, setCcInput] = useState('');
+  const [bccInput, setBccInput] = useState('');
+  const [showCcBcc, setShowCcBcc] = useState(false);
+  const [contactSuggestions, setContactSuggestions] = useState([]);
+  const [activeField, setActiveField] = useState(null); // 'cc' | 'bcc'
   const [sending, setSending] = useState(false);
   const [proofreading, setProofreading] = useState(false);
+
+  // New template modal state
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateDesc, setNewTemplateDesc] = useState('');
+  const [newTemplateSubject, setNewTemplateSubject] = useState('');
+  const [newTemplateBody, setNewTemplateBody] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // Manage templates modal state
+  const [manageTemplatesOpen, setManageTemplatesOpen] = useState(false);
+  const [manageTemplates, setManageTemplates] = useState([]);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null); // template object being edited
+  const [deletingId, setDeletingId] = useState(null);
 
   // Set selectedEmail when initialSelectedEmail changes
   useEffect(() => {
@@ -342,6 +364,197 @@ const RightPanelEmailTab = ({
     toast.success(`Template "${template.name}" applied`);
   };
 
+  // Search contacts for CC/BCC autocomplete
+  const searchContacts = async (query) => {
+    if (!query || query.length < 2) {
+      setContactSuggestions([]);
+      return;
+    }
+    try {
+      const { data: emailMatches } = await supabase
+        .from('contact_emails')
+        .select('email, contacts (contact_id, first_name, last_name, profile_image_url)')
+        .ilike('email', `%${query}%`)
+        .limit(8);
+
+      const { data: nameMatches } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, profile_image_url, contact_emails (email)')
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+        .limit(8);
+
+      const emailSuggestions = (emailMatches || [])
+        .filter(item => item.contacts)
+        .map(item => ({
+          id: item.contacts.contact_id,
+          first_name: item.contacts.first_name,
+          last_name: item.contacts.last_name,
+          email: item.email,
+          profile_image_url: item.contacts.profile_image_url
+        }));
+
+      const nameSuggestions = (nameMatches || []).flatMap(contact => {
+        const emails = contact.contact_emails || [];
+        if (emails.length === 0) return [];
+        return emails.map(e => ({
+          id: contact.contact_id,
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          email: e.email,
+          profile_image_url: contact.profile_image_url
+        }));
+      });
+
+      const all = [...emailSuggestions, ...nameSuggestions];
+      const unique = all.filter((item, idx, self) => idx === self.findIndex(t => t.email === item.email));
+      setContactSuggestions(unique.slice(0, 8));
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+      setContactSuggestions([]);
+    }
+  };
+
+  const addEmailToField = (field, contact) => {
+    const email = typeof contact === 'string' ? contact : contact.email;
+    const name = typeof contact === 'string' ? '' : `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+    if (field === 'cc') {
+      if (!composeCc.find(r => r.email.toLowerCase() === email.toLowerCase())) {
+        setComposeCc([...composeCc, { email, name }]);
+      }
+      setCcInput('');
+    } else {
+      if (!composeBcc.find(r => r.email.toLowerCase() === email.toLowerCase())) {
+        setComposeBcc([...composeBcc, { email, name }]);
+      }
+      setBccInput('');
+    }
+    setContactSuggestions([]);
+  };
+
+  const removeEmailFromField = (field, email) => {
+    if (field === 'cc') {
+      setComposeCc(composeCc.filter(r => r.email !== email));
+    } else {
+      setComposeBcc(composeBcc.filter(r => r.email !== email));
+    }
+  };
+
+  const handleEmailInputKeyDown = (e, field) => {
+    const input = field === 'cc' ? ccInput : bccInput;
+    if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+      e.preventDefault();
+      const trimmed = input.trim().replace(/,$/, '');
+      if (trimmed && trimmed.includes('@')) {
+        addEmailToField(field, trimmed);
+      }
+    } else if (e.key === 'Backspace' && !input) {
+      if (field === 'cc' && composeCc.length > 0) {
+        setComposeCc(composeCc.slice(0, -1));
+      } else if (field === 'bcc' && composeBcc.length > 0) {
+        setComposeBcc(composeBcc.slice(0, -1));
+      }
+    }
+  };
+
+  // Save new template
+  const handleSaveTemplate = async () => {
+    if (!newTemplateName.trim()) {
+      toast.error('Template name is required');
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      const { error } = await supabase
+        .from('email_templates')
+        .insert({
+          name: newTemplateName.trim(),
+          short_description: newTemplateDesc.trim() || null,
+          subject: newTemplateSubject.trim() || null,
+          template_text: newTemplateBody.trim() || null,
+        });
+      if (error) throw error;
+      toast.success('Template saved!');
+      setNewTemplateName('');
+      setNewTemplateDesc('');
+      setTemplateModalOpen(false);
+    } catch (error) {
+      console.error('Error saving template:', error);
+      toast.error('Failed to save template');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  // Fetch all templates for manage modal
+  const fetchManageTemplates = async () => {
+    setManageLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('email_templates')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setManageTemplates(data || []);
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    }
+    setManageLoading(false);
+  };
+
+  const openManageTemplates = () => {
+    setTemplateDropdownOpen(false);
+    setManageTemplatesOpen(true);
+    setEditingTemplate(null);
+    fetchManageTemplates();
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    setDeletingId(templateId);
+    try {
+      const { error } = await supabase
+        .from('email_templates')
+        .delete()
+        .eq('template_id', templateId);
+      if (error) throw error;
+      setManageTemplates(prev => prev.filter(t => t.template_id !== templateId));
+      if (editingTemplate?.template_id === templateId) setEditingTemplate(null);
+      toast.success('Template deleted');
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      toast.error('Failed to delete template');
+    }
+    setDeletingId(null);
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!editingTemplate?.name?.trim()) {
+      toast.error('Template name is required');
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      const { error } = await supabase
+        .from('email_templates')
+        .update({
+          name: editingTemplate.name.trim(),
+          short_description: editingTemplate.short_description?.trim() || null,
+          subject: editingTemplate.subject?.trim() || null,
+          template_text: editingTemplate.template_text?.trim() || null,
+        })
+        .eq('template_id', editingTemplate.template_id);
+      if (error) throw error;
+      setManageTemplates(prev => prev.map(t =>
+        t.template_id === editingTemplate.template_id ? { ...t, ...editingTemplate } : t
+      ));
+      setEditingTemplate(null);
+      toast.success('Template updated');
+    } catch (error) {
+      console.error('Error updating template:', error);
+      toast.error('Failed to update template');
+    }
+    setSavingTemplate(false);
+  };
+
   // Proofread
   const handleProofread = async () => {
     if (!body.trim() || proofreading) return;
@@ -396,6 +609,8 @@ ${body.trim()}`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: [toEmail],
+          cc: composeCc.length > 0 ? composeCc : undefined,
+          bcc: composeBcc.length > 0 ? composeBcc : undefined,
           subject: subject.trim(),
           textBody: fullBody,
           skipCrmDoneStamp: true,
@@ -415,6 +630,11 @@ ${body.trim()}`
 
       setSubject('');
       setBody('');
+      setComposeCc([]);
+      setComposeBcc([]);
+      setCcInput('');
+      setBccInput('');
+      setShowCcBcc(false);
       toast.success('Email sent!');
 
       if (onEmailSent) {
@@ -552,6 +772,237 @@ ${body.trim()}`
             )}
           </div>
 
+          {/* CC/BCC toggle + fields */}
+          <div style={{ marginBottom: '8px' }}>
+            {!showCcBcc ? (
+              <button
+                type="button"
+                onClick={() => setShowCcBcc(true)}
+                style={{
+                  padding: 0,
+                  border: 'none',
+                  background: 'none',
+                  color: '#3B82F6',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                + Cc / Bcc
+              </button>
+            ) : (
+              <>
+                {/* CC Field */}
+                <div style={{ marginBottom: '8px' }}>
+                  <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Cc</label>
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '4px',
+                    padding: '6px 8px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                    minHeight: '34px',
+                    alignItems: 'center',
+                    cursor: 'text',
+                    position: 'relative',
+                  }} onClick={() => document.getElementById('rp-cc-input')?.focus()}>
+                    {composeCc.map((r, idx) => (
+                      <span key={idx} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        background: theme === 'dark' ? '#4B5563' : '#E5E7EB',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '11px',
+                        maxWidth: '180px',
+                      }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || r.email}</span>
+                        <FaTimes size={8} style={{ cursor: 'pointer', flexShrink: 0, opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); removeEmailFromField('cc', r.email); }} />
+                      </span>
+                    ))}
+                    <input
+                      id="rp-cc-input"
+                      type="text"
+                      value={ccInput}
+                      onChange={(e) => { setCcInput(e.target.value); setActiveField('cc'); searchContacts(e.target.value); }}
+                      onKeyDown={(e) => handleEmailInputKeyDown(e, 'cc')}
+                      onFocus={() => setActiveField('cc')}
+                      onBlur={() => setTimeout(() => { setContactSuggestions([]); setActiveField(null); }, 200)}
+                      placeholder={composeCc.length === 0 ? "Search contacts..." : ""}
+                      style={{
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '12px',
+                        flex: 1,
+                        minWidth: '80px',
+                        padding: '2px 0',
+                      }}
+                    />
+                    {activeField === 'cc' && contactSuggestions.length > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: '4px',
+                        background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        zIndex: 100,
+                        maxHeight: '180px',
+                        overflowY: 'auto',
+                      }}>
+                        {contactSuggestions.map((c) => (
+                          <div
+                            key={`${c.id}-${c.email}`}
+                            onMouseDown={() => addEmailToField('cc', c)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '8px 10px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = theme === 'dark' ? '#374151' : '#F3F4F6'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{
+                              width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0,
+                              background: theme === 'dark' ? '#4B5563' : '#E5E7EB',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '10px', fontWeight: 600, overflow: 'hidden',
+                              color: theme === 'dark' ? '#D1D5DB' : '#6B7280',
+                            }}>
+                              {c.profile_image_url
+                                ? <img src={c.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : `${c.first_name?.[0] || ''}${c.last_name?.[0] || ''}`}
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 500, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>{c.first_name} {c.last_name}</div>
+                              <div style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* BCC Field */}
+                <div>
+                  <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Bcc</label>
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '4px',
+                    padding: '6px 8px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                    minHeight: '34px',
+                    alignItems: 'center',
+                    cursor: 'text',
+                    position: 'relative',
+                  }} onClick={() => document.getElementById('rp-bcc-input')?.focus()}>
+                    {composeBcc.map((r, idx) => (
+                      <span key={idx} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        background: theme === 'dark' ? '#4B5563' : '#E5E7EB',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '11px',
+                        maxWidth: '180px',
+                      }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || r.email}</span>
+                        <FaTimes size={8} style={{ cursor: 'pointer', flexShrink: 0, opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); removeEmailFromField('bcc', r.email); }} />
+                      </span>
+                    ))}
+                    <input
+                      id="rp-bcc-input"
+                      type="text"
+                      value={bccInput}
+                      onChange={(e) => { setBccInput(e.target.value); setActiveField('bcc'); searchContacts(e.target.value); }}
+                      onKeyDown={(e) => handleEmailInputKeyDown(e, 'bcc')}
+                      onFocus={() => setActiveField('bcc')}
+                      onBlur={() => setTimeout(() => { setContactSuggestions([]); setActiveField(null); }, 200)}
+                      placeholder={composeBcc.length === 0 ? "Search contacts..." : ""}
+                      style={{
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '12px',
+                        flex: 1,
+                        minWidth: '80px',
+                        padding: '2px 0',
+                      }}
+                    />
+                    {activeField === 'bcc' && contactSuggestions.length > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: '4px',
+                        background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        zIndex: 100,
+                        maxHeight: '180px',
+                        overflowY: 'auto',
+                      }}>
+                        {contactSuggestions.map((c) => (
+                          <div
+                            key={`${c.id}-${c.email}`}
+                            onMouseDown={() => addEmailToField('bcc', c)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '8px 10px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = theme === 'dark' ? '#374151' : '#F3F4F6'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{
+                              width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0,
+                              background: theme === 'dark' ? '#4B5563' : '#E5E7EB',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '10px', fontWeight: 600, overflow: 'hidden',
+                              color: theme === 'dark' ? '#D1D5DB' : '#6B7280',
+                            }}>
+                              {c.profile_image_url
+                                ? <img src={c.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : `${c.first_name?.[0] || ''}${c.last_name?.[0] || ''}`}
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 500, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>{c.first_name} {c.last_name}</div>
+                              <div style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Subject */}
           <div style={{ marginBottom: '12px' }}>
             <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Subject</label>
@@ -574,27 +1025,49 @@ ${body.trim()}`
             />
           </div>
 
-          {/* Template Button */}
+          {/* Templates + New Template */}
           <div style={{ marginBottom: '12px', position: 'relative' }} ref={templateDropdownRef}>
-            <button
-              type="button"
-              onClick={() => setTemplateDropdownOpen(!templateDropdownOpen)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 12px',
-                background: theme === 'dark' ? '#374151' : '#F3F4F6',
-                border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                borderRadius: '6px',
-                color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                cursor: 'pointer',
-                fontSize: '13px'
-              }}
-            >
-              <FaFileAlt size={12} />
-              Templates
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setTemplateDropdownOpen(!templateDropdownOpen)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 12px',
+                  background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                  border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                  borderRadius: '6px',
+                  color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                  cursor: 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                <FaFileAlt size={12} />
+                Templates
+              </button>
+              <button
+                type="button"
+                onClick={() => { setTemplateModalOpen(true); setNewTemplateName(''); setNewTemplateDesc(''); setNewTemplateSubject(subject); setNewTemplateBody(body); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '8px 10px',
+                  background: 'none',
+                  border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                  borderRadius: '6px',
+                  color: '#3B82F6',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                }}
+              >
+                <FaPlus size={10} />
+                New
+              </button>
+            </div>
 
             {templateDropdownOpen && (
               <div style={{
@@ -666,6 +1139,25 @@ ${body.trim()}`
                       </div>
                     ))
                   )}
+                </div>
+                <div
+                  onClick={openManageTemplates}
+                  style={{
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    color: '#3B82F6',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = theme === 'dark' ? '#374151' : '#F3F4F6'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <FaEdit size={11} />
+                  Edit Templates
                 </div>
               </div>
             )}
@@ -884,6 +1376,389 @@ ${body.trim()}`
               <FaReply size={12} />
               Reply
             </button>
+          </div>
+        </div>
+      )}
+      {/* Manage Templates Modal */}
+      {manageTemplatesOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+        }} onClick={() => setManageTemplatesOpen(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+              borderRadius: '12px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              width: '560px',
+              maxWidth: '90vw',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 20px',
+              borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+            }}>
+              <div style={{ fontSize: '16px', fontWeight: 600, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                {editingTemplate ? 'Edit Template' : 'Manage Templates'}
+              </div>
+              <button
+                onClick={() => { setManageTemplatesOpen(false); setEditingTemplate(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', padding: '4px' }}
+              >
+                <FaTimes size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            {editingTemplate ? (
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'auto' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Name *</label>
+                  <input
+                    type="text"
+                    value={editingTemplate.name || ''}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Description</label>
+                  <input
+                    type="text"
+                    value={editingTemplate.short_description || ''}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, short_description: e.target.value })}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Subject</label>
+                  <input
+                    type="text"
+                    value={editingTemplate.subject || ''}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, subject: e.target.value })}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Body</label>
+                  <textarea
+                    value={editingTemplate.template_text || ''}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, template_text: e.target.value })}
+                    rows={8}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px', outline: 'none', resize: 'vertical',
+                      fontFamily: 'inherit', lineHeight: '1.5', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                {/* Edit footer */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    onClick={() => setEditingTemplate(null)}
+                    style={{
+                      padding: '10px 16px', borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: 'transparent',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      fontSize: '14px', cursor: 'pointer',
+                    }}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleUpdateTemplate}
+                    disabled={savingTemplate || !editingTemplate.name?.trim()}
+                    style={{
+                      padding: '10px 20px', borderRadius: '8px', border: 'none',
+                      background: savingTemplate || !editingTemplate.name?.trim() ? (theme === 'dark' ? '#374151' : '#E5E7EB') : '#3B82F6',
+                      color: savingTemplate || !editingTemplate.name?.trim() ? (theme === 'dark' ? '#6B7280' : '#9CA3AF') : 'white',
+                      fontSize: '14px', fontWeight: 600,
+                      cursor: savingTemplate || !editingTemplate.name?.trim() ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {savingTemplate ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ overflow: 'auto', flex: 1 }}>
+                {manageLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>Loading...</div>
+                ) : manageTemplates.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>No templates yet</div>
+                ) : (
+                  manageTemplates.map((template) => (
+                    <div
+                      key={template.template_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '12px 20px',
+                        borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#F3F4F6'}`,
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: '14px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                          {template.name}
+                        </div>
+                        {template.short_description && (
+                          <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginTop: '2px' }}>
+                            {template.short_description}
+                          </div>
+                        )}
+                        {template.subject && (
+                          <div style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginTop: '2px' }}>
+                            Subject: {template.subject}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setEditingTemplate({ ...template })}
+                        title="Edit template"
+                        style={{
+                          padding: '8px', borderRadius: '6px', border: 'none',
+                          background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                          color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        <FaEdit size={13} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTemplate(template.template_id)}
+                        disabled={deletingId === template.template_id}
+                        title="Delete template"
+                        style={{
+                          padding: '8px', borderRadius: '6px', border: 'none',
+                          background: theme === 'dark' ? '#7F1D1D' : '#FEE2E2',
+                          color: theme === 'dark' ? '#FCA5A5' : '#DC2626',
+                          cursor: deletingId === template.template_id ? 'not-allowed' : 'pointer',
+                          opacity: deletingId === template.template_id ? 0.5 : 1,
+                          display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        <FaTrash size={12} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* New Template Modal */}
+      {templateModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+        }} onClick={() => setTemplateModalOpen(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+              borderRadius: '12px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              width: '480px',
+              maxWidth: '90vw',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 20px',
+              borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+            }}>
+              <div style={{ fontSize: '16px', fontWeight: 600, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                New Email Template
+              </div>
+              <button
+                onClick={() => setTemplateModalOpen(false)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280', padding: '4px',
+                }}
+              >
+                <FaTimes size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'auto' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Template Name *</label>
+                <input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  placeholder="e.g. Follow-up after meeting"
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Short Description</label>
+                <input
+                  type="text"
+                  value={newTemplateDesc}
+                  onChange={(e) => setNewTemplateDesc(e.target.value)}
+                  placeholder="Optional description..."
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Subject</label>
+                <input
+                  type="text"
+                  value={newTemplateSubject}
+                  onChange={(e) => setNewTemplateSubject(e.target.value)}
+                  placeholder="Email subject..."
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <label style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Body</label>
+                <textarea
+                  value={newTemplateBody}
+                  onChange={(e) => setNewTemplateBody(e.target.value)}
+                  placeholder="Write template body..."
+                  rows={8}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '14px',
+                    outline: 'none',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    lineHeight: '1.5',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '8px',
+              padding: '16px 20px',
+              borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+            }}>
+              <button
+                onClick={() => setTemplateModalOpen(false)}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                  background: 'transparent',
+                  color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveTemplate}
+                disabled={savingTemplate || !newTemplateName.trim()}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: savingTemplate || !newTemplateName.trim() ? (theme === 'dark' ? '#374151' : '#E5E7EB') : '#3B82F6',
+                  color: savingTemplate || !newTemplateName.trim() ? (theme === 'dark' ? '#6B7280' : '#9CA3AF') : 'white',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: savingTemplate || !newTemplateName.trim() ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {savingTemplate ? 'Saving...' : 'Save Template'}
+              </button>
+            </div>
           </div>
         </div>
       )}

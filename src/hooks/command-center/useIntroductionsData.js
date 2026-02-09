@@ -12,6 +12,15 @@ const useIntroductionsData = (activeTab) => {
     closed: false
   });
   const [introductionsActionTab, setIntroductionsActionTab] = useState('email');
+
+  // Auto-switch action tab based on introduction tool
+  useEffect(() => {
+    if (selectedIntroductionItem?.introduction_tool) {
+      const tool = selectedIntroductionItem.introduction_tool;
+      setIntroductionsActionTab(tool === 'whatsapp' ? 'whatsapp' : 'email');
+    }
+  }, [selectedIntroductionItem?.introduction_id]);
+
   const [introContactEmails, setIntroContactEmails] = useState([]);
   const [introContactMobiles, setIntroContactMobiles] = useState([]);
   const [selectedIntroEmails, setSelectedIntroEmails] = useState([]);
