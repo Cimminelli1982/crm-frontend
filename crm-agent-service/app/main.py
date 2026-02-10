@@ -1077,6 +1077,45 @@ async def audit_contact(contact_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== ATTACHMENT TEXT EXTRACTION ====================
+
+async def extract_attachment_text(attachment: dict) -> str:
+    """Download and extract text from an attachment (PDF)."""
+    if not attachment:
+        return ""
+    file_url = attachment.get("file_url") or attachment.get("permanent_url")
+    file_content_b64 = attachment.get("file_content_base64")
+    file_type = attachment.get("file_type", "")
+    file_name = attachment.get("file_name", "")
+
+    import base64
+
+    content_bytes = None
+    if file_content_b64:
+        content_bytes = base64.b64decode(file_content_b64)
+    elif file_url:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(file_url)
+            if resp.status_code == 200:
+                content_bytes = resp.content
+
+    if not content_bytes:
+        return ""
+
+    if "pdf" in file_type.lower() or file_name.lower().endswith(".pdf"):
+        try:
+            import fitz  # pymupdf
+            doc = fitz.open(stream=content_bytes, filetype="pdf")
+            text = "\n".join(page.get_text() for page in doc)
+            doc.close()
+            return text[:6000]
+        except Exception as e:
+            logger.error("pdf_extraction_error", error=str(e))
+            return ""
+
+    return ""
+
+
 # ==================== DEAL EXTRACTION ENDPOINT ====================
 
 @app.post("/extract-deal-from-email")
@@ -1187,6 +1226,23 @@ CONTACT'S LINKED COMPANIES:
 {json_lib.dumps(contact_companies, indent=2, default=str) if contact_companies else "None"}
 """
 
+        # --- EXTRACT ATTACHMENT TEXT (if provided) ---
+        attachment = request.get("attachment")
+        attachment_text = ""
+        if attachment:
+            logger.info("extracting_attachment_text", file_name=attachment.get("file_name"))
+            attachment_text = await extract_attachment_text(attachment)
+            if attachment_text:
+                logger.info("attachment_text_extracted", length=len(attachment_text))
+
+        attachment_context = ""
+        if attachment_text:
+            att_name = attachment.get("file_name", "attachment")
+            attachment_context = f"""
+ATTACHMENT CONTENT ({att_name}):
+{attachment_text}
+"""
+
         # --- CLAUDE EXTRACTION ---
         if source_type == "whatsapp":
             prompt = f"""You are extracting deal information from a WhatsApp conversation for a CRM system.
@@ -1197,7 +1253,7 @@ Date: {message_date}
 
 Conversation:
 {body_text}
-
+{attachment_context}
 {db_context}
 
 TASK: Extract information to create a DEAL record with proper associations.
@@ -1251,7 +1307,8 @@ RULES:
 - Default currency EUR unless clearly stated otherwise
 - stage is always "Lead" for new conversations
 - source_category: "Cold Contacting" if cold outreach, "Introduction" if referred
-- Parse first_name/last_name from contact_name if provided"""
+- Parse first_name/last_name from contact_name if provided
+- If ATTACHMENT CONTENT is provided, use it as the PRIMARY source of deal information (company name, investment details, descriptions)"""
         else:
             prompt = f"""You are extracting deal information from an email for a CRM system.
 
@@ -1262,7 +1319,7 @@ Date: {message_date}
 
 Body:
 {body_text}
-
+{attachment_context}
 {db_context}
 
 TASK: Extract information to create a DEAL record with proper associations.
@@ -1310,7 +1367,8 @@ RULES:
 - Extract investment amount: "300k" = 300000, "€2M" = 2000000
 - Default currency EUR unless clearly stated otherwise
 - stage is always "Lead" for new inbound
-- source_category: "Cold Contacting" if unsolicited, "Introduction" if referred by someone"""
+- source_category: "Cold Contacting" if unsolicited, "Introduction" if referred by someone
+- If ATTACHMENT CONTENT is provided, use it as the PRIMARY source of deal information (company name, investment details, descriptions)"""
 
         client = anthropic.Anthropic()
         response = client.messages.create(

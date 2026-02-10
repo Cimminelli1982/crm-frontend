@@ -3495,7 +3495,21 @@ const DesktopCenterPanel = ({
                           key={idx}
                           theme={theme}
                           onClick={() => handleDownloadAttachment(att)}
-                          title={`Download ${att.name || 'attachment'}`}
+                          title={`Drag to Deals or click to download ${att.name || 'attachment'}`}
+                          draggable="true"
+                          onDragStart={(e) => {
+                            e.stopPropagation();
+                            e.dataTransfer.setData('application/json', JSON.stringify({
+                              type: 'attachment',
+                              source: 'email',
+                              file_name: att.name,
+                              file_type: att.type,
+                              blobId: att.blobId,
+                              size: att.size,
+                              fastmailId: att.fastmailId,
+                            }));
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
                         >
                           <FaDownload size={12} />
                           <span>{att.name || 'Unnamed file'}</span>

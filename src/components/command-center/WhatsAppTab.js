@@ -1684,11 +1684,23 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
                               download={fileName}
                               theme={theme}
                               $hasText={!!msg.text}
+                              draggable="true"
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('application/json', JSON.stringify({
+                                  type: 'attachment',
+                                  source: 'whatsapp',
+                                  file_name: fileName,
+                                  file_url: att.permanent_url,
+                                  file_type: att.file_type || docType,
+                                  attachment_id: att.attachment_id || null,
+                                }));
+                                e.dataTransfer.effectAllowed = 'copy';
+                              }}
                             >
                               <DocumentIcon $type={docType}>{docLabel}</DocumentIcon>
                               <DocumentInfo>
                                 <DocumentName>{fileName}</DocumentName>
-                                <DocumentSize theme={theme}>Tap to download</DocumentSize>
+                                <DocumentSize theme={theme}>Drag to Deals or tap to download</DocumentSize>
                               </DocumentInfo>
                             </DocumentLink>
                           );

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ActionsPanel,
   ActionTabIcon,
@@ -182,6 +183,31 @@ const DesktopRightPanel = ({
     setManageMobilesModalOpen, setContactForManageModal,
   } = modalState;
 
+  // Drag-and-drop state for deals icon
+  const [dealsDragOver, setDealsDragOver] = useState(false);
+
+  const handleDealsDrop = (e) => {
+    e.preventDefault();
+    setDealsDragOver(false);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data?.type === 'attachment') {
+        setActiveActionTab('deals');
+        if (typeof localHandlers.onAttachmentDrop === 'function') {
+          localHandlers.onAttachmentDrop(data);
+        }
+      }
+    } catch (err) {
+      console.error('Drop parse error:', err);
+    }
+  };
+
+  const handleDealsDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDealsDragOver(true);
+  };
+
   return (
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
           {/* Data Integrity Warning Bar - show only for email/whatsapp/calendar when not collapsed */}
@@ -281,7 +307,25 @@ const DesktopRightPanel = ({
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks (⌥T)" style={{ color: activeActionTab === 'tasks' ? '#10B981' : undefined }}>
                     <FaTasks /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>T</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals (⌥D)" style={{ color: activeActionTab === 'deals' ? '#10B981' : undefined }}>
+                  <ActionTabIcon
+                    theme={theme}
+                    $active={activeActionTab === 'deals'}
+                    onClick={() => setActiveActionTab('deals')}
+                    title="Deals (⌥D) — Drop attachment here"
+                    style={{
+                      color: dealsDragOver ? '#10B981' : (activeActionTab === 'deals' ? '#10B981' : undefined),
+                      ...(dealsDragOver ? {
+                        boxShadow: '0 0 12px rgba(16, 185, 129, 0.6)',
+                        transform: 'scale(1.2)',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        borderRadius: '8px',
+                        transition: 'all 0.15s ease',
+                      } : {}),
+                    }}
+                    onDragOver={handleDealsDragOver}
+                    onDragLeave={() => setDealsDragOver(false)}
+                    onDrop={handleDealsDrop}
+                  >
                     <FaDollarSign /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>D</span>
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions (⌥I)" style={{ color: activeActionTab === 'introductions' ? '#EC4899' : undefined }}>
@@ -1648,6 +1692,7 @@ const DesktopRightPanel = ({
                   onUpdateDealStage={handleUpdateDealStage}
                   contactId={selectedRightPanelContactId}
                   onDealAssociated={() => setRefreshDealsCounter(c => c + 1)}
+                  onAttachmentDrop={localHandlers.onAttachmentDrop}
                 />
               )}
               {activeActionTab === 'introductions' && !(activeTab === 'introductions' && selectedIntroductionItem && ['email', 'whatsapp'].includes(introductionsActionTab)) && (

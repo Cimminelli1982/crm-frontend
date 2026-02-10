@@ -335,6 +335,14 @@ const CommandCenterPage = ({ theme }) => {
     toggleDealsSection, filterDealsByStatus,
   } = dealsHook;
 
+  // Dropped attachment for AI deal creation (drag from WhatsApp/Email)
+  const [droppedAttachment, setDroppedAttachment] = useState(null);
+
+  const handleAttachmentDrop = (attachmentData) => {
+    setDroppedAttachment(attachmentData);
+    setCreateDealAIOpen(true);
+  };
+
   // Introductions hook
   const introductionsHook = useIntroductionsData(activeTab);
   const {
@@ -2324,6 +2332,7 @@ const CommandCenterPage = ({ theme }) => {
     fetchContactNotes, handleSaveNote, openEditNote, resetNoteForm,
     findContactByEmail,
     setRefreshDealsCounter,
+    onAttachmentDrop: handleAttachmentDrop,
   }), [
     searchSavedEmails, handleSelectSearchResult, handleSelectThread,
     handleEmailAddressClick, emailHasContact, getRelevantPerson,
@@ -2334,6 +2343,7 @@ const CommandCenterPage = ({ theme }) => {
     fetchContactNotes, handleSaveNote, openEditNote, resetNoteForm,
     findContactByEmail, setRefreshDealsCounter,
     sanitizeEmailHtml, parseDateFromText,
+    handleAttachmentDrop,
   ]);
 
   const modalStateBundle = useMemo(() => ({
@@ -4644,10 +4654,11 @@ const CommandCenterPage = ({ theme }) => {
       {/* Create Deal AI Modal */}
       <CreateDealAI
         isOpen={createDealAIOpen}
-        onClose={() => setCreateDealAIOpen(false)}
+        onClose={() => { setCreateDealAIOpen(false); setDroppedAttachment(null); }}
         email={selectedThread?.[0] || null}
         whatsappChat={selectedWhatsappChat}
         sourceType={activeTab}
+        droppedAttachment={droppedAttachment}
         theme={theme}
         onSuccess={(newDeal) => {
           // Refresh deals list

@@ -352,7 +352,7 @@ const DEAL_CURRENCIES = ['EUR', 'USD', 'GBP', 'PLN'];
 const CONTACT_CATEGORIES = ['Founder', 'Professional Investor', 'Manager', 'Advisor', 'Other'];
 const COMPANY_CATEGORIES = ['Startup', 'Professional Investor', 'Corporation', 'SME', 'Advisory', 'Other'];
 
-const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'email', theme = 'light', onSuccess }) => {
+const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'email', theme = 'light', onSuccess, droppedAttachment }) => {
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [extracted, setExtracted] = useState(null);
@@ -419,16 +419,16 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
 
   // Extract deal info from email or WhatsApp
   const extractDealInfo = useCallback(async () => {
-    // Check if we have valid source data
-    if (sourceType === 'email' && !email) return;
-    if (sourceType === 'whatsapp' && !whatsappChat) return;
+    // Check if we have valid source data — allow droppedAttachment as standalone source
+    const hasSource = (sourceType === 'email' && email) || (sourceType === 'whatsapp' && whatsappChat) || droppedAttachment;
+    if (!hasSource) return;
 
     setExtracting(true);
 
     try {
       let payload;
 
-      if (sourceType === 'whatsapp') {
+      if (sourceType === 'whatsapp' && whatsappChat) {
         // WhatsApp: combine all messages into conversation text
         const messages = whatsappChat.messages || [];
         const conversationText = messages.map(msg => {
@@ -443,7 +443,7 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
           conversation_text: conversationText,
           date: messages[messages.length - 1]?.timestamp || ''
         };
-      } else {
+      } else if (email) {
         // Email
         payload = {
           source_type: 'email',
@@ -453,6 +453,44 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
           body_text: email.body_text || email.snippet || '',
           date: email.date || ''
         };
+      } else {
+        // Fallback: only dropped attachment, no conversation context
+        payload = {
+          source_type: droppedAttachment?.source || 'email',
+          from_email: '',
+          from_name: '',
+          subject: `Attachment: ${droppedAttachment?.file_name || 'Unknown'}`,
+          body_text: '',
+          date: ''
+        };
+      }
+
+      // Add attachment data if dropped
+      if (droppedAttachment) {
+        const attachmentPayload = {
+          file_name: droppedAttachment.file_name,
+          file_type: droppedAttachment.file_type,
+        };
+
+        if (droppedAttachment.source === 'whatsapp' && droppedAttachment.file_url) {
+          // WhatsApp: backend can download directly via URL
+          attachmentPayload.file_url = droppedAttachment.file_url;
+        } else if (droppedAttachment.source === 'email' && droppedAttachment.blobId) {
+          // Email: fetch blob from Node.js backend, convert to base64
+          try {
+            const blobResp = await fetch(`${BACKEND_URL}/attachment/${droppedAttachment.blobId}`);
+            if (blobResp.ok) {
+              const blob = await blobResp.blob();
+              const arrayBuffer = await blob.arrayBuffer();
+              const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+              attachmentPayload.file_content_base64 = base64;
+            }
+          } catch (blobErr) {
+            console.error('Failed to fetch email attachment blob:', blobErr);
+          }
+        }
+
+        payload.attachment = attachmentPayload;
       }
 
       const response = await fetch(`${AGENT_SERVICE_URL}/extract-deal-from-email`, {
@@ -534,7 +572,7 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
     } finally {
       setExtracting(false);
     }
-  }, [email, whatsappChat, sourceType]);
+  }, [email, whatsappChat, sourceType, droppedAttachment]);
 
   // Save everything
   const handleSave = async () => {
@@ -773,13 +811,13 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
     }
   };
 
-  // Extract on open - handles both email and whatsapp
+  // Extract on open - handles email, whatsapp, and dropped attachment
   useEffect(() => {
-    const hasSource = (sourceType === 'email' && email) || (sourceType === 'whatsapp' && whatsappChat);
+    const hasSource = (sourceType === 'email' && email) || (sourceType === 'whatsapp' && whatsappChat) || droppedAttachment;
     if (isOpen && hasSource && !extracted) {
       extractDealInfo();
     }
-  }, [isOpen, email, whatsappChat, sourceType, extracted, extractDealInfo]);
+  }, [isOpen, email, whatsappChat, sourceType, extracted, extractDealInfo, droppedAttachment]);
 
   // Reset on close
   useEffect(() => {
@@ -800,6 +838,12 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
           <ModalTitle theme={theme}>
             <FaRobot style={{ color: '#8B5CF6' }} />
             New Deal from {sourceType === 'whatsapp' ? 'WhatsApp' : 'Email'}
+            {droppedAttachment && (
+              <span style={{ fontSize: 11, fontWeight: 500, color: '#10B981', marginLeft: 8 }}>
+                <FaPaperclip size={10} style={{ marginRight: 4 }} />
+                {droppedAttachment.file_name}
+              </span>
+            )}
           </ModalTitle>
           <CloseButton theme={theme} onClick={onClose}><FaTimes size={18} /></CloseButton>
         </ModalHeader>
@@ -808,7 +852,9 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
           {extracting && (
             <LoadingOverlay theme={theme}>
               <SpinIcon><FaSpinner size={32} color="#8B5CF6" /></SpinIcon>
-              <LoadingText theme={theme}>Extracting deal info with AI...</LoadingText>
+              <LoadingText theme={theme}>
+                {droppedAttachment ? 'Reading attachment & extracting deal info with AI...' : 'Extracting deal info with AI...'}
+              </LoadingText>
             </LoadingOverlay>
           )}
 

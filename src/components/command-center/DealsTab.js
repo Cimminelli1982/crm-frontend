@@ -265,7 +265,9 @@ const DealsTab = ({
   onUpdateDealStage,
   contactId, // The contact to associate deals with
   onDealAssociated, // Callback after associating a deal
+  onAttachmentDrop, // Callback when attachment is dropped
 }) => {
+  const [contentDragOver, setContentDragOver] = useState(false);
   const [updatingDeals, setUpdatingDeals] = useState({});
   const [showAssociate, setShowAssociate] = useState(false);
   const [allDeals, setAllDeals] = useState([]);
@@ -356,7 +358,52 @@ const DealsTab = ({
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto' }}>
+    <div
+      style={{ flex: 1, overflow: 'auto', position: 'relative' }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setContentDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        // Only set false if leaving the container (not entering a child)
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+          setContentDragOver(false);
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setContentDragOver(false);
+        try {
+          const data = JSON.parse(e.dataTransfer.getData('application/json'));
+          if (data?.type === 'attachment' && onAttachmentDrop) {
+            onAttachmentDrop(data);
+          }
+        } catch (err) {
+          console.error('Drop parse error:', err);
+        }
+      }}
+    >
+      {/* Drop overlay */}
+      {contentDragOver && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 10,
+          background: theme === 'dark' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.08)',
+          border: '2px dashed #10B981',
+          borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: theme === 'dark' ? '#064E3B' : '#D1FAE5',
+            color: '#10B981', padding: '10px 20px', borderRadius: 8,
+            fontWeight: 600, fontSize: 13,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <FaDollarSign size={16} /> Drop to create deal with AI
+          </div>
+        </div>
+      )}
       {/* Add Deal Menu */}
       <AddDealMenu theme={theme}>
         <MenuButton
