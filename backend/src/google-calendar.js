@@ -144,6 +144,7 @@ export class GoogleCalendarClient {
     sendUpdates = 'all', // 'all' sends invite emails, 'none' doesn't
     timezone = 'Europe/Rome',
     useGoogleMeet = false,
+    colorId,
   }) {
     // Normalize date format - ensure full ISO 8601 format with seconds
     const normalizeDateTime = (dateStr) => {
@@ -170,6 +171,10 @@ export class GoogleCalendarClient {
         : { dateTime: normalizedEnd || new Date(new Date(normalizedStart).getTime() + 3600000).toISOString(), timeZone: timezone },
       reminders,
     };
+
+    if (colorId) {
+      event.colorId = colorId;
+    }
 
     // Add Google Meet conference if requested
     if (useGoogleMeet) {

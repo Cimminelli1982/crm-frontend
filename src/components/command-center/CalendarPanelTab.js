@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
-import { FaChevronLeft, FaChevronRight, FaCopy, FaCheck, FaPlus, FaCalendarAlt, FaTimes, FaBuilding, FaVideo, FaUsers, FaSearch } from 'react-icons/fa';
+import { FaChevronLeft, FaChevronRight, FaCopy, FaCheck, FaPlus, FaCalendarAlt, FaTimes, FaBuilding, FaVideo, FaUsers, FaSearch, FaGlassMartini, FaClock } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -479,8 +479,17 @@ const ExtractingBadge = styled.div`
 
 // Quick location presets
 const LOCATION_PRESETS = [
-  { id: 'office', label: 'Office', value: 'The Roof Gardens', icon: FaBuilding },
-  { id: 'meet', label: 'Google Meet', value: 'Google Meet (link will be created)', icon: FaVideo }
+  { id: 'office', label: 'Fora NHG', value: 'Fora, Notting Hill Gate, London', icon: FaBuilding },
+  { id: 'club', label: 'Club', value: 'The Roof Gardens, High Street Kensington, London', icon: FaGlassMartini },
+  { id: 'meet', label: 'Google Meet', value: 'Google Meet', icon: FaVideo }
+];
+
+const DURATION_PRESETS = [
+  { label: 'Full day', minutes: null },
+  { label: '30m', minutes: 30 },
+  { label: '1h', minutes: 60 },
+  { label: '1.5h', minutes: 90 },
+  { label: '2h', minutes: 120 },
 ];
 
 // Styled components for attendees and location
@@ -810,7 +819,8 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
     endTime: '10:00',
     location: '',
     description: '',
-    colorId: '7' // Default to Peacock (blue)
+    colorId: '7', // Default to Peacock (blue)
+    isAllDay: false
   });
   const [extracting, setExtracting] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -1079,6 +1089,27 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
     }
   };
 
+  const addMinutesToTime = (startTime, minutes) => {
+    const [h, m] = startTime.split(':').map(Number);
+    const total = h * 60 + m + minutes;
+    const newH = Math.floor(total / 60) % 24;
+    const newM = total % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+  };
+
+  const handleDurationPreset = (preset) => {
+    if (preset.minutes === null) {
+      // Full day
+      setNewEvent(prev => ({ ...prev, isAllDay: true }));
+    } else {
+      setNewEvent(prev => ({
+        ...prev,
+        isAllDay: false,
+        endTime: addMinutesToTime(prev.startTime, preset.minutes)
+      }));
+    }
+  };
+
   // Week View helpers
   const getWeekViewDays = () => {
     const days = [];
@@ -1277,25 +1308,45 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
 
     setCreating(true);
     try {
-      // Combine date and time
-      const [startHour, startMin] = newEvent.startTime.split(':').map(Number);
-      const [endHour, endMin] = newEvent.endTime.split(':').map(Number);
-
-      const startDate = new Date(newEvent.date);
-      startDate.setHours(startHour, startMin, 0, 0);
-
-      const endDate = new Date(newEvent.date);
-      endDate.setHours(endHour, endMin, 0, 0);
-
       // Format attendees for API
       const attendeeEmails = attendees
         .filter(a => a.email)
         .map(a => ({ email: a.email, displayName: a.name }));
 
-      const res = await fetch(`${BACKEND_URL}/google-calendar/create-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const dateStr = newEvent.date instanceof Date
+        ? newEvent.date.toISOString().split('T')[0]
+        : newEvent.date;
+
+      let body;
+      if (newEvent.isAllDay) {
+        // All-day event: send just the date string
+        const nextDay = new Date(newEvent.date);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDayStr = nextDay.toISOString().split('T')[0];
+        body = {
+          title: newEvent.title.trim(),
+          startDate: dateStr,
+          endDate: nextDayStr,
+          allDay: true,
+          location: newEvent.addConference ? undefined : (newEvent.location.trim() || undefined),
+          description: newEvent.description.trim() || undefined,
+          colorId: newEvent.colorId,
+          timezone: 'Europe/Rome',
+          attendees: attendeeEmails.length > 0 ? attendeeEmails : undefined,
+          useGoogleMeet: newEvent.addConference || false
+        };
+      } else {
+        // Timed event: combine date and time
+        const [startHour, startMin] = newEvent.startTime.split(':').map(Number);
+        const [endHour, endMin] = newEvent.endTime.split(':').map(Number);
+
+        const startDate = new Date(newEvent.date);
+        startDate.setHours(startHour, startMin, 0, 0);
+
+        const endDate = new Date(newEvent.date);
+        endDate.setHours(endHour, endMin, 0, 0);
+
+        body = {
           title: newEvent.title.trim(),
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
@@ -1304,8 +1355,14 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
           colorId: newEvent.colorId,
           timezone: 'Europe/Rome',
           attendees: attendeeEmails.length > 0 ? attendeeEmails : undefined,
-          addConference: newEvent.addConference || false
-        })
+          useGoogleMeet: newEvent.addConference || false
+        };
+      }
+
+      const res = await fetch(`${BACKEND_URL}/google-calendar/create-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
       });
 
       const data = await res.json();
@@ -1527,13 +1584,44 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
                 />
               </FormGroup>
 
+              <FormGroup>
+                <FormLabel theme={theme}>Duration</FormLabel>
+                <LocationButtons>
+                  {DURATION_PRESETS.map(preset => (
+                    <LocationBtn
+                      key={preset.label}
+                      theme={theme}
+                      $active={
+                        preset.minutes === null
+                          ? newEvent.isAllDay
+                          : (!newEvent.isAllDay && newEvent.endTime === addMinutesToTime(newEvent.startTime, preset.minutes))
+                      }
+                      onClick={() => handleDurationPreset(preset)}
+                    >
+                      {preset.label}
+                    </LocationBtn>
+                  ))}
+                </LocationButtons>
+              </FormGroup>
+
+              {!newEvent.isAllDay && (
               <FormRow>
                 <FormGroup>
                   <FormLabel theme={theme}>Start Time</FormLabel>
                   <FormSelect
                     theme={theme}
                     value={newEvent.startTime}
-                    onChange={e => setNewEvent(prev => ({ ...prev, startTime: e.target.value }))}
+                    onChange={e => {
+                      const newStart = e.target.value;
+                      setNewEvent(prev => {
+                        // Auto-adjust end time to maintain same duration
+                        const [oldH, oldM] = prev.startTime.split(':').map(Number);
+                        const [endH, endM] = prev.endTime.split(':').map(Number);
+                        const duration = (endH * 60 + endM) - (oldH * 60 + oldM);
+                        const newEnd = duration > 0 ? addMinutesToTime(newStart, duration) : prev.endTime;
+                        return { ...prev, startTime: newStart, endTime: newEnd };
+                      });
+                    }}
                   >
                     {TIME_SLOTS.map(time => (
                       <option key={time} value={time}>{time}</option>
@@ -1553,6 +1641,7 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
                   </FormSelect>
                 </FormGroup>
               </FormRow>
+              )}
 
               <FormGroup>
                 <FormLabel theme={theme}>Location</FormLabel>
@@ -1563,7 +1652,7 @@ const CalendarPanelTab = ({ theme, targetDate, onTargetDateHandled, emailContext
                       theme={theme}
                       $active={
                         (preset.id === 'meet' && newEvent.addConference) ||
-                        (preset.id === 'office' && newEvent.location === preset.value)
+                        (preset.id !== 'meet' && newEvent.location === preset.value)
                       }
                       onClick={() => handleLocationPreset(preset)}
                     >

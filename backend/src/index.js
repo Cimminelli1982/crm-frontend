@@ -3205,6 +3205,7 @@ app.post('/google-calendar/create-event', async (req, res) => {
       attendees,
       timezone,
       useGoogleMeet,
+      colorId,
       sendUpdates = 'all', // 'all' sends invite emails
     } = req.body;
 
@@ -3231,6 +3232,7 @@ app.post('/google-calendar/create-event', async (req, res) => {
       sendUpdates,
       timezone: timezone || 'Europe/Rome',
       useGoogleMeet: useGoogleMeet || false,
+      colorId: colorId || undefined,
     });
 
     console.log('[GoogleCalendar] Event created:', result.id);

@@ -1816,10 +1816,12 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           disabled={sending || uploading}
           title={(replyText.trim() || selectedFile) ? 'Send + Need Actions' : 'Need Actions'}
           style={{
-            background: theme === 'light' ? '#F59E0B' : '#B45309',
+            background: theme === 'light' ? '#FEF3C7' : '#78350F',
+            color: theme === 'light' ? '#92400E' : '#FDE68A',
+            fontSize: '14px',
           }}
         >
-          <FaBolt size={12} />
+          ❗
         </SendButton>
         <SendButton
           theme={theme}
@@ -1828,10 +1830,12 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           disabled={sending || uploading}
           title={(replyText.trim() || selectedFile) ? 'Send + Waiting Input' : 'Waiting Input'}
           style={{
-            background: theme === 'light' ? '#8B5CF6' : '#6D28D9',
+            background: theme === 'light' ? '#DBEAFE' : '#1E3A8A',
+            color: theme === 'light' ? '#1E40AF' : '#93C5FD',
+            fontSize: '14px',
           }}
         >
-          <FaClock size={12} />
+          👀
         </SendButton>
         <SendButton
           theme={theme}
@@ -1840,10 +1844,11 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           disabled={sending || uploading}
           title={(replyText.trim() || selectedFile) ? 'Send + Archive (Shift+Enter)' : 'Archive'}
           style={{
-            background: theme === 'light' ? '#059669' : '#065F46',
+            background: theme === 'light' ? '#D1FAE5' : '#065F46',
+            color: theme === 'light' ? '#059669' : '#6EE7B7',
           }}
         >
-          <FaCheck size={12} />
+          <FaCheck size={14} />
         </SendButton>
       </ReplyContainer>
     </WhatsAppContainer>
