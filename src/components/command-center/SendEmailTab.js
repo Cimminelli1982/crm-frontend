@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FaFileAlt, FaPaperPlane, FaClock } from 'react-icons/fa';
+import { FaFileAlt, FaPaperPlane, FaClock, FaExchangeAlt } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 
@@ -31,6 +31,8 @@ const SendEmailTab = ({
   const [selectedEmail, setSelectedEmail] = useState('');
   const [proofreading, setProofreading] = useState(false);
   const [monitorIntro, setMonitorIntro] = useState(true); // Default: monitor the introduction
+  const [introSwapped, setIntroSwapped] = useState(false);
+  const [lastIntroLang, setLastIntroLang] = useState(null); // 'it' or 'en'
 
   // Template state
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
@@ -47,10 +49,13 @@ const SendEmailTab = ({
   }, [defaultSubject]);
 
   // Introduction templates
-  // contacts[0] = person being introduced (use full name), contacts[1] = person receiving (use first name only)
-  const getIntroTemplateIT = () => {
-    const personIntroducedFullName = introContacts[0]?.fullName || 'Nome Cognome';
-    const personReceivingFirstName = introContacts[1]?.firstName || 'Nome';
+  // When not swapped: contacts[0] = person being introduced, contacts[1] = person receiving
+  // When swapped: contacts[1] = person being introduced, contacts[0] = person receiving
+  const getIntroTemplateIT = (swapped = introSwapped) => {
+    const idx0 = swapped ? 1 : 0;
+    const idx1 = swapped ? 0 : 1;
+    const personIntroducedFullName = introContacts[idx0]?.fullName || 'Nome Cognome';
+    const personReceivingFirstName = introContacts[idx1]?.firstName || 'Nome';
     const notesText = introNotes ? `${introNotes}` : '[descrizione]';
     return `Ciao ${personReceivingFirstName},
 
@@ -62,9 +67,11 @@ A voi,
 Simone`;
   };
 
-  const getIntroTemplateEN = () => {
-    const personIntroducedFullName = introContacts[0]?.fullName || 'Full Name';
-    const personReceivingFirstName = introContacts[1]?.firstName || 'Name';
+  const getIntroTemplateEN = (swapped = introSwapped) => {
+    const idx0 = swapped ? 1 : 0;
+    const idx1 = swapped ? 0 : 1;
+    const personIntroducedFullName = introContacts[idx0]?.fullName || 'Full Name';
+    const personReceivingFirstName = introContacts[idx1]?.firstName || 'Name';
     const notesText = introNotes ? `${introNotes}` : '[description]';
     return `Hi ${personReceivingFirstName},
 
@@ -74,6 +81,18 @@ I wanted to introduce you to ${personIntroducedFullName}. ${notesText}
 
 Over to you,
 Simone`;
+  };
+
+  // Swap: toggle which contact is introduced and which receives the email
+  const handleSwap = () => {
+    const newSwapped = !introSwapped;
+    setIntroSwapped(newSwapped);
+    // Regenerate the template with the last used language
+    if (lastIntroLang === 'it') {
+      setBody(getIntroTemplateIT(newSwapped));
+    } else if (lastIntroLang === 'en') {
+      setBody(getIntroTemplateEN(newSwapped));
+    }
   };
 
   // Proofread the email body
@@ -334,7 +353,7 @@ ${body.trim()}`
         <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
           <button
             type="button"
-            onClick={() => setBody(getIntroTemplateIT())}
+            onClick={() => { setLastIntroLang('it'); setBody(getIntroTemplateIT()); }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -356,7 +375,7 @@ ${body.trim()}`
           </button>
           <button
             type="button"
-            onClick={() => setBody(getIntroTemplateEN())}
+            onClick={() => { setLastIntroLang('en'); setBody(getIntroTemplateEN()); }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -483,25 +502,51 @@ ${body.trim()}`
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: '12px', minHeight: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
           <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontWeight: 600 }}>Message</label>
-          <button
-            type="button"
-            onClick={handleProofread}
-            disabled={proofreading || !body.trim()}
-            style={{
-              padding: '4px 10px',
-              borderRadius: '4px',
-              border: 'none',
-              background: '#8B5CF6',
-              color: '#FFFFFF',
-              fontSize: '11px',
-              fontWeight: 500,
-              cursor: proofreading || !body.trim() ? 'not-allowed' : 'pointer',
-              opacity: proofreading || !body.trim() ? 0.5 : 1,
-              transition: 'all 0.15s'
-            }}
-          >
-            {proofreading ? 'Polishing...' : 'Proofread'}
-          </button>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {introductionMode && lastIntroLang && introContacts.length >= 2 && (
+              <button
+                type="button"
+                onClick={handleSwap}
+                title="Swap — change who is introduced to whom"
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: '#F59E0B',
+                  color: '#FFFFFF',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <FaExchangeAlt size={10} />
+                Swap
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleProofread}
+              disabled={proofreading || !body.trim()}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '4px',
+                border: 'none',
+                background: '#8B5CF6',
+                color: '#FFFFFF',
+                fontSize: '11px',
+                fontWeight: 500,
+                cursor: proofreading || !body.trim() ? 'not-allowed' : 'pointer',
+                opacity: proofreading || !body.trim() ? 0.5 : 1,
+                transition: 'all 0.15s'
+              }}
+            >
+              {proofreading ? 'Polishing...' : 'Proofread'}
+            </button>
+          </div>
         </div>
         <textarea
           value={body}

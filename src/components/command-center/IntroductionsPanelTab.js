@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import styled from 'styled-components';
 import { FaHandshake, FaEdit, FaTrash, FaEnvelope, FaWhatsapp, FaList, FaPlus, FaUsers, FaLink, FaTimes, FaArrowLeft } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
@@ -550,6 +550,75 @@ const MobileChip = styled.button`
   }
 `;
 
+const ContactChip = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 2px solid #F59E0B;
+  background: ${props => props.theme === 'dark' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(217, 119, 6, 0.05)'};
+  font-size: 12px;
+  font-weight: 500;
+  color: ${props => props.theme === 'dark' ? '#F9FAFB' : '#111827'};
+`;
+
+const ContactChipRemove = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: ${props => props.theme === 'dark' ? '#9CA3AF' : '#6B7280'};
+  cursor: pointer;
+  font-size: 10px;
+
+  &:hover {
+    color: #EF4444;
+  }
+`;
+
+const QuickPickerContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: ${props => props.theme === 'dark' ? '#111827' : '#F9FAFB'};
+  border: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#E5E7EB'};
+`;
+
+const QuickPickerRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const QuickPickerLabel = styled.span`
+  font-size: 11px;
+  font-weight: 600;
+  color: ${props => props.theme === 'dark' ? '#9CA3AF' : '#6B7280'};
+  min-width: 70px;
+  flex-shrink: 0;
+`;
+
+const CategorySelect = styled.select`
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid ${props => props.theme === 'dark' ? '#374151' : '#D1D5DB'};
+  background: ${props => props.theme === 'dark' ? '#1F2937' : '#FFFFFF'};
+  color: ${props => props.theme === 'dark' ? '#F9FAFB' : '#111827'};
+  font-size: 12px;
+  flex: 1;
+
+  &:focus {
+    outline: none;
+    border-color: #F59E0B;
+  }
+`;
+
 const IntroductionsPanelTab = ({
   theme,
   contactId,
@@ -571,6 +640,15 @@ const IntroductionsPanelTab = ({
   const [selectedMobile, setSelectedMobile] = useState('');
   const [loading, setLoading] = useState(false);
   const [otherContactNames, setOtherContactNames] = useState({}); // { intro_id: "Other Person Name" }
+
+  // Quick intro mode state (compose without selecting an existing intro)
+  const [quickMode, setQuickMode] = useState(false);
+  const [quickContact1, setQuickContact1] = useState(null);
+  const [quickContact2, setQuickContact2] = useState(null);
+  const [quickSearchQuery, setQuickSearchQuery] = useState('');
+  const [quickSearchResults, setQuickSearchResults] = useState([]);
+  const [quickCategory, setQuickCategory] = useState('Karma Points');
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   // Link Chat to Introduction modal state
   const [linkModalOpen, setLinkModalOpen] = useState(false);
@@ -687,6 +765,253 @@ const IntroductionsPanelTab = ({
       setLinkSaving(false);
     }
   };
+
+  // Quick mode: debounced contact search
+  useEffect(() => {
+    if (!quickMode || !quickSearchQuery.trim() || quickSearchQuery.trim().length < 2) {
+      setQuickSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const parts = quickSearchQuery.trim().split(/\s+/).filter(p => p.length > 0);
+      let query = supabase.from('contacts').select('contact_id, first_name, last_name');
+
+      if (parts.length >= 2) {
+        const [first, ...rest] = parts;
+        const last = rest.join(' ');
+        query = query.or(
+          `and(first_name.ilike.%${first}%,last_name.ilike.%${last}%),and(first_name.ilike.%${last}%,last_name.ilike.%${first}%)`
+        );
+      } else {
+        query = query.or(`first_name.ilike.%${quickSearchQuery}%,last_name.ilike.%${quickSearchQuery}%`);
+      }
+
+      const { data } = await query.limit(8);
+      // Exclude already-picked contacts
+      const excluded = [quickContact1?.contact_id, quickContact2?.contact_id].filter(Boolean);
+      setQuickSearchResults((data || []).filter(c => !excluded.includes(c.contact_id)));
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [quickSearchQuery, quickMode, quickContact1?.contact_id, quickContact2?.contact_id]);
+
+  // Quick mode: populate compose state when both contacts are picked
+  useEffect(() => {
+    const populateQuickCompose = async () => {
+      if (!quickMode || !quickContact1 || !quickContact2) {
+        // If in quick mode but missing a contact, clear compose state
+        if (quickMode) {
+          setFullIntroData(null);
+          setIntroEmails([]);
+          setIntroMobiles([]);
+          setSelectedEmails([]);
+          setSelectedMobile('');
+        }
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const contacts = [
+          {
+            contact_id: quickContact1.contact_id,
+            first_name: quickContact1.first_name || '',
+            last_name: quickContact1.last_name || '',
+            name: `${quickContact1.first_name || ''} ${quickContact1.last_name || ''}`.trim(),
+            role: 'introducee',
+          },
+          {
+            contact_id: quickContact2.contact_id,
+            first_name: quickContact2.first_name || '',
+            last_name: quickContact2.last_name || '',
+            name: `${quickContact2.first_name || ''} ${quickContact2.last_name || ''}`.trim(),
+            role: 'introducee',
+          }
+        ];
+
+        setFullIntroData({ contacts });
+
+        const contactIds = contacts.map(c => c.contact_id);
+        const [emailsResult, mobilesResult] = await Promise.all([
+          supabase.from('contact_emails').select('email, contact_id').in('contact_id', contactIds),
+          supabase.from('contact_mobiles').select('mobile, type, is_primary, contact_id').in('contact_id', contactIds).order('is_primary', { ascending: false })
+        ]);
+
+        const allEmails = (emailsResult.data || []).map(e => {
+          const contact = contacts.find(c => c.contact_id === e.contact_id);
+          return { email: e.email, contactName: contact?.name || 'Unknown', contactId: e.contact_id };
+        });
+
+        const allMobiles = (mobilesResult.data || []).map(m => {
+          const contact = contacts.find(c => c.contact_id === m.contact_id);
+          return { mobile: m.mobile, contactName: contact?.name || 'Unknown', contactId: m.contact_id, type: m.type, isPrimary: m.is_primary };
+        });
+
+        setIntroEmails(allEmails);
+        setIntroMobiles(allMobiles);
+        setSelectedEmails(allEmails.map(e => e.email));
+        if (allMobiles.length > 0) setSelectedMobile(allMobiles[0].mobile);
+      } catch (err) {
+        console.error('Error fetching quick intro data:', err);
+        toast.error('Failed to load contact details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    populateQuickCompose();
+  }, [quickMode, quickContact1?.contact_id, quickContact2?.contact_id]);
+
+  // Reset quick mode state
+  const resetQuickMode = useCallback(() => {
+    setQuickMode(false);
+    setQuickContact1(null);
+    setQuickContact2(null);
+    setQuickSearchQuery('');
+    setQuickSearchResults([]);
+    setQuickCategory('Karma Points');
+    setFullIntroData(null);
+    setIntroEmails([]);
+    setIntroMobiles([]);
+    setSelectedEmails([]);
+    setSelectedMobile('');
+  }, []);
+
+  // Enter quick mode when clicking Email/WhatsApp tab without a selected intro
+  const handleSubTabClick = useCallback((tab) => {
+    if (tab === 'list') {
+      if (quickMode) resetQuickMode();
+      setActiveSubTab('list');
+      return;
+    }
+    // email or whatsapp tab
+    if (!selectedIntro && !quickMode) {
+      // Enter quick mode
+      setQuickMode(true);
+      if (contactId && contactName) {
+        const nameParts = contactName.split(' ');
+        setQuickContact1({
+          contact_id: contactId,
+          first_name: nameParts[0] || '',
+          last_name: nameParts.slice(1).join(' ') || '',
+        });
+      }
+    }
+    setActiveSubTab(tab);
+  }, [selectedIntro, quickMode, contactId, contactName, resetQuickMode]);
+
+  // Auto-create introduction after quick mode send
+  const handleQuickIntroSent = useCallback(async (tool) => {
+    if (!quickContact1 || !quickContact2) return;
+
+    try {
+      // 1. Create introduction
+      const { data: intro, error: introError } = await supabase
+        .from('introductions')
+        .insert({
+          introduction_date: new Date().toISOString().split('T')[0],
+          introduction_tool: tool,
+          category: quickCategory,
+          status: 'Done, but need to monitor',
+        })
+        .select('introduction_id')
+        .single();
+
+      if (introError) throw introError;
+
+      // 2. Create introduction_contacts (both as introducee)
+      const { error: contactsError } = await supabase
+        .from('introduction_contacts')
+        .insert([
+          { introduction_id: intro.introduction_id, contact_id: quickContact1.contact_id, role: 'introducee' },
+          { introduction_id: intro.introduction_id, contact_id: quickContact2.contact_id, role: 'introducee' },
+        ]);
+
+      if (contactsError) throw contactsError;
+
+      toast.success('Introduction created!');
+    } catch (err) {
+      console.error('Error creating introduction:', err);
+      toast.error('Email sent, but failed to create introduction record');
+    }
+
+    // Reset and go back to list
+    resetQuickMode();
+    setActiveSubTab('list');
+    onRefresh?.();
+  }, [quickContact1, quickContact2, quickCategory, resetQuickMode, onRefresh]);
+
+  // Quick mode: Create WhatsApp group with both contacts
+  const handleCreateQuickWhatsAppGroup = useCallback(async () => {
+    if (!quickContact1 || !quickContact2 || introMobiles.length < 2) {
+      toast.error('Need phone numbers for both contacts');
+      return;
+    }
+
+    // Get best phone for each contact
+    const phonesForGroup = [];
+    const firstNames = [];
+    const contactIds = [];
+
+    for (const contact of [quickContact1, quickContact2]) {
+      const contactMobs = introMobiles.filter(m => m.contactId === contact.contact_id);
+      if (contactMobs.length === 0) {
+        toast.error(`No phone number for ${contact.first_name}`);
+        return;
+      }
+      const best = contactMobs.find(m => m.isPrimary) || contactMobs[0];
+      phonesForGroup.push(best.mobile);
+      firstNames.push(contact.first_name || 'Unknown');
+      contactIds.push(contact.contact_id);
+    }
+
+    const groupName = firstNames.join(' <> ');
+
+    setCreatingGroup(true);
+    try {
+      const response = await fetch('https://command-center-backend-production.up.railway.app/whatsapp/create-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: groupName, phones: phonesForGroup, contactIds }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Failed to create group');
+
+      // Create introduction in DB
+      const { data: intro, error: introError } = await supabase
+        .from('introductions')
+        .insert({
+          introduction_date: new Date().toISOString().split('T')[0],
+          introduction_tool: 'whatsapp',
+          category: quickCategory,
+          status: 'Done, but need to monitor',
+          chat_id: data.chatId || null,
+          whatsapp_group_jid: data.jid || null,
+          whatsapp_group_name: groupName,
+        })
+        .select('introduction_id')
+        .single();
+
+      if (introError) throw introError;
+
+      await supabase.from('introduction_contacts').insert([
+        { introduction_id: intro.introduction_id, contact_id: quickContact1.contact_id, role: 'introducee' },
+        { introduction_id: intro.introduction_id, contact_id: quickContact2.contact_id, role: 'introducee' },
+      ]);
+
+      toast.success(`WhatsApp group "${groupName}" created! Introduction saved.`);
+      resetQuickMode();
+      setActiveSubTab('list');
+      onRefresh?.();
+    } catch (err) {
+      console.error('Error creating WhatsApp group:', err);
+      toast.error(err.message || 'Failed to create WhatsApp group');
+    } finally {
+      setCreatingGroup(false);
+    }
+  }, [quickContact1, quickContact2, introMobiles, quickCategory, resetQuickMode, onRefresh]);
 
   // Fetch other contact names for all introductions in the list
   useEffect(() => {
@@ -934,7 +1259,7 @@ const IntroductionsPanelTab = ({
         <SubNavButton
           theme={theme}
           $active={activeSubTab === 'list'}
-          onClick={() => setActiveSubTab('list')}
+          onClick={() => handleSubTabClick('list')}
         >
           <FaList size={12} />
           List
@@ -942,9 +1267,7 @@ const IntroductionsPanelTab = ({
         <SubNavButton
           theme={theme}
           $active={activeSubTab === 'email'}
-          onClick={() => setActiveSubTab('email')}
-          disabled={!selectedIntro}
-          style={{ opacity: selectedIntro ? 1 : 0.5 }}
+          onClick={() => handleSubTabClick('email')}
         >
           <FaEnvelope size={12} />
           Email
@@ -952,9 +1275,7 @@ const IntroductionsPanelTab = ({
         <SubNavButton
           theme={theme}
           $active={activeSubTab === 'whatsapp'}
-          onClick={() => setActiveSubTab('whatsapp')}
-          disabled={!selectedIntro}
-          style={{ opacity: selectedIntro ? 1 : 0.5 }}
+          onClick={() => handleSubTabClick('whatsapp')}
         >
           <FaWhatsapp size={12} />
           WhatsApp
@@ -1149,27 +1470,130 @@ const IntroductionsPanelTab = ({
         {/* Email Tab */}
         {activeSubTab === 'email' && (
           <>
-            {!selectedIntro ? (
+            {!selectedIntro && !quickMode ? (
               <EmptyState theme={theme}>
                 <FaEnvelope size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
-                <div>Select an introduction first</div>
+                <div>Select an introduction from the list, or click Email to start a quick intro</div>
               </EmptyState>
             ) : (
               <>
-                <BackToListButton theme={theme} onClick={() => { setSelectedIntro(null); setActiveSubTab('list'); }}>
+                <BackToListButton theme={theme} onClick={() => {
+                  if (quickMode) resetQuickMode();
+                  setSelectedIntro(null);
+                  setActiveSubTab('list');
+                }}>
                   <FaArrowLeft size={10} />
                   Back to list
                 </BackToListButton>
 
-                <SelectedIntroInfo theme={theme}>
-                  <SelectedIntroTitle>
-                    <SelectedIntroNames>
-                      <FaHandshake size={12} style={{ marginRight: '6px' }} />
-                      {fullIntroData?.contacts?.filter(c => c.role === 'introducee').map(c => c.name).join(' ↔ ') || 'Loading...'}
-                    </SelectedIntroNames>
-                    <StatusBadge $status={selectedIntro.status}>{selectedIntro.status}</StatusBadge>
-                  </SelectedIntroTitle>
-                </SelectedIntroInfo>
+                {/* Selected intro info (existing flow) */}
+                {selectedIntro && (
+                  <SelectedIntroInfo theme={theme}>
+                    <SelectedIntroTitle>
+                      <SelectedIntroNames>
+                        <FaHandshake size={12} style={{ marginRight: '6px' }} />
+                        {fullIntroData?.contacts?.filter(c => c.role === 'introducee').map(c => c.name).join(' ↔ ') || 'Loading...'}
+                      </SelectedIntroNames>
+                      <StatusBadge $status={selectedIntro.status}>{selectedIntro.status}</StatusBadge>
+                    </SelectedIntroTitle>
+                  </SelectedIntroInfo>
+                )}
+
+                {/* Quick mode contact picker */}
+                {quickMode && !selectedIntro && (
+                  <QuickPickerContainer theme={theme}>
+                    {/* Contact 1 */}
+                    <QuickPickerRow>
+                      <QuickPickerLabel theme={theme}>Contact 1</QuickPickerLabel>
+                      {quickContact1 ? (
+                        <ContactChip theme={theme}>
+                          {quickContact1.first_name} {quickContact1.last_name}
+                          <ContactChipRemove theme={theme} onClick={() => setQuickContact1(null)}>
+                            <FaTimes />
+                          </ContactChipRemove>
+                        </ContactChip>
+                      ) : (
+                        <div style={{ flex: 1 }}>
+                          <SearchInput
+                            theme={theme}
+                            placeholder="Search contact..."
+                            value={quickSearchQuery}
+                            onChange={e => setQuickSearchQuery(e.target.value)}
+                            autoFocus
+                          />
+                          {quickSearchResults.length > 0 && (
+                            <ResultsList theme={theme}>
+                              {quickSearchResults.map(c => (
+                                <ResultItem
+                                  key={c.contact_id}
+                                  theme={theme}
+                                  onClick={() => {
+                                    setQuickContact1(c);
+                                    setQuickSearchQuery('');
+                                    setQuickSearchResults([]);
+                                  }}
+                                >
+                                  <ResultTitle theme={theme}>{c.first_name} {c.last_name}</ResultTitle>
+                                </ResultItem>
+                              ))}
+                            </ResultsList>
+                          )}
+                        </div>
+                      )}
+                    </QuickPickerRow>
+
+                    {/* Contact 2 */}
+                    <QuickPickerRow>
+                      <QuickPickerLabel theme={theme}>Contact 2</QuickPickerLabel>
+                      {quickContact2 ? (
+                        <ContactChip theme={theme}>
+                          {quickContact2.first_name} {quickContact2.last_name}
+                          <ContactChipRemove theme={theme} onClick={() => setQuickContact2(null)}>
+                            <FaTimes />
+                          </ContactChipRemove>
+                        </ContactChip>
+                      ) : (
+                        <div style={{ flex: 1 }}>
+                          <SearchInput
+                            theme={theme}
+                            placeholder="Search second contact..."
+                            value={!quickContact1 ? '' : quickSearchQuery}
+                            onChange={e => quickContact1 && setQuickSearchQuery(e.target.value)}
+                            disabled={!quickContact1}
+                            autoFocus={!!quickContact1}
+                          />
+                          {quickContact1 && quickSearchResults.length > 0 && (
+                            <ResultsList theme={theme}>
+                              {quickSearchResults.map(c => (
+                                <ResultItem
+                                  key={c.contact_id}
+                                  theme={theme}
+                                  onClick={() => {
+                                    setQuickContact2(c);
+                                    setQuickSearchQuery('');
+                                    setQuickSearchResults([]);
+                                  }}
+                                >
+                                  <ResultTitle theme={theme}>{c.first_name} {c.last_name}</ResultTitle>
+                                </ResultItem>
+                              ))}
+                            </ResultsList>
+                          )}
+                        </div>
+                      )}
+                    </QuickPickerRow>
+
+                    {/* Category */}
+                    <QuickPickerRow>
+                      <QuickPickerLabel theme={theme}>Category</QuickPickerLabel>
+                      <CategorySelect theme={theme} value={quickCategory} onChange={e => setQuickCategory(e.target.value)}>
+                        <option value="Karma Points">Karma Points</option>
+                        <option value="Dealflow">Dealflow</option>
+                        <option value="Portfolio Company">Portfolio Company</option>
+                      </CategorySelect>
+                    </QuickPickerRow>
+                  </QuickPickerContainer>
+                )}
 
                 {/* Email recipient selection */}
                 <div style={{ marginBottom: '12px' }}>
@@ -1193,7 +1617,7 @@ const IntroductionsPanelTab = ({
                       fontSize: '13px',
                       fontStyle: 'italic'
                     }}>
-                      No email addresses found
+                      {quickMode && (!quickContact1 || !quickContact2) ? 'Pick both contacts to see emails' : 'No email addresses found'}
                     </div>
                   ) : (
                     <EmailChipsContainer>
@@ -1224,7 +1648,7 @@ const IntroductionsPanelTab = ({
                     theme={theme}
                     contact={{}}
                     emails={selectedEmails.map(email => ({ email }))}
-                    onEmailSent={handleIntroEmailSent}
+                    onEmailSent={quickMode ? () => handleQuickIntroSent('email') : handleIntroEmailSent}
                     hideToField={true}
                     multipleRecipients={selectedEmails}
                     defaultSubject={(() => {
@@ -1238,14 +1662,13 @@ const IntroductionsPanelTab = ({
                       fullName: c.name
                     }))}
                     introNotes={selectedIntro?.text || ''}
-                    introductionId={selectedIntro?.introduction_id}
-                    onIntroductionStatusUpdate={(introId, newStatus) => {
+                    introductionId={selectedIntro?.introduction_id || null}
+                    onIntroductionStatusUpdate={selectedIntro ? (introId, newStatus) => {
                       setSelectedIntro(null);
                       setActiveSubTab('list');
                       toast.success(`Introduction marked as "${newStatus}"`);
-                      // Refresh parent data to update the list
                       onRefresh?.();
-                    }}
+                    } : undefined}
                   />
                 )}
 
@@ -1270,27 +1693,201 @@ const IntroductionsPanelTab = ({
         {/* WhatsApp Tab */}
         {activeSubTab === 'whatsapp' && (
           <>
-            {!selectedIntro ? (
+            {!selectedIntro && !quickMode ? (
               <EmptyState theme={theme}>
                 <FaWhatsapp size={32} style={{ marginBottom: '12px', opacity: 0.5, color: '#25D366' }} />
-                <div>Select an introduction first</div>
+                <div>Select an introduction from the list, or click WhatsApp to start a quick intro</div>
               </EmptyState>
             ) : (
               <>
-                <BackToListButton theme={theme} onClick={() => { setSelectedIntro(null); setActiveSubTab('list'); }}>
+                <BackToListButton theme={theme} onClick={() => {
+                  if (quickMode) resetQuickMode();
+                  setSelectedIntro(null);
+                  setActiveSubTab('list');
+                }}>
                   <FaArrowLeft size={10} />
                   Back to list
                 </BackToListButton>
 
-                <SelectedIntroInfo theme={theme}>
-                  <SelectedIntroTitle>
-                    <SelectedIntroNames>
-                      <FaHandshake size={12} style={{ marginRight: '6px' }} />
-                      {fullIntroData?.contacts?.filter(c => c.role === 'introducee').map(c => c.name).join(' ↔ ') || 'Loading...'}
-                    </SelectedIntroNames>
-                    <StatusBadge $status={selectedIntro.status}>{selectedIntro.status}</StatusBadge>
-                  </SelectedIntroTitle>
-                </SelectedIntroInfo>
+                {/* Selected intro info (existing flow) */}
+                {selectedIntro && (
+                  <SelectedIntroInfo theme={theme}>
+                    <SelectedIntroTitle>
+                      <SelectedIntroNames>
+                        <FaHandshake size={12} style={{ marginRight: '6px' }} />
+                        {fullIntroData?.contacts?.filter(c => c.role === 'introducee').map(c => c.name).join(' ↔ ') || 'Loading...'}
+                      </SelectedIntroNames>
+                      <StatusBadge $status={selectedIntro.status}>{selectedIntro.status}</StatusBadge>
+                    </SelectedIntroTitle>
+                  </SelectedIntroInfo>
+                )}
+
+                {/* Quick mode contact picker */}
+                {quickMode && !selectedIntro && (
+                  <QuickPickerContainer theme={theme}>
+                    {/* Contact 1 */}
+                    <QuickPickerRow>
+                      <QuickPickerLabel theme={theme}>Contact 1</QuickPickerLabel>
+                      {quickContact1 ? (
+                        <ContactChip theme={theme}>
+                          {quickContact1.first_name} {quickContact1.last_name}
+                          <ContactChipRemove theme={theme} onClick={() => setQuickContact1(null)}>
+                            <FaTimes />
+                          </ContactChipRemove>
+                        </ContactChip>
+                      ) : (
+                        <div style={{ flex: 1 }}>
+                          <SearchInput
+                            theme={theme}
+                            placeholder="Search contact..."
+                            value={quickSearchQuery}
+                            onChange={e => setQuickSearchQuery(e.target.value)}
+                            autoFocus
+                          />
+                          {quickSearchResults.length > 0 && (
+                            <ResultsList theme={theme}>
+                              {quickSearchResults.map(c => (
+                                <ResultItem
+                                  key={c.contact_id}
+                                  theme={theme}
+                                  onClick={() => {
+                                    setQuickContact1(c);
+                                    setQuickSearchQuery('');
+                                    setQuickSearchResults([]);
+                                  }}
+                                >
+                                  <ResultTitle theme={theme}>{c.first_name} {c.last_name}</ResultTitle>
+                                </ResultItem>
+                              ))}
+                            </ResultsList>
+                          )}
+                        </div>
+                      )}
+                    </QuickPickerRow>
+
+                    {/* Contact 2 */}
+                    <QuickPickerRow>
+                      <QuickPickerLabel theme={theme}>Contact 2</QuickPickerLabel>
+                      {quickContact2 ? (
+                        <ContactChip theme={theme}>
+                          {quickContact2.first_name} {quickContact2.last_name}
+                          <ContactChipRemove theme={theme} onClick={() => setQuickContact2(null)}>
+                            <FaTimes />
+                          </ContactChipRemove>
+                        </ContactChip>
+                      ) : (
+                        <div style={{ flex: 1 }}>
+                          <SearchInput
+                            theme={theme}
+                            placeholder="Search second contact..."
+                            value={!quickContact1 ? '' : quickSearchQuery}
+                            onChange={e => quickContact1 && setQuickSearchQuery(e.target.value)}
+                            disabled={!quickContact1}
+                            autoFocus={!!quickContact1}
+                          />
+                          {quickContact1 && quickSearchResults.length > 0 && (
+                            <ResultsList theme={theme}>
+                              {quickSearchResults.map(c => (
+                                <ResultItem
+                                  key={c.contact_id}
+                                  theme={theme}
+                                  onClick={() => {
+                                    setQuickContact2(c);
+                                    setQuickSearchQuery('');
+                                    setQuickSearchResults([]);
+                                  }}
+                                >
+                                  <ResultTitle theme={theme}>{c.first_name} {c.last_name}</ResultTitle>
+                                </ResultItem>
+                              ))}
+                            </ResultsList>
+                          )}
+                        </div>
+                      )}
+                    </QuickPickerRow>
+
+                    {/* Category */}
+                    <QuickPickerRow>
+                      <QuickPickerLabel theme={theme}>Category</QuickPickerLabel>
+                      <CategorySelect theme={theme} value={quickCategory} onChange={e => setQuickCategory(e.target.value)}>
+                        <option value="Karma Points">Karma Points</option>
+                        <option value="Dealflow">Dealflow</option>
+                        <option value="Portfolio Company">Portfolio Company</option>
+                      </CategorySelect>
+                    </QuickPickerRow>
+                  </QuickPickerContainer>
+                )}
+
+                {/* Create WhatsApp Group button - quick mode with both contacts */}
+                {quickMode && quickContact1 && quickContact2 && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <button
+                      onClick={handleCreateQuickWhatsAppGroup}
+                      disabled={creatingGroup || introMobiles.length < 2}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: creatingGroup
+                          ? (theme === 'dark' ? '#374151' : '#E5E7EB')
+                          : 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                        color: creatingGroup ? (theme === 'dark' ? '#9CA3AF' : '#6B7280') : 'white',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        cursor: creatingGroup || introMobiles.length < 2 ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: creatingGroup ? 'none' : '0 2px 8px rgba(37, 211, 102, 0.3)',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      {creatingGroup ? (
+                        <>
+                          <span style={{
+                            width: '16px',
+                            height: '16px',
+                            border: '2px solid currentColor',
+                            borderTopColor: 'transparent',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                          }} />
+                          Creating Group...
+                        </>
+                      ) : (
+                        <>
+                          <FaUsers size={16} />
+                          Create WhatsApp Group
+                        </>
+                      )}
+                    </button>
+                    {introMobiles.length >= 2 && (
+                      <div style={{
+                        marginTop: '8px',
+                        fontSize: '11px',
+                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                        textAlign: 'center',
+                      }}>
+                        Group: {quickContact1.first_name} {'<>'} {quickContact2.first_name}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Or send individual WhatsApp */}
+                {(quickMode && quickContact1 && quickContact2) && (
+                  <div style={{
+                    fontSize: '11px',
+                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                    textAlign: 'center',
+                    marginBottom: '12px',
+                    fontWeight: 500,
+                  }}>
+                    — or send individual message —
+                  </div>
+                )}
 
                 {/* Mobile selection */}
                 <div style={{ marginBottom: '12px' }}>
@@ -1314,7 +1911,7 @@ const IntroductionsPanelTab = ({
                       fontSize: '13px',
                       fontStyle: 'italic'
                     }}>
-                      No phone numbers found
+                      {quickMode && (!quickContact1 || !quickContact2) ? 'Pick both contacts to see phone numbers' : 'No phone numbers found'}
                     </div>
                   ) : (
                     <MobileChipsRow>
@@ -1347,8 +1944,7 @@ const IntroductionsPanelTab = ({
                       )?.last_name || ''
                     }}
                     mobiles={[{ mobile: selectedMobile, is_primary: true }]}
-                    onMessageSent={async () => {
-                      // Update introduction status
+                    onMessageSent={quickMode ? () => handleQuickIntroSent('whatsapp') : async () => {
                       if (selectedIntro?.introduction_id) {
                         const newStatus = 'Done, but need to monitor';
                         await supabase
@@ -1356,7 +1952,6 @@ const IntroductionsPanelTab = ({
                           .update({ status: newStatus })
                           .eq('introduction_id', selectedIntro.introduction_id);
                       }
-                      // Go back to list
                       setSelectedIntro(null);
                       setActiveSubTab('list');
                       toast.success('WhatsApp sent! Introduction marked as "Done, but need to monitor"');
@@ -1370,7 +1965,7 @@ const IntroductionsPanelTab = ({
                   />
                 )}
 
-                {!selectedMobile && introMobiles.length > 0 && (
+                {!selectedMobile && introMobiles.length > 0 && !quickMode && (
                   <div style={{
                     flex: 1,
                     display: 'flex',

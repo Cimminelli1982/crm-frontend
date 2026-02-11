@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import {
   EmailContentPanel,
   EmailSubjectFull,
@@ -16,6 +17,8 @@ import {
   FaPaperclip, FaCheck, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaUserCheck,
   FaTag, FaUpload, FaFileAlt, FaMapMarkerAlt, FaVideo,
 } from 'react-icons/fa';
+import { FiEye } from 'react-icons/fi';
+import FilePreviewModal, { isPreviewable } from '../../modals/FilePreviewModal';
 import WhatsAppTab from '../WhatsAppTab';
 import NotesFullTab from '../NotesFullTab';
 import ListsTab from '../ListsTab';
@@ -159,6 +162,9 @@ const DesktopCenterPanel = ({
 
   // Destructure modalState
   const { MY_EMAIL, setDomainLinkModalOpen, setSelectedDomainForLink } = modalState;
+
+  // File preview state
+  const [previewFile, setPreviewFile] = useState(null);
 
   return (
         <EmailContentPanel theme={theme}>
@@ -3490,12 +3496,28 @@ const DesktopCenterPanel = ({
                       {allAttachments.length} attachment{allAttachments.length !== 1 ? 's' : ''}
                     </AttachmentsHeader>
                     <AttachmentsList>
-                      {allAttachments.map((att, idx) => (
+                      {allAttachments.map((att, idx) => {
+                        const previewType = isPreviewable(att.type, att.name);
+                        return (
                         <AttachmentChip
                           key={idx}
                           theme={theme}
-                          onClick={() => handleDownloadAttachment(att)}
-                          title={`Drag to Deals or click to download ${att.name || 'attachment'}`}
+                          onClick={() => {
+                            if (previewType) {
+                              setPreviewFile({
+                                fileName: att.name,
+                                fileType: att.type,
+                                fileSize: att.size,
+                                blobId: att.blobId,
+                              });
+                            } else {
+                              handleDownloadAttachment(att);
+                            }
+                          }}
+                          title={previewType
+                            ? `Click to preview ${att.name || 'attachment'}`
+                            : `Drag to Deals or click to download ${att.name || 'attachment'}`
+                          }
                           draggable="true"
                           onDragStart={(e) => {
                             e.stopPropagation();
@@ -3511,11 +3533,12 @@ const DesktopCenterPanel = ({
                             e.dataTransfer.effectAllowed = 'copy';
                           }}
                         >
-                          <FaDownload size={12} />
+                          {previewType ? <FiEye size={12} /> : <FaDownload size={12} />}
                           <span>{att.name || 'Unnamed file'}</span>
                           {att.size && <AttachmentSize>({formatSize(att.size)})</AttachmentSize>}
                         </AttachmentChip>
-                      ))}
+                        );
+                      })}
                     </AttachmentsList>
                   </AttachmentsSection>
                 );
@@ -3592,6 +3615,13 @@ const DesktopCenterPanel = ({
           ) : (
             <EmptyState theme={theme}>Select a thread to view</EmptyState>
           )}
+
+          <FilePreviewModal
+            isOpen={!!previewFile}
+            onClose={() => setPreviewFile(null)}
+            file={previewFile}
+            theme={theme}
+          />
         </EmailContentPanel>
   );
 };

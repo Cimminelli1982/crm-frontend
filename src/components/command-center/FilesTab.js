@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FaFile, FaFilePdf, FaFileImage, FaFileWord, FaFileExcel, FaPlus, FaDownload, FaBuilding, FaUser, FaEnvelope, FaUpload, FaTimes, FaTrash } from 'react-icons/fa';
+import { FiEye } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import FilePreviewModal, { isPreviewable } from '../modals/FilePreviewModal';
 
 /**
  * FilesTab - Shows files associated with a contact
@@ -21,6 +23,7 @@ const FilesTab = ({ theme, contactId, contact }) => {
   const [description, setDescription] = useState('');
   const [editingFileId, setEditingFileId] = useState(null);
   const [editingName, setEditingName] = useState('');
+  const [previewFile, setPreviewFile] = useState(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -435,10 +438,25 @@ const FilesTab = ({ theme, contactId, contact }) => {
     const Icon = getFileIcon(file.file_type, file.file_name);
     const isEditing = editingFileId === file.attachment_id;
     const ext = getExtension(file.file_name);
+    const previewType = isPreviewable(file.file_type, file.file_name);
+    const fileUrl = file.permanent_url || file.file_url;
 
     return (
       <div key={file.attachment_id} style={fileCardStyle}>
-        <div style={fileIconStyle}>
+        <div
+          style={{ ...fileIconStyle, cursor: previewType ? 'pointer' : 'default' }}
+          onClick={() => {
+            if (previewType && fileUrl) {
+              setPreviewFile({
+                fileName: file.file_name,
+                fileType: file.file_type,
+                fileSize: file.file_size,
+                url: fileUrl,
+              });
+            }
+          }}
+          title={previewType ? 'Click to preview' : undefined}
+        >
           <Icon size={18} color={theme === 'dark' ? '#9CA3AF' : '#6B7280'} />
         </div>
         <div style={fileInfoStyle}>
@@ -482,13 +500,26 @@ const FilesTab = ({ theme, contactId, contact }) => {
             {file.sourceName && ` • ${file.sourceName}`}
           </div>
         </div>
+        {previewType && fileUrl && (
+          <button
+            style={{ ...actionBtnStyle, color: '#3B82F6' }}
+            onClick={() => setPreviewFile({
+              fileName: file.file_name,
+              fileType: file.file_type,
+              fileSize: file.file_size,
+              url: fileUrl,
+            })}
+            title="Preview"
+          >
+            <FiEye size={13} />
+          </button>
+        )}
         <button
           style={actionBtnStyle}
           onClick={() => {
-            const url = file.permanent_url || file.file_url;
-            if (url) {
+            if (fileUrl) {
               const a = document.createElement('a');
-              a.href = url;
+              a.href = fileUrl;
               a.download = file.file_name;
               a.click();
             }
@@ -632,6 +663,13 @@ const FilesTab = ({ theme, contactId, contact }) => {
           </>
         )}
       </div>
+
+      <FilePreviewModal
+        isOpen={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        file={previewFile}
+        theme={theme}
+      />
     </div>
   );
 };
