@@ -6,6 +6,7 @@ import {
 import {
   FaStickyNote, FaSave, FaTrash, FaUser, FaBuilding,
   FaDollarSign, FaTimes, FaEdit, FaEye, FaPen, FaHandshake,
+  FaFolderOpen,
 } from 'react-icons/fa';
 import MDEditor from '@uiw/react-md-editor';
 import remarkBreaks from 'remark-breaks';
@@ -21,7 +22,7 @@ const NotesCenterContent = ({ theme, notesHook }) => {
     showLinkModal, setShowLinkModal, linkType, setLinkType,
     linkSearchQuery, setLinkSearchQuery, linkSearchResults, linkSearching,
     uniqueFolders, FOLDER_CONFIG,
-    handleCreateNew, handleSave, handleDelete,
+    handleCreateNew, handleSave, handleDelete, handleMoveFolder,
     searchEntities, handleLinkEntity, handleUnlinkEntity,
   } = notesHook;
 
@@ -206,6 +207,36 @@ const NotesCenterContent = ({ theme, notesHook }) => {
               </>
             ) : (
               <>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <select
+                    value={selectedNote?.folder_path || ''}
+                    onChange={(e) => handleMoveFolder(e.target.value)}
+                    style={{
+                      height: '34px',
+                      paddingLeft: '30px',
+                      paddingRight: '8px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      appearance: 'none',
+                      WebkitAppearance: 'none',
+                    }}
+                  >
+                    {uniqueFolders.map(folder => {
+                      const config = FOLDER_CONFIG[folder] || FOLDER_CONFIG.default;
+                      return (
+                        <option key={folder || '_root'} value={folder}>
+                          {config.emoji} {config.label || folder || 'Root'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <FaFolderOpen size={12} style={{ position: 'absolute', left: '10px', pointerEvents: 'none', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }} />
+                </div>
                 <button
                   onClick={() => setIsEditing(true)}
                   style={{ ...buttonStyle, background: '#3B82F6' }}

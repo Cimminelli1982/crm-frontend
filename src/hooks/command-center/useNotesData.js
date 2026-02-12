@@ -106,6 +106,7 @@ const useNotesData = (activeTab) => {
       const { data, error } = await supabase
         .from('notes')
         .select('*')
+        .is('deleted_at', null)
         .order('last_modified_at', { ascending: false });
 
       if (error) throw error;
@@ -283,7 +284,7 @@ const useNotesData = (activeTab) => {
     try {
       const { error } = await supabase
         .from('notes')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('note_id', selectedNote.note_id);
 
       if (error) throw error;
@@ -295,6 +296,32 @@ const useNotesData = (activeTab) => {
     } catch (error) {
       console.error('Error deleting note:', error);
       toast.error('Failed to delete note');
+    }
+  };
+
+  const handleMoveFolder = async (newFolder) => {
+    if (!selectedNote || selectedNote.folder_path === newFolder) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .update({
+          folder_path: newFolder,
+          last_modified_by: 'User',
+          last_modified_at: new Date().toISOString(),
+        })
+        .eq('note_id', selectedNote.note_id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      setNotes(prev => prev.map(n => n.note_id === data.note_id ? data : n));
+      setSelectedNote(data);
+      const config = FOLDER_CONFIG[newFolder] || FOLDER_CONFIG.default;
+      toast.success(`Moved to ${config.emoji || '📁'} ${newFolder || 'Root'}`);
+    } catch (error) {
+      console.error('Error moving note:', error);
+      toast.error('Failed to move note');
     }
   };
 
@@ -427,7 +454,7 @@ const useNotesData = (activeTab) => {
     filteredNotes, uniqueFolders, notesByFolder,
     FOLDER_CONFIG,
     // Handlers
-    handleSelectNote, handleCreateNew, handleSave, handleDelete,
+    handleSelectNote, handleCreateNew, handleSave, handleDelete, handleMoveFolder,
     handleObsidianSync, searchEntities, handleLinkEntity, handleUnlinkEntity,
     fetchNotes,
   };
