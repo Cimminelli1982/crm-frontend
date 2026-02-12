@@ -21,6 +21,7 @@ const DesktopLayout = ({
   emailActionsHook,
   rightPanelHook,
   contextContactsHook,
+  notesHook,
   todoistHook,
   chatHook,
   emailCompose,
@@ -54,6 +55,7 @@ const DesktopLayout = ({
           contextContactsHook={contextContactsHook}
           emailCompose={emailCompose}
           rightPanelHook={rightPanelHook}
+          notesHook={notesHook}
         />
         <DesktopCenterPanel
           theme={theme}
@@ -72,6 +74,7 @@ const DesktopLayout = ({
           dataIntegrityHook={dataIntegrityHook}
           profileImageModal={profileImageModal}
           modalState={modalState}
+          notesHook={notesHook}
         />
         <DesktopRightPanel
           theme={theme}

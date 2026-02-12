@@ -20,7 +20,7 @@ import {
 import { FiEye } from 'react-icons/fi';
 import FilePreviewModal, { isPreviewable } from '../../modals/FilePreviewModal';
 import WhatsAppTab from '../WhatsAppTab';
-import NotesFullTab from '../NotesFullTab';
+import NotesCenterContent from '../center-panel/NotesCenterContent';
 import ListsTab from '../ListsTab';
 import TasksFullTab from '../TasksFullTab';
 
@@ -41,6 +41,7 @@ const DesktopCenterPanel = ({
   dataIntegrityHook,
   profileImageModal,
   modalState,
+  notesHook,
 }) => {
   // Destructure emailThreads
   const { emails, threads, selectedThread } = emailThreads;
@@ -149,7 +150,6 @@ const DesktopCenterPanel = ({
     setSelectedListMember,
     setTasksLinkedContacts, setTasksLinkedChats,
     setTasksLinkedCompanies, setTasksLinkedDeals,
-    setNotesLinkedContacts, setNotesLinkedCompanies, setNotesLinkedDeals,
   } = rightPanelHook;
 
   // Destructure contextContactsHook
@@ -2983,11 +2983,9 @@ const DesktopCenterPanel = ({
               <EmptyState theme={theme}>Select an introduction to view details</EmptyState>
             )
           ) : activeTab === 'notes' ? (
-            <NotesFullTab
+            <NotesCenterContent
               theme={theme}
-              onLinkedContactsChange={setNotesLinkedContacts}
-              onLinkedCompaniesChange={setNotesLinkedCompanies}
-              onLinkedDealsChange={setNotesLinkedDeals}
+              notesHook={notesHook}
             />
           ) : activeTab === 'lists' ? (
             <ListsTab

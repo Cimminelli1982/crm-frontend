@@ -1,4 +1,5 @@
-import { FaSyncAlt, FaBolt, FaEnvelope, FaWhatsapp, FaCalendarPlus, FaCalendarWeek, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaSyncAlt, FaBolt, FaEnvelope, FaWhatsapp, FaCalendarPlus, FaCalendarWeek, FaChevronDown, FaChevronUp, FaStickyNote } from 'react-icons/fa';
+import { SiObsidian } from 'react-icons/si';
 import LeftPanelShell from '../left-panel/LeftPanelShell';
 import LeftPanelSearch from '../left-panel/LeftPanelSearch';
 import EmailLeftContent from '../left-panel/EmailLeftContent';
@@ -6,6 +7,7 @@ import CalendarLeftContent from '../left-panel/CalendarLeftContent';
 import DealsLeftContent from '../left-panel/DealsLeftContent';
 import KITLeftContent from '../left-panel/KITLeftContent';
 import IntroductionsLeftContent from '../left-panel/IntroductionsLeftContent';
+import NotesLeftContent from '../left-panel/NotesLeftContent';
 
 const DesktopLeftPanel = ({
   theme,
@@ -20,6 +22,7 @@ const DesktopLeftPanel = ({
   contextContactsHook,
   emailCompose,
   rightPanelHook,
+  notesHook,
 }) => {
   const { emails, threads, selectedThread, threadsLoading, refreshThreads } = emailThreads;
   const {
@@ -73,7 +76,7 @@ const DesktopLeftPanel = ({
   const { openNewCompose } = emailCompose || {};
   const { setActiveActionTab } = rightPanelHook || {};
 
-  if (['notes', 'lists', 'tasks'].includes(activeTab)) return null;
+  if (['lists', 'tasks'].includes(activeTab)) return null;
 
   // --- Header actions (inline in header row) ---
   const headerActions = (() => {
@@ -365,6 +368,82 @@ const DesktopLeftPanel = ({
         </div>
       );
     }
+    if (activeTab === 'notes' && notesHook) {
+      const { selectedFolder, setSelectedFolder, uniqueFolders, FOLDER_CONFIG, notes } = notesHook;
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <select
+            value={selectedFolder ?? '__all__'}
+            onChange={(e) => setSelectedFolder(e.target.value === '__all__' ? null : e.target.value)}
+            style={{
+              height: '32px',
+              borderRadius: '8px',
+              border: 'none',
+              padding: '0 8px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              backgroundColor: theme === 'dark' ? '#374151' : '#F3F4F6',
+              color: theme === 'dark' ? '#D1D5DB' : '#374151',
+              outline: 'none',
+              maxWidth: '140px',
+            }}
+          >
+            <option value="__all__">All ({notes.length})</option>
+            {uniqueFolders.map(folder => {
+              const config = FOLDER_CONFIG[folder] || FOLDER_CONFIG.default;
+              const displayName = config.label || folder || 'Root';
+              const count = notes.filter(n => (n.folder_path ?? '') === folder).length;
+              return (
+                <option key={folder || '_root'} value={folder}>
+                  {config.emoji} {displayName} ({count})
+                </option>
+              );
+            })}
+          </select>
+          <button
+            onClick={notesHook.handleCreateNew}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: '#10B981',
+              color: '#fff',
+              transition: 'opacity 0.2s',
+            }}
+            title="New Note"
+          >
+            <FaStickyNote size={13} />
+          </button>
+          <button
+            onClick={notesHook.handleObsidianSync}
+            disabled={notesHook.syncing}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: '#7C3AED',
+              color: '#fff',
+              opacity: notesHook.syncing ? 0.5 : 1,
+              transition: 'opacity 0.2s',
+            }}
+            title="Sync from Obsidian"
+          >
+            <SiObsidian size={13} style={{ animation: notesHook.syncing ? 'spin 1s linear infinite' : 'none' }} />
+          </button>
+        </div>
+      );
+    }
     return null;
   })();
 
@@ -416,6 +495,19 @@ const DesktopLeftPanel = ({
         />
       );
     }
+    if (activeTab === 'notes' && notesHook) {
+      return (
+        <LeftPanelSearch
+          theme={theme}
+          placeholder="Search notes..."
+          value={notesHook.searchQuery}
+          onChange={notesHook.setSearchQuery}
+          onClear={() => {
+            notesHook.setSearchQuery('');
+          }}
+        />
+      );
+    }
     return null;
   })();
 
@@ -440,6 +532,9 @@ const DesktopLeftPanel = ({
     }
     if (activeTab === 'introductions' && introductionsList.length > 0) {
       return `${filterIntroductionsBySection(introductionsList, 'inbox').length} pending, ${filterIntroductionsBySection(introductionsList, 'monitoring').length} monitoring`;
+    }
+    if (activeTab === 'notes' && notesHook) {
+      return `${notesHook.filteredNotes.length} notes`;
     }
     return null;
   })();
@@ -550,6 +645,22 @@ const DesktopLeftPanel = ({
           introductionsSections={introductionsSections}
           setIntroductionsSections={setIntroductionsSections}
           filterIntroductionsBySection={filterIntroductionsBySection}
+        />
+      );
+    }
+    if (activeTab === 'notes' && notesHook) {
+      return (
+        <NotesLeftContent
+          theme={theme}
+          filteredNotes={notesHook.filteredNotes}
+          notesByFolder={notesHook.notesByFolder}
+          uniqueFolders={notesHook.uniqueFolders}
+          expandedFolders={notesHook.expandedFolders}
+          setExpandedFolders={notesHook.setExpandedFolders}
+          selectedNote={notesHook.selectedNote}
+          handleSelectNote={notesHook.handleSelectNote}
+          loading={notesHook.loading}
+          FOLDER_CONFIG={notesHook.FOLDER_CONFIG}
         />
       );
     }

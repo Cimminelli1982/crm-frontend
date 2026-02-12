@@ -142,7 +142,6 @@ import IntroductionsTab from '../components/command-center/IntroductionsTab';
 import IntroductionsPanelTab from '../components/command-center/IntroductionsPanelTab';
 import TasksTab from '../components/command-center/TasksTab';
 import NotesTab from '../components/command-center/NotesTab';
-import NotesFullTab from '../components/command-center/NotesFullTab';
 import ListsTab from '../components/command-center/ListsTab';
 import TasksFullTab from '../components/command-center/TasksFullTab';
 import ComposeEmailModal from '../components/command-center/ComposeEmailModal';
@@ -165,6 +164,7 @@ import useWhatsAppData from '../hooks/command-center/useWhatsAppData';
 import useDataIntegrity from '../hooks/command-center/useDataIntegrity';
 import useEmailActions from '../hooks/command-center/useEmailActions';
 import useRightPanelState from '../hooks/command-center/useRightPanelState';
+import useNotesData from '../hooks/command-center/useNotesData';
 import { CommandCenterMobile } from '../components/mobile/command-center';
 import DesktopLayout from '../components/command-center/DesktopLayout';
 
@@ -707,6 +707,20 @@ const CommandCenterPage = ({ theme }) => {
     availableRightPanelContacts,
     enrichedRightPanelContacts,
   } = rightPanelHook;
+
+  // Notes hook
+  const notesHook = useNotesData(activeTab);
+
+  // Sync notes linked entities to right panel
+  useEffect(() => {
+    setNotesLinkedContacts(notesHook.linkedContacts);
+  }, [notesHook.linkedContacts]);
+  useEffect(() => {
+    setNotesLinkedCompanies(notesHook.linkedCompanies);
+  }, [notesHook.linkedCompanies]);
+  useEffect(() => {
+    setNotesLinkedDeals(notesHook.linkedDeals);
+  }, [notesHook.linkedDeals]);
 
   // Data Integrity hook
   const dataIntegrityHook = useDataIntegrity(
@@ -2550,6 +2564,7 @@ const CommandCenterPage = ({ theme }) => {
       emailActionsHook={emailActionsHook}
       rightPanelHook={rightPanelHook}
       contextContactsHook={contextContactsHook}
+      notesHook={notesHook}
       todoistHook={todoistHook}
       chatHook={chatHook}
       emailCompose={emailCompose}
