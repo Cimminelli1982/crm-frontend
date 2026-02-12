@@ -9,10 +9,12 @@ import { SiObsidian } from 'react-icons/si';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import MDEditor from '@uiw/react-md-editor';
+import remarkBreaks from 'remark-breaks';
 
 // Folder icons and colors for Obsidian folders
 const FOLDER_CONFIG = {
   '': { icon: FaFile, color: '#6B7280', emoji: '📄', label: 'Root' },
+  'Favourites': { icon: FaFolder, color: '#F59E0B', emoji: '⭐' },
   'Inbox': { icon: FaFolder, color: '#8B5CF6', emoji: '📥' },
   '📥 Inbox': { icon: FaFolder, color: '#8B5CF6', emoji: '📥' },
   '📅 Daily Notes': { icon: FaStickyNote, color: '#3B82F6', emoji: '📅' },
@@ -808,6 +810,7 @@ const NotesFullTab = ({ theme, onLinkedContactsChange, onLinkedCompaniesChange, 
                   height="100%"
                   style={{ minHeight: '300px' }}
                   visibleDragbar={false}
+                  previewOptions={{ remarkPlugins: [remarkBreaks] }}
                 />
               ) : (
                 <div style={{
@@ -817,6 +820,7 @@ const NotesFullTab = ({ theme, onLinkedContactsChange, onLinkedCompaniesChange, 
                 }}>
                   <MDEditor.Markdown
                     source={selectedNote?.markdown_content || selectedNote?.text || ''}
+                    remarkPlugins={[remarkBreaks]}
                     style={{
                       background: 'transparent',
                       color: theme === 'dark' ? '#F9FAFB' : '#111827',

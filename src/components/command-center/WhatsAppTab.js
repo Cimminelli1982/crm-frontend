@@ -3,6 +3,7 @@ import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPa
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
+import FilePreviewModal, { isPreviewable } from '../modals/FilePreviewModal';
 
 // Use Node.js backend for sending (Baileys) - falls back to Python if not connected
 // Always use Railway backend (Baileys session is there)
@@ -839,6 +840,7 @@ const WhatsAppTab = ({
   const [filePreview, setFilePreview] = useState(null); // Preview URL for images
   const [uploading, setUploading] = useState(false); // File upload in progress
   const [proofreading, setProofreading] = useState(false); // AI proofreading in progress
+  const [previewFile, setPreviewFile] = useState(null); // File preview modal
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -1635,7 +1637,11 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
                                 alt={fileName}
                                 theme={theme}
                                 $hasText={!!msg.text}
-                                onClick={() => window.open(att.permanent_url, '_blank')}
+                                onClick={() => setPreviewFile({
+                                  fileName,
+                                  fileType: att.file_type,
+                                  url: att.permanent_url,
+                                })}
                               />
                             );
                           }
@@ -1674,16 +1680,27 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
                             : ['xls', 'xlsx'].includes(fileExt) ? 'xls'
                             : 'file';
                           const docLabel = fileExt?.toUpperCase() || 'FILE';
+                          const canPreview = isPreviewable(att.file_type, fileName);
 
                           return (
                             <DocumentLink
                               key={i}
-                              href={att.permanent_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download={fileName}
+                              href={canPreview ? undefined : att.permanent_url}
+                              target={canPreview ? undefined : '_blank'}
+                              rel={canPreview ? undefined : 'noopener noreferrer'}
+                              download={canPreview ? undefined : fileName}
+                              as={canPreview ? 'div' : 'a'}
                               theme={theme}
                               $hasText={!!msg.text}
+                              style={canPreview ? { cursor: 'pointer' } : undefined}
+                              onClick={canPreview ? (e) => {
+                                e.preventDefault();
+                                setPreviewFile({
+                                  fileName,
+                                  fileType: att.file_type,
+                                  url: att.permanent_url,
+                                });
+                              } : undefined}
                               draggable="true"
                               onDragStart={(e) => {
                                 e.dataTransfer.setData('application/json', JSON.stringify({
@@ -1700,7 +1717,7 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
                               <DocumentIcon $type={docType}>{docLabel}</DocumentIcon>
                               <DocumentInfo>
                                 <DocumentName>{fileName}</DocumentName>
-                                <DocumentSize theme={theme}>Drag to Deals or tap to download</DocumentSize>
+                                <DocumentSize theme={theme}>{canPreview ? 'Tap to preview or drag to Deals' : 'Drag to Deals or tap to download'}</DocumentSize>
                               </DocumentInfo>
                             </DocumentLink>
                           );
@@ -1851,6 +1868,13 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           <FaCheck size={14} />
         </SendButton>
       </ReplyContainer>
+
+      <FilePreviewModal
+        isOpen={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        file={previewFile}
+        theme={theme}
+      />
     </WhatsAppContainer>
   );
 };

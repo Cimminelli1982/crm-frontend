@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  FaStickyNote, FaPlus, FaRobot, FaSave, FaTrash,
-  FaUser, FaBuilding, FaDollarSign, FaLink, FaTimes, FaCheck,
+  FaStickyNote, FaRobot, FaSave, FaTrash,
+  FaUser, FaBuilding, FaDollarSign, FaLink, FaCheck,
   FaFolder
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
@@ -10,6 +10,7 @@ import MDEditor from '@uiw/react-md-editor';
 
 // Folder options for organizing notes
 const FOLDERS = [
+  { id: 'Favourites', label: 'Favourites' },
   { id: 'Inbox', label: 'Inbox' },
   { id: 'CRM/Contacts', label: 'CRM / Contacts' },
   { id: 'CRM/Companies', label: 'CRM / Companies' },
@@ -22,17 +23,31 @@ const FOLDERS = [
   { id: 'Archive', label: 'Archive' },
 ];
 
+// Pinned global notes (always available in dropdown)
+const PINNED_NOTE_TITLES = ['Inbox', 'Decision', 'Agents Task', 'Diary', 'Shopping', 'Food'];
+
+// Config for pinned notes: title → folder when creating
+const PINNED_NOTE_FOLDERS = {
+  'Inbox': 'Favourites',
+  'Decision': 'Favourites',
+  'Agents Task': 'Favourites',
+  'Diary': 'Favourites',
+  'Shopping': 'Favourites',
+  'Food': 'Favourites',
+};
+
 /**
  * NotesTab - Notes editor following CompanyDetailsTab UI pattern
  *
  * Features:
- * 1. Dropdown to select note (with "Create New Note" at bottom)
- * 2. Full-space markdown editor
+ * 1. Pinned quick-access notes at top of dropdown (Inbox, Decision, Agents Task, Contact Name)
+ * 2. Full-space markdown editor in edit mode (toolbar + editing area)
  * 3. AI Proofread + linking to contact/company/deal
  */
 const NotesTab = ({
   theme,
   contactId,
+  contactName = '',
   contactCompanies = [],
   contactDeals = [],
   onNoteCreated,
@@ -40,6 +55,9 @@ const NotesTab = ({
   // All notes (from contact, companies, deals)
   const [allNotes, setAllNotes] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Pinned notes fetched from DB
+  const [pinnedNotes, setPinnedNotes] = useState([]); // { note_id, title, isPinned: true }
 
   // Selected note
   const [selectedNoteId, setSelectedNoteId] = useState(null);
@@ -67,6 +85,38 @@ const NotesTab = ({
   const [searchingContacts, setSearchingContacts] = useState(false);
   const [searchingCompanies, setSearchingCompanies] = useState(false);
   const [searchingDeals, setSearchingDeals] = useState(false);
+
+  // Track which contactId we last auto-selected for
+  const lastAutoSelectedContactId = useRef(null);
+
+  // Fetch pinned notes from DB
+  const fetchPinnedNotes = useCallback(async () => {
+    try {
+      // Build list of pinned titles to search for
+      const titlesToSearch = [...PINNED_NOTE_TITLES];
+      if (contactName) {
+        titlesToSearch.push(contactName);
+      }
+
+      const { data: notes } = await supabase
+        .from('notes')
+        .select('note_id, title, folder_path, markdown_content, text')
+        .in('title', titlesToSearch);
+
+      // Map found notes, marking which are pinned
+      const found = (notes || []).map(note => ({
+        ...note,
+        isPinned: true,
+        isContactNote: note.title === contactName,
+      }));
+
+      setPinnedNotes(found);
+      return found;
+    } catch (err) {
+      console.error('Error fetching pinned notes:', err);
+      return [];
+    }
+  }, [contactName]);
 
   // Fetch all notes linked to contact, their companies, and their deals
   const fetchAllNotes = useCallback(async () => {
@@ -146,15 +196,56 @@ const NotesTab = ({
     }
   }, [contactId, contactCompanies, contactDeals]);
 
-  // Initial fetch
+  // Reset state when contact changes — runs synchronously before the async init
   useEffect(() => {
-    fetchAllNotes();
-  }, [fetchAllNotes]);
+    lastAutoSelectedContactId.current = null;
+    setSelectedNoteId(null);
+    setIsCreating(false);
+    setTitle('');
+    setContent('');
+    setShowLinkPanel(false);
+  }, [contactId]);
+
+  // Fetch and auto-select
+  useEffect(() => {
+    if (!contactId) return;
+    let cancelled = false;
+
+    const init = async () => {
+      const pinned = await fetchPinnedNotes();
+      await fetchAllNotes();
+      if (cancelled) return;
+
+      // Auto-select contact note
+      if (lastAutoSelectedContactId.current !== contactId && contactName) {
+        lastAutoSelectedContactId.current = contactId;
+        const contactNote = pinned.find(n => n.title === contactName);
+        if (contactNote) {
+          setSelectedNoteId(contactNote.note_id);
+          setIsCreating(false);
+        } else {
+          setSelectedNoteId(null);
+          setIsCreating(true);
+          setTitle(contactName);
+          setContent('');
+          setFolderPath('CRM/Contacts');
+          setLinkedContacts([contactId]);
+          setLinkedCompanies([]);
+          setLinkedDeals([]);
+        }
+      }
+    };
+    init();
+
+    return () => { cancelled = true; };
+  }, [fetchPinnedNotes, fetchAllNotes, contactName, contactId]);
 
   // Load note into editor
   useEffect(() => {
     if (selectedNoteId && !isCreating) {
-      const note = allNotes.find(n => n.note_id === selectedNoteId);
+      // Check pinned notes first, then linked notes
+      const note = pinnedNotes.find(n => n.note_id === selectedNoteId)
+        || allNotes.find(n => n.note_id === selectedNoteId);
       if (note) {
         setTitle(note.title || '');
         setContent(note.markdown_content || note.text || '');
@@ -162,7 +253,7 @@ const NotesTab = ({
         loadNoteLinks(note.note_id);
       }
     }
-  }, [selectedNoteId, allNotes, isCreating]);
+  }, [selectedNoteId, allNotes, pinnedNotes, isCreating]);
 
   // Load note links
   const loadNoteLinks = async (noteId) => {
@@ -191,6 +282,23 @@ const NotesTab = ({
       setContent('');
       setFolderPath('CRM/Contacts');
       setLinkedContacts([contactId]);
+      setLinkedCompanies([]);
+      setLinkedDeals([]);
+    } else if (value.startsWith('__pinned_create__:')) {
+      // Pinned note that doesn't exist yet — enter create mode pre-filled
+      const pinnedTitle = value.replace('__pinned_create__:', '');
+      setSelectedNoteId(null);
+      setIsCreating(true);
+      setTitle(pinnedTitle);
+      setContent('');
+      // Use appropriate folder
+      if (pinnedTitle === contactName) {
+        setFolderPath('CRM/Contacts');
+        setLinkedContacts([contactId]);
+      } else {
+        setFolderPath(PINNED_NOTE_FOLDERS[pinnedTitle] || 'Inbox');
+        setLinkedContacts([]);
+      }
       setLinkedCompanies([]);
       setLinkedDeals([]);
     } else {
@@ -231,8 +339,8 @@ const NotesTab = ({
         if (error) throw error;
         noteId = newNote.note_id;
 
-        // Link to contact by default
-        if (contactId) {
+        // Link to contact if it's a contact note or user-created note
+        if (contactId && (title.trim() === contactName || linkedContacts.includes(contactId))) {
           await supabase.from('notes_contacts').insert({
             note_id: noteId,
             contact_id: contactId,
@@ -253,6 +361,8 @@ const NotesTab = ({
         toast.success('Note saved');
       }
 
+      // Refresh both pinned and linked notes
+      fetchPinnedNotes();
       fetchAllNotes();
       onNoteCreated?.();
     } catch (err) {
@@ -273,6 +383,7 @@ const NotesTab = ({
       setSelectedNoteId(null);
       setTitle('');
       setContent('');
+      fetchPinnedNotes();
       fetchAllNotes();
     } catch (err) {
       console.error('Error deleting note:', err);
@@ -441,8 +552,23 @@ const NotesTab = ({
     return () => clearTimeout(timer);
   }, [dealSearch, searchDeals]);
 
-  const selectedNote = allNotes.find(n => n.note_id === selectedNoteId);
   const hasContent = selectedNoteId || isCreating;
+
+  // Build pinned options for dropdown
+  // All pinned titles: global + contact name
+  const allPinnedTitles = contactName
+    ? [...PINNED_NOTE_TITLES, contactName]
+    : [...PINNED_NOTE_TITLES];
+
+  // Map: title → note_id (if exists in DB)
+  const pinnedTitleToNote = {};
+  pinnedNotes.forEach(n => {
+    pinnedTitleToNote[n.title] = n.note_id;
+  });
+
+  // Filter linked notes that are NOT already shown as pinned
+  const pinnedNoteIds = new Set(pinnedNotes.map(n => n.note_id));
+  const linkedNotesFiltered = allNotes.filter(n => !pinnedNoteIds.has(n.note_id));
 
   // Styles
   const containerStyle = {
@@ -476,31 +602,53 @@ const NotesTab = ({
     gap: '6px',
   };
 
-  const sectionStyle = {
-    padding: '12px',
-    background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
-    borderRadius: '8px',
-    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-  };
-
   return (
     <div style={containerStyle} data-color-mode={theme}>
       {/* Header: Dropdown + Actions */}
       <div style={{ padding: '12px', borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
-        {/* Note Selector Dropdown */}
+        {/* Note Selector Dropdown with pinned notes */}
         <select
-          value={isCreating ? '__create__' : (selectedNoteId || '')}
+          value={
+            isCreating
+              ? (title && allPinnedTitles.includes(title)
+                  ? `__pinned_create__:${title}`
+                  : '__create__')
+              : (selectedNoteId || '')
+          }
           onChange={handleDropdownChange}
           style={dropdownStyle}
         >
           <option value="" disabled>Select a note...</option>
-          {allNotes.map(note => (
-            <option key={note.note_id} value={note.note_id}>
-              {note.title}
-              {note.source === 'company' && note.companyName ? ` (${note.companyName})` : ''}
-              {note.source === 'deal' && note.dealName ? ` (${note.dealName})` : ''}
-            </option>
-          ))}
+
+          {/* Pinned Quick-Access Notes */}
+          <optgroup label="Favourites">
+            {allPinnedTitles.map(pinnedTitle => {
+              const existingNoteId = pinnedTitleToNote[pinnedTitle];
+              const isContact = pinnedTitle === contactName;
+              return (
+                <option
+                  key={`pinned-${pinnedTitle}`}
+                  value={existingNoteId || `__pinned_create__:${pinnedTitle}`}
+                >
+                  {isContact ? '\uD83D\uDC64 ' : '\u2B50 '}{pinnedTitle}
+                </option>
+              );
+            })}
+          </optgroup>
+
+          {/* Linked Notes (existing behavior, minus pinned ones) */}
+          {linkedNotesFiltered.length > 0 && (
+            <optgroup label="Linked Notes">
+              {linkedNotesFiltered.map(note => (
+                <option key={note.note_id} value={note.note_id}>
+                  {note.title}
+                  {note.source === 'company' && note.companyName ? ` (${note.companyName})` : ''}
+                  {note.source === 'deal' && note.dealName ? ` (${note.dealName})` : ''}
+                </option>
+              ))}
+            </optgroup>
+          )}
+
           <option value="__create__" style={{ fontWeight: 600 }}>
             + Create New Note
           </option>
@@ -962,12 +1110,12 @@ const NotesTab = ({
               </div>
             </div>
 
-            {/* Markdown Editor */}
+            {/* Markdown Editor - edit mode (toolbar + editing area, no split preview) */}
             <div style={{ flex: 1, minHeight: 0 }}>
               <MDEditor
                 value={content}
                 onChange={(val) => setContent(val || '')}
-                preview="live"
+                preview="edit"
                 height="100%"
                 visibleDragbar={false}
                 style={{

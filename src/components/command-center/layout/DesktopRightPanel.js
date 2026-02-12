@@ -1733,6 +1733,7 @@ const DesktopRightPanel = ({
                 <NotesTab
                   theme={theme}
                   contactId={selectedRightPanelContactId}
+                  contactName={rightPanelContactDetails?.contact ? `${rightPanelContactDetails.contact.first_name || ''} ${rightPanelContactDetails.contact.last_name || ''}`.trim() : ''}
                   contactCompanies={rightPanelContactDetails?.companies || []}
                   contactDeals={rightPanelContactDetails?.deals || []}
                   onNoteCreated={() => rightPanelContactDetails?.refetch?.()}
