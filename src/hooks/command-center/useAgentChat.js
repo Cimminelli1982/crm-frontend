@@ -1,12 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-/**
- * useAgentChat — Real-time chat with OpenClaw agents via Gateway WebSocket
- * Replaces the previous Supabase polling approach with direct WebSocket streaming
- */
-
-const GATEWAY_URL = process.env.REACT_APP_OPENCLAW_GATEWAY_URL || 'ws://localhost:18789';
-const GATEWAY_TOKEN = process.env.REACT_APP_OPENCLAW_GATEWAY_TOKEN || '';
+const GATEWAY_URL = 'ws://localhost:18789';
+const GATEWAY_TOKEN = '7715c0390967f22d6262c93f067b06a84228d174cea01a2c';
 
 const AGENTS = [
   { id: 'kevin', name: 'Kevin', emoji: '🏗️', color: '#F59E0B', sessionKey: 'agent:main:main' },
@@ -23,7 +18,6 @@ function uuid() {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
-// Extract display text from various message formats
 function extractText(content) {
   if (!content) return '';
   if (typeof content === 'string') return content;
@@ -45,29 +39,21 @@ const useAgentChat = () => {
   const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // WebSocket refs
+  // All WS state in refs to avoid re-render dependency loops
   const wsRef = useRef(null);
   const pendingRef = useRef(new Map());
   const runIdRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const backoffRef = useRef(800);
   const closedRef = useRef(false);
-  const connectSentRef = useRef(false);
+  const connectedRef = useRef(false);
   const selectedAgentRef = useRef(selectedAgent);
+  const mountedRef = useRef(false);
 
-  // Keep ref in sync
-  useEffect(() => {
-    selectedAgentRef.current = selectedAgent;
-  }, [selectedAgent]);
+  useEffect(() => { selectedAgentRef.current = selectedAgent; }, [selectedAgent]);
 
-  // --- WS Protocol ---
-
-  const flushPending = useCallback((err) => {
-    for (const [, p] of pendingRef.current) p.reject(err);
-    pendingRef.current.clear();
-  }, []);
-
-  const request = useCallback((method, params) => {
+  // --- Low-level WS request ---
+  function wsRequest(method, params) {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error('Gateway not connected'));
@@ -77,81 +63,67 @@ const useAgentChat = () => {
       pendingRef.current.set(id, { resolve, reject });
       ws.send(JSON.stringify({ type: 'req', id, method, params }));
     });
-  }, []);
+  }
 
-  const doConnect = useCallback(async () => {
-    if (connectSentRef.current) return;
-    connectSentRef.current = true;
-
-    try {
-      await request('connect', {
-        minProtocol: 3,
-        maxProtocol: 3,
-        client: { id: 'openclaw-control-ui', version: '1.0.0', platform: 'web', mode: 'webchat' },
-        role: 'operator',
-        scopes: ['operator.read', 'operator.write'],
-        caps: [],
-        auth: GATEWAY_TOKEN ? { token: GATEWAY_TOKEN } : {},
-        userAgent: navigator.userAgent,
-        locale: navigator.language,
-      });
-      backoffRef.current = 800;
-      setConnected(true);
-      setError(null);
-    } catch (err) {
-      console.error('[AgentChat] Connect failed:', err);
-      setError('Connection failed');
-      wsRef.current?.close(4008, 'connect failed');
-    }
-  }, [request]);
-
-  // Load chat history from Gateway
-  const fetchMessages = useCallback(async () => {
-    if (!connected) return;
+  // --- Load history ---
+  function loadHistory() {
+    if (!connectedRef.current) return;
     const agent = selectedAgentRef.current;
     if (!agent?.sessionKey) return;
     setLoading(true);
-    try {
-      const result = await request('chat.history', {
-        sessionKey: agent.sessionKey,
-        limit: 100,
-      });
-      if (Array.isArray(result?.messages)) {
-        // Normalize messages for display
-        const normalized = result.messages
-          .filter(m => m.role === 'user' || m.role === 'assistant')
-          .map((m, i) => ({
-            id: m.id || `hist-${i}`,
-            role: m.role,
-            content: extractText(m.content),
-            created_at: m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString(),
-          }));
-        setMessages(normalized);
-      }
-    } catch (err) {
-      console.error('[AgentChat] History fetch failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [connected, request]);
+    wsRequest('chat.history', { sessionKey: agent.sessionKey, limit: 100 })
+      .then(result => {
+        if (Array.isArray(result?.messages)) {
+          const normalized = result.messages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .map((m, i) => ({
+              id: m.id || `hist-${i}`,
+              role: m.role,
+              content: extractText(m.content),
+              created_at: m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString(),
+            }));
+          setMessages(normalized);
+        }
+      })
+      .catch(err => console.error('[AgentChat] History fetch failed:', err))
+      .finally(() => setLoading(false));
+  }
 
-  // Handle incoming WebSocket messages
-  const handleMessage = useCallback((raw) => {
+  // --- Handle incoming WS message ---
+  function handleWsMessage(raw) {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
     if (msg.type === 'event') {
-      // Connect challenge
       if (msg.event === 'connect.challenge') {
-        doConnect();
+        // Send connect
+        wsRequest('connect', {
+          minProtocol: 3,
+          maxProtocol: 3,
+          client: { id: 'openclaw-control-ui', version: '1.0.0', platform: 'web', mode: 'webchat' },
+          role: 'operator',
+          scopes: ['operator.read', 'operator.write'],
+          caps: [],
+          auth: { token: GATEWAY_TOKEN },
+          userAgent: navigator.userAgent,
+          locale: navigator.language,
+        }).then(() => {
+          backoffRef.current = 800;
+          connectedRef.current = true;
+          setConnected(true);
+          setError(null);
+          loadHistory();
+        }).catch(err => {
+          console.error('[AgentChat] Connect failed:', err);
+          setError(String(err.message || err));
+          wsRef.current?.close(4008, 'connect failed');
+        });
         return;
       }
 
-      // Chat streaming
       if (msg.event === 'chat') {
         const p = msg.payload;
         if (!p) return;
-
         if (p.state === 'delta') {
           const text = extractText(p.message?.content || p.message);
           if (text != null) {
@@ -161,21 +133,17 @@ const useAgentChat = () => {
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
-          // Reload history to get the final clean message
-          fetchMessages();
+          loadHistory();
         } else if (p.state === 'aborted' || p.state === 'error') {
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
-          if (p.state === 'error') {
-            setError(p.errorMessage || 'Chat error');
-          }
+          if (p.state === 'error') setError(p.errorMessage || 'Chat error');
         }
       }
       return;
     }
 
-    // Response to request
     if (msg.type === 'res') {
       const p = pendingRef.current.get(msg.id);
       if (!p) return;
@@ -183,59 +151,63 @@ const useAgentChat = () => {
       if (msg.ok) p.resolve(msg.payload);
       else p.reject(new Error(msg.error?.message || 'Request failed'));
     }
-  }, [doConnect, fetchMessages]);
+  }
 
-  // WebSocket connect/reconnect
-  const wsConnect = useCallback(() => {
-    if (closedRef.current) return;
-
-    const ws = new WebSocket(GATEWAY_URL);
-    wsRef.current = ws;
-
-    ws.addEventListener('open', () => {
-      connectSentRef.current = false;
-    });
-    ws.addEventListener('message', (e) => handleMessage(String(e.data || '')));
-    ws.addEventListener('close', (e) => {
-      wsRef.current = null;
-      setConnected(false);
-      flushPending(new Error(`Disconnected (${e.code})`));
-      if (!closedRef.current) {
-        const delay = backoffRef.current;
-        backoffRef.current = Math.min(backoffRef.current * 1.7, 15000);
-        reconnectTimerRef.current = setTimeout(wsConnect, delay);
-      }
-    });
-    ws.addEventListener('error', () => {});
-  }, [handleMessage, flushPending]);
-
-  // Mount: connect WebSocket
+  // --- Single WebSocket lifecycle ---
   useEffect(() => {
+    if (mountedRef.current) return; // Prevent double-mount in StrictMode
+    mountedRef.current = true;
     closedRef.current = false;
-    wsConnect();
+
+    function doConnect() {
+      if (closedRef.current) return;
+      console.log('[AgentChat] Connecting to', GATEWAY_URL);
+
+      const ws = new WebSocket(GATEWAY_URL);
+      wsRef.current = ws;
+
+      ws.onmessage = (e) => handleWsMessage(String(e.data || ''));
+
+      ws.onclose = (e) => {
+        wsRef.current = null;
+        connectedRef.current = false;
+        setConnected(false);
+        // Reject pending requests
+        for (const [, p] of pendingRef.current) p.reject(new Error('Disconnected'));
+        pendingRef.current.clear();
+        // Reconnect with backoff
+        if (!closedRef.current) {
+          const delay = backoffRef.current;
+          backoffRef.current = Math.min(backoffRef.current * 1.7, 15000);
+          reconnectTimerRef.current = setTimeout(doConnect, delay);
+        }
+      };
+
+      ws.onerror = () => {};
+    }
+
+    doConnect();
+
     return () => {
       closedRef.current = true;
+      mountedRef.current = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      wsRef.current?.close();
-      wsRef.current = null;
+      if (wsRef.current) {
+        wsRef.current.onclose = null; // Prevent reconnect on cleanup
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
-  }, [wsConnect]);
+  }, []); // Empty deps — runs once
 
-  // Load history when connected or agent changes
+  // Reload history when agent changes
   useEffect(() => {
-    if (connected) {
-      fetchMessages();
-    } else {
+    if (connectedRef.current) {
       setMessages([]);
+      setStreamText(null);
+      setError(null);
+      loadHistory();
     }
-  }, [connected, selectedAgent, fetchMessages]);
-
-  // Clear state when switching agent
-  useEffect(() => {
-    setMessages([]);
-    setStreamText(null);
-    setError(null);
-    setInput('');
   }, [selectedAgent]);
 
   // Scroll to bottom
@@ -243,10 +215,10 @@ const useAgentChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamText]);
 
-  // Send message
+  // --- Send message ---
   const sendMessage = useCallback(async (content, context = {}) => {
     if (!content.trim() || !selectedAgentRef.current?.sessionKey) return;
-    if (!connected) {
+    if (!connectedRef.current) {
       setError('Not connected');
       return;
     }
@@ -254,7 +226,6 @@ const useAgentChat = () => {
     const agent = selectedAgentRef.current;
     const idempotencyKey = uuid();
 
-    // Build message with context
     let fullMessage = content.trim();
     const ctxParts = [];
     if (context.type) ctxParts.push(`Tab: ${context.type}`);
@@ -265,7 +236,6 @@ const useAgentChat = () => {
       fullMessage = `[CRM Context: ${ctxParts.join(' | ')}]\n\n${fullMessage}`;
     }
 
-    // Add user message locally
     setMessages(prev => [...prev, {
       id: idempotencyKey,
       role: 'user',
@@ -279,7 +249,7 @@ const useAgentChat = () => {
     runIdRef.current = idempotencyKey;
 
     try {
-      await request('chat.send', {
+      await wsRequest('chat.send', {
         sessionKey: agent.sessionKey,
         message: fullMessage,
         deliver: false,
@@ -297,21 +267,21 @@ const useAgentChat = () => {
         created_at: new Date().toISOString(),
       }]);
     }
-  }, [connected, request]);
+  }, []);
 
-  // Abort
+  // --- Abort ---
   const abort = useCallback(async () => {
-    if (!connected) return;
+    if (!connectedRef.current) return;
     const agent = selectedAgentRef.current;
     try {
-      await request('chat.abort', runIdRef.current
+      await wsRequest('chat.abort', runIdRef.current
         ? { sessionKey: agent.sessionKey, runId: runIdRef.current }
         : { sessionKey: agent.sessionKey }
       );
     } catch (err) {
       console.error('[AgentChat] Abort failed:', err);
     }
-  }, [connected, request]);
+  }, []);
 
   return {
     agents: AGENTS,
@@ -328,7 +298,7 @@ const useAgentChat = () => {
     sendMessage,
     abort,
     messagesEndRef,
-    fetchMessages,
+    fetchMessages: loadHistory,
   };
 };
 
