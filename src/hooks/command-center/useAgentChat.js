@@ -5,7 +5,6 @@ const GATEWAY_TOKEN = '7715c0390967f22d6262c93f067b06a84228d174cea01a2c';
 
 const AGENTS = [
   { id: 'kevin', name: 'Kevin', emoji: '🏗️', color: '#F59E0B', sessionKey: 'agent:main:main' },
-  { id: 'clarissa', name: 'Clarissa', emoji: '📊', color: '#8B5CF6', sessionKey: 'agent:clarissa:main' },
 ];
 
 function uuid() {
