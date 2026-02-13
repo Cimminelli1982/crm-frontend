@@ -262,38 +262,6 @@ const DesktopRightPanel = ({
               suggestionsFromMessage={suggestionsFromMessage}
             />
           )}
-          {/* Not in CRM banner - when WhatsApp/email selected but no CRM contact found */}
-          {!rightPanelCollapsed && enrichedRightPanelContacts.length === 0 && (selectedWhatsappChat || (selectedThread && selectedThread.length > 0)) && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 12px',
-              background: theme === 'light' ? '#FEF3C7' : '#78350F',
-              borderBottom: `1px solid ${theme === 'light' ? '#FDE68A' : '#92400E'}`,
-              fontSize: 13,
-              color: theme === 'light' ? '#92400E' : '#FDE68A',
-            }}>
-              <FaExclamationTriangle size={14} />
-              <span style={{ flex: 1, fontWeight: 500 }}>Not in CRM</span>
-              <button
-                onClick={() => setCreateContactModalOpen(true)}
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: 6,
-                  border: 'none',
-                  background: '#3B82F6',
-                  color: '#fff',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                + Add to CRM
-              </button>
-            </div>
-          )}
           {/* Contact Selector Dropdown - show only when not collapsed and has contacts */}
           {!rightPanelCollapsed && enrichedRightPanelContacts.length > 0 && (
             <div style={{
@@ -1520,42 +1488,6 @@ const DesktopRightPanel = ({
                   setCompanyDataIntegrityModalOpen={setCompanyDataIntegrityModalOpen}
                   suggestionsFromMessage={suggestionsFromMessage}
                 />
-              )}
-
-              {activeActionTab === 'crm' && !selectedRightPanelContactId && (
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '40px 20px',
-                  gap: 16,
-                  flex: 1,
-                  color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                }}>
-                  <FaUser size={32} style={{ opacity: 0.4 }} />
-                  <div style={{ fontSize: 14, fontWeight: 500, textAlign: 'center' }}>
-                    No contact linked
-                  </div>
-                  <div style={{ fontSize: 12, textAlign: 'center', opacity: 0.7 }}>
-                    {selectedWhatsappChat?.contact_name || selectedWhatsappChat?.phone_number || 'Unknown contact'}
-                  </div>
-                  <button
-                    onClick={() => setCreateContactModalOpen(true)}
-                    style={{
-                      padding: '8px 20px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background: '#3B82F6',
-                      color: '#fff',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    + Add to CRM
-                  </button>
-                </div>
               )}
 
               {activeActionTab === 'crm' && selectedRightPanelContactId && (
