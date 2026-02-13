@@ -210,10 +210,18 @@ const useAgentChat = () => {
     }
   }, [selectedAgent]);
 
-  // Scroll to bottom
+  // Scroll to bottom — instant on load, smooth on new messages
+  const chatContainerRef = useRef(null);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamText]);
+    // Small delay to ensure DOM has rendered
+    const t = setTimeout(() => {
+      const container = chatContainerRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }, 50);
+    return () => clearTimeout(t);
+  }, [messages]);
 
   // --- Send message ---
   const sendMessage = useCallback(async (content, context = {}) => {
@@ -298,6 +306,7 @@ const useAgentChat = () => {
     sendMessage,
     abort,
     messagesEndRef,
+    chatContainerRef,
     fetchMessages: loadHistory,
   };
 };

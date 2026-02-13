@@ -26,6 +26,7 @@ const AgentChatTab = ({
     sendMessage,
     abort,
     messagesEndRef,
+    chatContainerRef,
   } = agentChatHook;
 
   const [showAgentDropdown, setShowAgentDropdown] = useState(false);
@@ -187,7 +188,7 @@ const AgentChatTab = ({
       )}
 
       {/* Messages area */}
-      <div style={{
+      <div ref={chatContainerRef} style={{
         flex: 1,
         overflowY: 'auto',
         padding: '12px',
