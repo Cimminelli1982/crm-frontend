@@ -220,7 +220,7 @@ URL: **http://localhost:3002/new-crm/command-center**
 
 ### Frontend (questo repo)
 - React app su `localhost:3002`
-- Comando: `PORT=3002 npm start`
+- Comando: `PORT=3002 npm run new-crm:dev`
 
 ### Backend su Railway
 
@@ -231,8 +231,8 @@ URL: **http://localhost:3002/new-crm/command-center**
 
 **1. command-center-backend (Node.js)**
 - URL: `https://command-center-backend-production.up.railway.app`
-- Gestisce: Email sync (JMAP), Calendar sync (CalDAV), invio email, chat AI
-- Endpoints: `/chat`, `/email/send`, `/calendar/*`, `/whatsapp/send`
+- Gestisce: Email sync (JMAP), Calendar (Google Calendar API), invio email, chat AI, email save-and-archive
+- Endpoints: `/chat`, `/email/send`, `/email/save-and-archive`, `/archive`, `/calendar/*`, `/whatsapp/send`
 
 **2. crm-agent-service (Python/FastAPI)**
 - Gestisce: WhatsApp webhook da TimelinesAI
@@ -691,11 +691,119 @@ created_at              timestamptz (default now())
 
 ## Componenti Principali
 
-- `src/pages/CommandCenterPage.js` - Hub principale (~14k righe)
-- `src/components/command-center/SendEmailTab.js` - Composizione email
-- `src/components/command-center/WhatsAppChatTab.js` - Chat WhatsApp
-- `src/components/command-center/DataIntegrityTab.js` - Issues data integrity
-- `src/components/command-center/CRMTab.js` - Contatti non in CRM
+### Page & Layout
+- `src/pages/CommandCenterPage.js` — Main page (~5800 lines). Initialises all hooks and passes them to the layout.
+- `src/components/command-center/DesktopLayout.js` — Assembles the four layout panels (header, left, center, right).
+
+### Layout Panels (`layout/`)
+- `layout/DesktopHeader.js` — Top tab bar (Email, WhatsApp, Calendar, KIT, Deals, Introductions, Notes, Tasks, Lists)
+- `layout/DesktopLeftPanel.js` — Left sidebar: renders per-tab content components
+- `layout/DesktopCenterPanel.js` — Main content area (email body, WhatsApp chat, notes editor, etc.)
+- `layout/DesktopRightPanel.js` — Right panel: contact/company details, contextual tabs
+
+### Left Panel Content (`left-panel/`)
+- `left-panel/EmailLeftContent.js` — Email thread list
+- `left-panel/KITLeftContent.js` — Keep in Touch contacts list
+- `left-panel/DealsLeftContent.js` — Deals list by stage
+- `left-panel/CalendarLeftContent.js` — Calendar events list
+- `left-panel/IntroductionsLeftContent.js` — Introductions list
+- `left-panel/NotesLeftContent.js` — Notes list
+- `left-panel/LeftPanelShell.js` — Shared shell (search + scrollable content)
+- `left-panel/LeftPanelSearch.js` — Search input for left panel
+- `left-panel/CollapsibleSection.js` — Collapsible group header
+- `left-panel/items/` — Individual item renderers (CalendarEventItem, DealItem, IntroductionItem, KITContactItem)
+
+### Center Panel (`center-panel/`)
+- `center-panel/NotesCenterContent.js` — Notes editor/viewer
+
+### Right Panel Tabs
+- `ContactDetailsTab.js` — Contact info, emails, mobiles, companies, tags, KIT
+- `CompanyDetailsTab.js` — Company info, domains, contacts, tags
+- `ContactSelector.js` — Search + select contact in right panel
+- `AddMenu.js` — Quick-add menu (contact, company, deal, etc.)
+- `RightPanelEmailTab.js` — Email history for selected contact
+- `RightPanelWhatsAppTab.js` — WhatsApp history for selected contact
+- `CalendarPanelTab.js` — Calendar/meetings for selected contact
+- `IntroductionsPanelTab.js` — Introductions for selected contact
+- `DealsTab.js` — Deals for selected contact
+- `RelatedTab.js` — Related contacts (shared companies, tags)
+- `FilesTab.js` — Attachments for selected contact
+- `NotesTab.js` — Notes for selected contact
+- `TasksTab.js` — Tasks for selected contact
+- `AITab.js` — Claude AI chat with contact context
+
+### Other Command Center Components
+- `SendEmailTab.js` — Email composer
+- `WhatsAppChatTab.js` — WhatsApp chat view
+- `WhatsAppTab.js` — WhatsApp inbox
+- `ChatTab.js` — Claude AI chat (standalone)
+- `DataIntegrityTab.js` — Data integrity issues
+- `DataIntegrityWarningBar.js` — Warning bar for unresolved issues
+- `CRMTab.js` — Contacts not in CRM
+- `IntroductionsTab.js` — Introductions management
+- `ListsTab.js` — Email lists
+- `TasksFullTab.js` — Full tasks view
+- `ComposeEmailModal.js` — Modal email composer
+
+### Mobile Components (`mobile/command-center/`)
+- `CommandCenterMobile.js` — Mobile layout wrapper
+- `MobileEmailList.js`, `MobileEmailView.js` — Mobile email
+- `MobileWhatsAppList.js`, `MobileWhatsAppView.js` — Mobile WhatsApp
+- `MobileCalendarView.js`, `MobileDealsView.js`, `MobileIntroductionsView.js`
+- `MobileKeepInTouchList.js`, `MobileNotesView.js`, `MobileTasksList.js`, `MobileListsView.js`
+- `ScrollableTabBar.js`, `SwipeableEmailItem.js`, `BottomActionBar.js`, `ActionSheet.js`, `MobileContextPanel.js`
+
+### Hooks (`src/hooks/`)
+General:
+- `useContactDetails.js` — Load full contact data (emails, mobiles, companies, tags, KIT)
+- `useContactsData.js` — Contact list loading + search
+- `useContextContacts.js` — Contacts in context of current item (email participants, chat contacts)
+- `useKeepInTouch.js` — KIT frequency + snooze logic
+- `useEmailCompose.js` — Email composition state + send
+- `useEmailThreads.js` — Email thread loading + grouping
+- `useCompanySuggestions.js` — Company auto-suggest from email domains
+- `useSupabaseTasks.js` — Tasks from Supabase
+- `useTodoistTasks.js` — Tasks from Todoist API
+- `useChatWithClaude.js` — AI chat with Claude backend
+- `useQuickEditModal.js` — Quick edit contact modal state
+- `useProfileImageModal.js` — Profile image upload modal state
+- `useViewport.js` — Screen size detection (desktop vs mobile)
+
+Command Center specific (`hooks/command-center/`):
+- `useEmailActions.js` — Done/archive/spam/status for emails (contains saveAndArchive logic)
+- `useWhatsAppData.js` — WhatsApp inbox loading + Done flow
+- `useCalendarData.js` — Calendar events loading + dismiss
+- `useDealsData.js` — Deals loading
+- `useIntroductionsData.js` — Introductions loading
+- `useKeepInTouchData.js` — KIT data for left panel
+- `useNotesData.js` — Notes loading
+- `useDataIntegrity.js` — Data integrity issues
+- `useRightPanelState.js` — Right panel tab + contact selection state
+
+### Modals (`src/components/modals/`)
+~50 modal components for editing contacts, companies, deals, tags, cities, etc. Key ones:
+- `CreateContactModal.js`, `CreateContactModalAI.js` — Add contacts
+- `CreateCompanyModal.js`, `CreateCompanyFromDomainModal.js` — Add companies
+- `QuickEditContactModal.js` — Quick edit with tabs (Info, Work, KIT, Contacts, Related)
+- `ProfileImageModal.js` — Upload/manage profile images
+- `DuplicateProcessingModal.js` — Merge duplicate contacts
+- `CompanyMergeModal.js`, `SimpleCompanyMergeModal.js` — Merge companies
+- `DataIntegrityModal.js` — Resolve data integrity issues
+- `AddToCrmWorkflowModal.js` — Full workflow for adding new contact to CRM
+- `AttachmentSaveModal.js` — Save email attachments to CRM
+- `EmailComposerModal.js` — Compose email from anywhere
+- `FilePreviewModal.js` — Preview attached files
+- `ViewDealModal.js`, `EditDealModal.js`, `DirectEditDealModal.js` — Deal modals
+
+### Backend Files (`backend/src/`)
+- `index.js` — Express server, email sync (60s poll), `/email/save-and-archive`, `/archive`, `/email/send`, `/chat`
+- `jmap.js` — Fastmail JMAP client for email fetching
+- `sync.js` — Sync state management
+- `google-calendar.js` — Google Calendar API integration
+- `baileys.js` — WhatsApp sending via Baileys
+- `mcp-client.js` — MCP tools client
+- `supabase.js` — Supabase client + DB operations
+- `caldav.js` — Legacy CalDAV client (Fastmail calendar, largely replaced by google-calendar.js)
 
 ---
 

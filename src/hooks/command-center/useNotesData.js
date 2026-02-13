@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  FaStickyNote, FaFolder, FaUser, FaBuilding, FaHandshake, FaFile,
+  FaStickyNote, FaFolder, FaUser, FaBuilding, FaFile,
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -10,16 +10,15 @@ const FOLDER_CONFIG = {
   '': { icon: FaFile, color: '#6B7280', emoji: '📄', label: 'Root' },
   'Favourites': { icon: FaFolder, color: '#F59E0B', emoji: '⭐' },
   'Inbox': { icon: FaFolder, color: '#8B5CF6', emoji: '📥' },
-  '📥 Inbox': { icon: FaFolder, color: '#8B5CF6', emoji: '📥' },
-  '📅 Daily Notes': { icon: FaStickyNote, color: '#3B82F6', emoji: '📅' },
-  '🏢 Business': { icon: FaBuilding, color: '#10B981', emoji: '🏢' },
-  '💭 Ideas & Philosophy': { icon: FaStickyNote, color: '#F59E0B', emoji: '💭' },
-  '🤝 Meetings': { icon: FaHandshake, color: '#EC4899', emoji: '🤝' },
-  '👥 People': { icon: FaUser, color: '#6366F1', emoji: '👥' },
-  '📚 Learning': { icon: FaFolder, color: '#14B8A6', emoji: '📚' },
-  '🍳 Recipes': { icon: FaFolder, color: '#F97316', emoji: '🍳' },
-  '🛠️ Setup': { icon: FaFolder, color: '#64748B', emoji: '🛠️' },
-  '📎 Resources': { icon: FaFolder, color: '#A855F7', emoji: '📎' },
+  'CRM/Contacts': { icon: FaUser, color: '#6366F1', emoji: '👥' },
+  'CRM/Companies': { icon: FaBuilding, color: '#10B981', emoji: '🏢' },
+  'CRM/Deals': { icon: FaFolder, color: '#F97316', emoji: '💰' },
+  'CRM/Introductions': { icon: FaFolder, color: '#EC4899', emoji: '🤝' },
+  'Personal/Ideas': { icon: FaStickyNote, color: '#3B82F6', emoji: '💭' },
+  'Personal/Projects': { icon: FaFolder, color: '#14B8A6', emoji: '📋' },
+  'Work/Meetings': { icon: FaFolder, color: '#EC4899', emoji: '🤝' },
+  'Work/Research': { icon: FaFolder, color: '#A855F7', emoji: '🔬' },
+  'Archive': { icon: FaFolder, color: '#64748B', emoji: '🗄️' },
   'default': { icon: FaFolder, color: '#6B7280', emoji: '📁' },
 };
 

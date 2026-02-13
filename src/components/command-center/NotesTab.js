@@ -23,18 +23,8 @@ const FOLDERS = [
   { id: 'Archive', label: 'Archive' },
 ];
 
-// Pinned global notes (always available in dropdown)
-const PINNED_NOTE_TITLES = ['Inbox', 'Decision', 'Agents Task', 'Diary', 'Shopping', 'Food'];
-
-// Config for pinned notes: title → folder when creating
-const PINNED_NOTE_FOLDERS = {
-  'Inbox': 'Favourites',
-  'Decision': 'Favourites',
-  'Agents Task': 'Favourites',
-  'Diary': 'Favourites',
-  'Shopping': 'Favourites',
-  'Food': 'Favourites',
-};
+// Pinned notes folder — notes in this folder always show in the dropdown
+const PINNED_FOLDER = 'Favourites';
 
 /**
  * NotesTab - Notes editor following CompanyDetailsTab UI pattern
@@ -89,26 +79,44 @@ const NotesTab = ({
   // Track which contactId we last auto-selected for
   const lastAutoSelectedContactId = useRef(null);
 
-  // Fetch pinned notes from DB
+  // Fetch pinned notes from DB — all notes in the Favourites folder + contact note
   const fetchPinnedNotes = useCallback(async () => {
     try {
-      // Build list of pinned titles to search for
-      const titlesToSearch = [...PINNED_NOTE_TITLES];
-      if (contactName) {
-        titlesToSearch.push(contactName);
-      }
-
-      const { data: notes } = await supabase
+      // Fetch all notes in the Favourites folder
+      const { data: favouriteNotes } = await supabase
         .from('notes')
         .select('note_id, title, folder_path, markdown_content, text')
-        .in('title', titlesToSearch);
+        .eq('folder_path', PINNED_FOLDER)
+        .is('deleted_at', null)
+        .order('title');
+
+      // Also fetch contact-specific note if it exists
+      let contactNote = null;
+      if (contactName) {
+        const { data: contactNotes } = await supabase
+          .from('notes')
+          .select('note_id, title, folder_path, markdown_content, text')
+          .eq('title', contactName)
+          .is('deleted_at', null)
+          .limit(1);
+        contactNote = contactNotes?.[0] || null;
+      }
 
       // Map found notes, marking which are pinned
-      const found = (notes || []).map(note => ({
+      const found = (favouriteNotes || []).map(note => ({
         ...note,
         isPinned: true,
-        isContactNote: note.title === contactName,
+        isContactNote: false,
       }));
+
+      // Add contact note if found and not already in favourites
+      if (contactNote && !found.some(n => n.note_id === contactNote.note_id)) {
+        found.push({
+          ...contactNote,
+          isPinned: true,
+          isContactNote: true,
+        });
+      }
 
       setPinnedNotes(found);
       return found;
@@ -296,7 +304,7 @@ const NotesTab = ({
         setFolderPath('CRM/Contacts');
         setLinkedContacts([contactId]);
       } else {
-        setFolderPath(PINNED_NOTE_FOLDERS[pinnedTitle] || 'Inbox');
+        setFolderPath(PINNED_FOLDER);
         setLinkedContacts([]);
       }
       setLinkedCompanies([]);
@@ -554,11 +562,8 @@ const NotesTab = ({
 
   const hasContent = selectedNoteId || isCreating;
 
-  // Build pinned options for dropdown
-  // All pinned titles: global + contact name
-  const allPinnedTitles = contactName
-    ? [...PINNED_NOTE_TITLES, contactName]
-    : [...PINNED_NOTE_TITLES];
+  // Build pinned options for dropdown — from actual Favourites notes
+  const allPinnedTitles = pinnedNotes.map(n => n.title);
 
   // Map: title → note_id (if exists in DB)
   const pinnedTitleToNote = {};
