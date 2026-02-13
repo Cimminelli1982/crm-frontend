@@ -21,10 +21,57 @@ function extractText(content) {
   if (!content) return '';
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    return content.filter(p => p.type === 'text').map(p => p.text).join('');
+    return content
+      .filter(p => p.type === 'text')
+      .map(p => p.text)
+      .join('');
   }
   if (typeof content.text === 'string') return content.text;
   return '';
+}
+
+// Check if a message is internal/system noise that shouldn't be shown
+function isVisibleMessage(msg) {
+  const text = extractText(msg.content);
+  if (!text || !text.trim()) return false;
+  const trimmed = text.trim();
+  // Skip internal markers
+  if (trimmed === 'NO_REPLY' || trimmed === 'HEARTBEAT_OK') return false;
+  // USER messages: only show those from CRM frontend (have [CRM Context:])
+  if (msg.role === 'user') {
+    // Show CRM user messages (strip the context prefix for display)
+    if (trimmed.includes('[CRM Context:')) return true;
+    // Hide everything else (Slack, system events, heartbeats, queued messages)
+    return false;
+  }
+  // ASSISTANT messages: skip those that are only tool calls (no text)
+  if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+    const hasText = msg.content.some(p => p.type === 'text' && p.text && p.text.trim() && p.text.trim() !== 'NO_REPLY' && p.text.trim() !== 'HEARTBEAT_OK');
+    if (!hasText) return false;
+  }
+  return true;
+}
+
+// Extract only user-facing text from content (skip thinking, tool output)
+function extractCleanText(content, role) {
+  if (!content) return '';
+  let text = '';
+  if (typeof content === 'string') {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = content
+      .filter(p => p.type === 'text' && p.text && p.text.trim() !== 'NO_REPLY' && p.text.trim() !== 'HEARTBEAT_OK')
+      .map(p => p.text)
+      .join('\n')
+      .trim();
+  } else if (typeof content.text === 'string') {
+    text = content.text;
+  }
+  // Strip [CRM Context: ...] prefix from user messages
+  if (role === 'user') {
+    text = text.replace(/^\[CRM Context:[^\]]*\]\s*/g, '').trim();
+  }
+  return text;
 }
 
 const useAgentChat = () => {
@@ -73,14 +120,74 @@ const useAgentChat = () => {
     wsRequest('chat.history', { sessionKey: agent.sessionKey, limit: 100 })
       .then(result => {
         if (Array.isArray(result?.messages)) {
-          const normalized = result.messages
-            .filter(m => m.role === 'user' || m.role === 'assistant')
-            .map((m, i) => ({
-              id: m.id || `hist-${i}`,
-              role: m.role,
-              content: extractText(m.content),
-              created_at: m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString(),
-            }));
+          // Only show CRM conversations: CRM user messages + final assistant response
+          const allMsgs = result.messages.filter(m => m.role === 'user' || m.role === 'assistant');
+          const conversations = []; // [{user: msg, assistant: msg}]
+          let currentCrmUser = null;
+          let lastAssistantResponse = null;
+
+          for (const m of allMsgs) {
+            if (m.role === 'user') {
+              const text = extractText(m.content);
+              if (text && text.includes('[CRM Context:')) {
+                // Save previous conversation pair if exists
+                if (currentCrmUser && lastAssistantResponse) {
+                  conversations.push({ user: currentCrmUser, assistant: lastAssistantResponse });
+                } else if (currentCrmUser) {
+                  conversations.push({ user: currentCrmUser });
+                }
+                currentCrmUser = m;
+                lastAssistantResponse = null;
+              } else {
+                // Non-CRM user message — ends the CRM conversation block
+                if (currentCrmUser) {
+                  if (lastAssistantResponse) {
+                    conversations.push({ user: currentCrmUser, assistant: lastAssistantResponse });
+                  } else {
+                    conversations.push({ user: currentCrmUser });
+                  }
+                  currentCrmUser = null;
+                  lastAssistantResponse = null;
+                }
+              }
+            } else if (m.role === 'assistant' && currentCrmUser) {
+              if (isVisibleMessage(m)) {
+                lastAssistantResponse = m; // Keep overwriting — we want the LAST one
+              }
+            }
+          }
+          // Don't forget the last pair
+          if (currentCrmUser) {
+            if (lastAssistantResponse) {
+              conversations.push({ user: currentCrmUser, assistant: lastAssistantResponse });
+            } else {
+              conversations.push({ user: currentCrmUser });
+            }
+          }
+
+          const normalized = [];
+          for (const conv of conversations) {
+            const userText = extractCleanText(conv.user.content, 'user');
+            if (userText) {
+              normalized.push({
+                id: conv.user.id || `hist-u-${normalized.length}`,
+                role: 'user',
+                content: userText,
+                created_at: conv.user.timestamp ? new Date(conv.user.timestamp).toISOString() : new Date().toISOString(),
+              });
+            }
+            if (conv.assistant) {
+              const assistantText = extractCleanText(conv.assistant.content, 'assistant');
+              if (assistantText) {
+                normalized.push({
+                  id: conv.assistant.id || `hist-a-${normalized.length}`,
+                  role: 'assistant',
+                  content: assistantText,
+                  created_at: conv.assistant.timestamp ? new Date(conv.assistant.timestamp).toISOString() : new Date().toISOString(),
+                });
+              }
+            }
+          }
           setMessages(normalized);
         }
       })
@@ -237,8 +344,12 @@ const useAgentChat = () => {
     const ctxParts = [];
     if (context.type) ctxParts.push(`Tab: ${context.type}`);
     if (context.metadata?.contactName) ctxParts.push(`Contact: ${context.metadata.contactName}`);
-    if (context.metadata?.emailSubject) ctxParts.push(`Email: "${context.metadata.emailSubject}"`);
     if (context.contactId) ctxParts.push(`Contact ID: ${context.contactId}`);
+    // Tab-specific context
+    if (context.metadata?.emailSubject) ctxParts.push(`Email: "${context.metadata.emailSubject}"`);
+    if (context.metadata?.whatsappChat) ctxParts.push(`WhatsApp: ${context.metadata.whatsappChat}`);
+    if (context.metadata?.calendarEvent) ctxParts.push(`Event: "${context.metadata.calendarEvent}"`);
+    if (context.metadata?.dealName) ctxParts.push(`Deal: "${context.metadata.dealName}"`);
     if (ctxParts.length > 0) {
       fullMessage = `[CRM Context: ${ctxParts.join(' | ')}]\n\n${fullMessage}`;
     }

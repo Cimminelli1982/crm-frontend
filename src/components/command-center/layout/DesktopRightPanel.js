@@ -9,7 +9,7 @@ import {
   FaEnvelope, FaWhatsapp, FaCalendarAlt, FaChevronLeft, FaChevronRight,
   FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane,
   FaHandshake, FaTasks, FaPaperclip, FaRobot, FaTag, FaLinkedin, FaRocket,
-  FaGlobe, FaMapMarkerAlt, FaUsers, FaLink,
+  FaGlobe, FaMapMarkerAlt, FaUsers, FaLink, FaExclamationTriangle,
 } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import DataIntegrityWarningBar from '../DataIntegrityWarningBar';
@@ -262,6 +262,38 @@ const DesktopRightPanel = ({
               suggestionsFromMessage={suggestionsFromMessage}
             />
           )}
+          {/* Not in CRM banner - when WhatsApp/email selected but no CRM contact found */}
+          {!rightPanelCollapsed && enrichedRightPanelContacts.length === 0 && (selectedWhatsappChat || (selectedThread && selectedThread.length > 0)) && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 12px',
+              background: theme === 'light' ? '#FEF3C7' : '#78350F',
+              borderBottom: `1px solid ${theme === 'light' ? '#FDE68A' : '#92400E'}`,
+              fontSize: 13,
+              color: theme === 'light' ? '#92400E' : '#FDE68A',
+            }}>
+              <FaExclamationTriangle size={14} />
+              <span style={{ flex: 1, fontWeight: 500 }}>Not in CRM</span>
+              <button
+                onClick={() => setCreateContactModalOpen(true)}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: '#3B82F6',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                + Add to CRM
+              </button>
+            </div>
+          )}
           {/* Contact Selector Dropdown - show only when not collapsed and has contacts */}
           {!rightPanelCollapsed && enrichedRightPanelContacts.length > 0 && (
             <div style={{
@@ -291,6 +323,9 @@ const DesktopRightPanel = ({
               </CollapseButton>
               {!rightPanelCollapsed && (
                 <>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'agentChat'} onClick={() => setActiveActionTab('agentChat')} title="Kevin Chat (⌥G)" style={{ color: activeActionTab === 'agentChat' ? '#F59E0B' : undefined }}>
+                    <FaUsers /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>G</span>
+                  </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details (⌥P)">
                     <FaUser /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>P</span>
                   </ActionTabIcon>
@@ -336,12 +371,7 @@ const DesktopRightPanel = ({
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes (⌥N)" style={{ color: activeActionTab === 'notes' ? '#F59E0B' : undefined }}>
                     <FaStickyNote /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>N</span>
                   </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude (⌥A)" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
-                    <FaRobot /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>A</span>
-                  </ActionTabIcon>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'agentChat'} onClick={() => setActiveActionTab('agentChat')} title="Team Chat (⌥G)" style={{ color: activeActionTab === 'agentChat' ? '#F59E0B' : undefined }}>
-                    <FaUsers /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>G</span>
-                  </ActionTabIcon>
+                  {/* Chat with Claude tab removed — using Agent Chat (Kevin) instead */}
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'files'} onClick={() => setActiveActionTab('files')} title="Files (⌥F)" style={{ color: activeActionTab === 'files' ? '#3B82F6' : undefined }}>
                     <FaPaperclip /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>F</span>
                   </ActionTabIcon>
@@ -1405,7 +1435,10 @@ const DesktopRightPanel = ({
                   contextId={selectedThread?.[0]?.email_id || selectedWhatsappChat?.chat_id || selectedCalendarEvent?.event_id || selectedPipelineDeal?.deal_id || null}
                   contactId={selectedRightPanelContactId}
                   contactName={rightPanelContactDetails ? `${rightPanelContactDetails.first_name || ''} ${rightPanelContactDetails.last_name || ''}`.trim() : null}
-                  emailSubject={selectedThread?.[0]?.subject || null}
+                  emailSubject={activeTab === 'email' ? (selectedThread?.[0]?.subject || null) : null}
+                  whatsappChat={activeTab === 'whatsapp' ? (selectedWhatsappChat?.contact_name || selectedWhatsappChat?.chat_name || null) : null}
+                  calendarEvent={activeTab === 'calendar' ? (selectedCalendarEvent?.summary || selectedCalendarEvent?.title || null) : null}
+                  dealName={activeTab === 'deals' ? (selectedPipelineDeal?.deal_name || selectedPipelineDeal?.name || null) : null}
                 />
               )}
 
@@ -1487,6 +1520,42 @@ const DesktopRightPanel = ({
                   setCompanyDataIntegrityModalOpen={setCompanyDataIntegrityModalOpen}
                   suggestionsFromMessage={suggestionsFromMessage}
                 />
+              )}
+
+              {activeActionTab === 'crm' && !selectedRightPanelContactId && (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '40px 20px',
+                  gap: 16,
+                  flex: 1,
+                  color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                }}>
+                  <FaUser size={32} style={{ opacity: 0.4 }} />
+                  <div style={{ fontSize: 14, fontWeight: 500, textAlign: 'center' }}>
+                    No contact linked
+                  </div>
+                  <div style={{ fontSize: 12, textAlign: 'center', opacity: 0.7 }}>
+                    {selectedWhatsappChat?.contact_name || selectedWhatsappChat?.phone_number || 'Unknown contact'}
+                  </div>
+                  <button
+                    onClick={() => setCreateContactModalOpen(true)}
+                    style={{
+                      padding: '8px 20px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: '#3B82F6',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + Add to CRM
+                  </button>
+                </div>
               )}
 
               {activeActionTab === 'crm' && selectedRightPanelContactId && (

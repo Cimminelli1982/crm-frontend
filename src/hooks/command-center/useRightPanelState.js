@@ -17,7 +17,7 @@ const useRightPanelState = ({
   onKeepInTouchUpdated,
 }) => {
   // Active action tab (right panel tab)
-  const [activeActionTab, setActiveActionTab] = useState('crm');
+  const [activeActionTab, setActiveActionTab] = useState('agentChat');
 
   // Right panel contact selector state
   const [selectedRightPanelContactId, setSelectedRightPanelContactId] = useState(null);

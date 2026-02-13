@@ -10,6 +10,9 @@ const AgentChatTab = ({
   contactId,
   contactName,
   emailSubject,
+  whatsappChat,
+  calendarEvent,
+  dealName,
 }) => {
   const {
     agents,
@@ -53,6 +56,9 @@ const AgentChatTab = ({
       metadata: {
         contactName: contactName || null,
         emailSubject: emailSubject || null,
+        whatsappChat: whatsappChat || null,
+        calendarEvent: calendarEvent || null,
+        dealName: dealName || null,
       },
     };
     sendMessage(input, context);
@@ -81,16 +87,14 @@ const AgentChatTab = ({
       background: bg,
       overflow: 'hidden',
     }}>
-      {/* Agent selector header */}
+      {/* Header — Kevin + connection status */}
       <div style={{
-        padding: '10px 12px',
+        padding: '8px 12px',
         borderBottom: `1px solid ${borderColor}`,
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        position: 'relative',
       }}>
-        {/* Connection status dot */}
         <span style={{
           display: 'inline-block',
           width: 8,
@@ -99,79 +103,8 @@ const AgentChatTab = ({
           background: connected ? '#00b894' : '#e17055',
           flexShrink: 0,
         }} />
-
-        <div ref={dropdownRef} style={{ position: 'relative', flex: 1 }}>
-          <button
-            onClick={() => setShowAgentDropdown(!showAgentDropdown)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: 'none',
-              border: `1px solid ${borderColor}`,
-              borderRadius: 8,
-              padding: '6px 12px',
-              cursor: 'pointer',
-              color: textColor,
-              fontSize: 14,
-              fontWeight: 600,
-              width: '100%',
-            }}
-          >
-            <span style={{ fontSize: 18 }}>{selectedAgent?.emoji}</span>
-            <span>{selectedAgent?.name}</span>
-            <FaChevronDown size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
-          </button>
-
-          {showAgentDropdown && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              right: 0,
-              background: isDark ? '#1e1e3a' : '#fff',
-              border: `1px solid ${borderColor}`,
-              borderRadius: 8,
-              marginTop: 4,
-              zIndex: 100,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              overflow: 'hidden',
-            }}>
-              {agents.map(agent => (
-                <button
-                  key={agent.id}
-                  onClick={() => {
-                    setSelectedAgent(agent);
-                    setShowAgentDropdown(false);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    padding: '8px 12px',
-                    background: selectedAgent?.id === agent.id
-                      ? (isDark ? '#2a2a4a' : '#f0f0ff')
-                      : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: textColor,
-                    fontSize: 14,
-                    textAlign: 'left',
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>{agent.emoji}</span>
-                  <span style={{ fontWeight: selectedAgent?.id === agent.id ? 600 : 400 }}>
-                    {agent.name}
-                  </span>
-                  {selectedAgent?.id === agent.id && (
-                    <span style={{ marginLeft: 'auto', color: agent.color, fontSize: 12 }}>●</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <span style={{ fontSize: 16 }}>{selectedAgent?.emoji}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: textColor }}>{selectedAgent?.name}</span>
       </div>
 
       {/* Error banner */}
@@ -312,7 +245,7 @@ const AgentChatTab = ({
       </div>
 
       {/* Context bar */}
-      {contactName && (
+      {(contactName || emailSubject || whatsappChat || calendarEvent || dealName) && (
         <div style={{
           padding: '4px 12px',
           borderTop: `1px solid ${borderColor}`,
@@ -323,7 +256,13 @@ const AgentChatTab = ({
           gap: 4,
         }}>
           <FaRobot size={10} />
-          Context: {contactName}{emailSubject ? ` • ${emailSubject}` : ''}
+          {[
+            contactName,
+            emailSubject && `📧 ${emailSubject}`,
+            whatsappChat && `💬 ${whatsappChat}`,
+            calendarEvent && `📅 ${calendarEvent}`,
+            dealName && `💰 ${dealName}`,
+          ].filter(Boolean).join(' • ')}
         </div>
       )}
 
