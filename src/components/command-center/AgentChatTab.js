@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaPaperPlane, FaChevronDown, FaRobot } from 'react-icons/fa';
+import { FaPaperPlane, FaChevronDown, FaRobot, FaStop } from 'react-icons/fa';
 
 const AgentChatTab = ({
   theme,
@@ -18,9 +18,13 @@ const AgentChatTab = ({
     messages,
     loading,
     sending,
+    connected,
+    streamText,
+    error,
     input,
     setInput,
     sendMessage,
+    abort,
     messagesEndRef,
   } = agentChatHook;
 
@@ -40,7 +44,7 @@ const AgentChatTab = ({
   }, []);
 
   const handleSend = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || sending) return;
     const context = {
       type: contextType,
       id: contextId,
@@ -85,6 +89,16 @@ const AgentChatTab = ({
         gap: 8,
         position: 'relative',
       }}>
+        {/* Connection status dot */}
+        <span style={{
+          display: 'inline-block',
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: connected ? '#00b894' : '#e17055',
+          flexShrink: 0,
+        }} />
+
         <div ref={dropdownRef} style={{ position: 'relative', flex: 1 }}>
           <button
             onClick={() => setShowAgentDropdown(!showAgentDropdown)}
@@ -159,6 +173,19 @@ const AgentChatTab = ({
         </div>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div style={{
+          padding: '6px 12px',
+          background: '#e17055',
+          color: '#fff',
+          fontSize: 12,
+          textAlign: 'center',
+        }}>
+          {error}
+        </div>
+      )}
+
       {/* Messages area */}
       <div style={{
         flex: 1,
@@ -172,7 +199,7 @@ const AgentChatTab = ({
           <div style={{ textAlign: 'center', color: mutedColor, padding: 20 }}>
             Loading...
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && !streamText ? (
           <div style={{
             textAlign: 'center',
             color: mutedColor,
@@ -187,30 +214,69 @@ const AgentChatTab = ({
               Chat with {selectedAgent?.name}
             </span>
             <span style={{ fontSize: 12, opacity: 0.7 }}>
-              Messages are also saved in Slack
+              {connected ? 'Connected via OpenClaw — send a message' : 'Connecting to Gateway...'}
             </span>
           </div>
         ) : (
-          messages.map(msg => (
-            <div
-              key={msg.id}
-              style={{
-                display: 'flex',
-                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              }}
-            >
-              <div style={{
-                maxWidth: '85%',
-                padding: '8px 12px',
-                borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                background: msg.role === 'user' ? userMsgBg : msgBg,
-                color: msg.role === 'user' ? '#fff' : textColor,
-                fontSize: 13,
-                lineHeight: 1.5,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-              }}>
-                {msg.role === 'agent' && (
+          <>
+            {messages.map(msg => (
+              <div
+                key={msg.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                }}
+              >
+                <div style={{
+                  maxWidth: '85%',
+                  padding: '8px 12px',
+                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                  background: msg.role === 'user' ? userMsgBg : msgBg,
+                  color: msg.role === 'user' ? '#fff' : textColor,
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {msg.role === 'assistant' && (
+                    <div style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      marginBottom: 2,
+                      color: selectedAgent?.color,
+                    }}>
+                      {selectedAgent?.emoji} {selectedAgent?.name}
+                    </div>
+                  )}
+                  {msg.content}
+                  {msg.created_at && (
+                    <div style={{
+                      fontSize: 10,
+                      opacity: 0.6,
+                      marginTop: 4,
+                      textAlign: 'right',
+                    }}>
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Streaming response */}
+            {streamText !== null && streamText !== '' && (
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div style={{
+                  maxWidth: '85%',
+                  padding: '8px 12px',
+                  borderRadius: '12px 12px 12px 2px',
+                  background: msgBg,
+                  color: textColor,
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
                   <div style={{
                     fontSize: 11,
                     fontWeight: 600,
@@ -219,19 +285,27 @@ const AgentChatTab = ({
                   }}>
                     {selectedAgent?.emoji} {selectedAgent?.name}
                   </div>
-                )}
-                {msg.content}
-                <div style={{
-                  fontSize: 10,
-                  opacity: 0.6,
-                  marginTop: 4,
-                  textAlign: 'right',
-                }}>
-                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {streamText}
+                  <span style={{ animation: 'blink 0.8s infinite', opacity: 0.6 }}>▊</span>
                 </div>
               </div>
-            </div>
-          ))
+            )}
+
+            {/* Thinking indicator */}
+            {sending && (streamText === null || streamText === '') && (
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '12px 12px 12px 2px',
+                  background: msgBg,
+                  color: mutedColor,
+                  fontSize: 13,
+                }}>
+                  {selectedAgent?.emoji} Thinking...
+                </div>
+              </div>
+            )}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -265,7 +339,8 @@ const AgentChatTab = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={`Message ${selectedAgent?.name}...`}
+          placeholder={connected ? `Message ${selectedAgent?.name}...` : 'Connecting...'}
+          disabled={!connected}
           rows={1}
           style={{
             flex: 1,
@@ -279,29 +354,60 @@ const AgentChatTab = ({
             outline: 'none',
             maxHeight: 100,
             fontFamily: 'inherit',
+            opacity: connected ? 1 : 0.5,
           }}
         />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || sending}
-          style={{
-            background: selectedAgent?.color || '#3B82F6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            width: 36,
-            height: 36,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: input.trim() && !sending ? 'pointer' : 'not-allowed',
-            opacity: input.trim() && !sending ? 1 : 0.5,
-            flexShrink: 0,
-          }}
-        >
-          <FaPaperPlane size={14} />
-        </button>
+        {sending ? (
+          <button
+            onClick={abort}
+            style={{
+              background: '#e17055',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              width: 36,
+              height: 36,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+            title="Stop"
+          >
+            <FaStop size={14} />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || !connected}
+            style={{
+              background: selectedAgent?.color || '#3B82F6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              width: 36,
+              height: 36,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: input.trim() && connected ? 'pointer' : 'not-allowed',
+              opacity: input.trim() && connected ? 1 : 0.5,
+              flexShrink: 0,
+            }}
+          >
+            <FaPaperPlane size={14} />
+          </button>
+        )}
       </div>
+
+      {/* CSS animation for cursor blink */}
+      <style>{`
+        @keyframes blink {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 };

@@ -99,6 +99,8 @@ module.exports = {
     new DefinePlugin({
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
       'process.env.PUBLIC_URL': JSON.stringify('/new-crm'),
+      'process.env.REACT_APP_OPENCLAW_GATEWAY_URL': JSON.stringify(process.env.REACT_APP_OPENCLAW_GATEWAY_URL || 'ws://localhost:18789'),
+      'process.env.REACT_APP_OPENCLAW_GATEWAY_TOKEN': JSON.stringify(process.env.REACT_APP_OPENCLAW_GATEWAY_TOKEN || ''),
     }),
   ],
 
