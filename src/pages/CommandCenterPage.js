@@ -165,6 +165,7 @@ import useDataIntegrity from '../hooks/command-center/useDataIntegrity';
 import useEmailActions from '../hooks/command-center/useEmailActions';
 import useRightPanelState from '../hooks/command-center/useRightPanelState';
 import useNotesData from '../hooks/command-center/useNotesData';
+import useAgentChat from '../hooks/command-center/useAgentChat';
 import { CommandCenterMobile } from '../components/mobile/command-center';
 import DesktopLayout from '../components/command-center/DesktopLayout';
 
@@ -710,6 +711,7 @@ const CommandCenterPage = ({ theme }) => {
 
   // Notes hook
   const notesHook = useNotesData(activeTab);
+  const agentChatHook = useAgentChat();
 
   // Sync notes linked entities to right panel
   useEffect(() => {
@@ -2565,6 +2567,7 @@ const CommandCenterPage = ({ theme }) => {
       rightPanelHook={rightPanelHook}
       contextContactsHook={contextContactsHook}
       notesHook={notesHook}
+      agentChatHook={agentChatHook}
       todoistHook={todoistHook}
       chatHook={chatHook}
       emailCompose={emailCompose}

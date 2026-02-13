@@ -22,6 +22,7 @@ const DesktopLayout = ({
   rightPanelHook,
   contextContactsHook,
   notesHook,
+  agentChatHook,
   todoistHook,
   chatHook,
   emailCompose,
@@ -89,6 +90,7 @@ const DesktopLayout = ({
           dataIntegrityHook={dataIntegrityHook}
           rightPanelHook={rightPanelHook}
           chatHook={chatHook}
+          agentChatHook={agentChatHook}
           emailCompose={emailCompose}
           quickEditModal={quickEditModal}
           profileImageModal={profileImageModal}

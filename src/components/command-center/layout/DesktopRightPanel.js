@@ -30,6 +30,7 @@ import NotesTab from '../NotesTab';
 import TasksTab from '../TasksTab';
 import DealsTab from '../DealsTab';
 import DataIntegrityTab from '../DataIntegrityTab';
+import AgentChatTab from '../AgentChatTab';
 
 const DesktopRightPanel = ({
   theme,
@@ -44,6 +45,7 @@ const DesktopRightPanel = ({
   dataIntegrityHook,
   rightPanelHook,
   chatHook,
+  agentChatHook,
   emailCompose,
   quickEditModal,
   profileImageModal,
@@ -336,6 +338,9 @@ const DesktopRightPanel = ({
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude (⌥A)" style={{ color: activeActionTab === 'chat' ? '#8B5CF6' : undefined }}>
                     <FaRobot /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>A</span>
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'agentChat'} onClick={() => setActiveActionTab('agentChat')} title="Team Chat (⌥G)" style={{ color: activeActionTab === 'agentChat' ? '#F59E0B' : undefined }}>
+                    <FaUsers /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>G</span>
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'files'} onClick={() => setActiveActionTab('files')} title="Files (⌥F)" style={{ color: activeActionTab === 'files' ? '#3B82F6' : undefined }}>
                     <FaPaperclip /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>F</span>
@@ -1392,6 +1397,18 @@ const DesktopRightPanel = ({
                 />
               )}
 
+              {activeActionTab === 'agentChat' && (
+                <AgentChatTab
+                  theme={theme}
+                  agentChatHook={agentChatHook}
+                  contextType={activeTab}
+                  contextId={selectedThread?.[0]?.email_id || selectedWhatsappChat?.chat_id || selectedCalendarEvent?.event_id || selectedPipelineDeal?.deal_id || null}
+                  contactId={selectedRightPanelContactId}
+                  contactName={rightPanelContactDetails ? `${rightPanelContactDetails.first_name || ''} ${rightPanelContactDetails.last_name || ''}`.trim() : null}
+                  emailSubject={selectedThread?.[0]?.subject || null}
+                />
+              )}
+
               {activeActionTab === 'ai' && (
                 <AITab
                   theme={theme}
@@ -1775,6 +1792,19 @@ const DesktopRightPanel = ({
               )}
 
             </>
+          )}
+
+          {/* Agent Chat - always available even without selection */}
+          {!rightPanelCollapsed && activeActionTab === 'agentChat' && !((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal || (activeTab === 'tasks' && (tasksLinkedContacts.length > 0 || tasksLinkedChats.length > 0)) || (activeTab === 'notes' && notesLinkedContacts.length > 0) || (activeTab === 'keepintouch' && selectedKeepInTouchContact) || (activeTab === 'introductions' && selectedIntroductionItem) || (activeTab === 'lists' && selectedRightPanelContactId)) && (
+            <AgentChatTab
+              theme={theme}
+              agentChatHook={agentChatHook}
+              contextType={activeTab}
+              contextId={null}
+              contactId={null}
+              contactName={null}
+              emailSubject={null}
+            />
           )}
             </div>
           </div>
