@@ -15,6 +15,7 @@ const useCalendarData = (activeTab) => {
   const [processedMeetings, setProcessedMeetings] = useState([]);
   const [calendarEventScore, setCalendarEventScore] = useState(null);
   const [calendarEventNotes, setCalendarEventNotes] = useState('');
+  const [meetingLinkedNotes, setMeetingLinkedNotes] = useState([]);
   const [calendarEventDescription, setCalendarEventDescription] = useState('');
   const [selectedContactsForMeeting, setSelectedContactsForMeeting] = useState([]);
 
@@ -90,6 +91,17 @@ const useCalendarData = (activeTab) => {
               last_name,
               profile_image_url
             )
+          ),
+          note_meetings (
+            note_id,
+            notes:note_id (
+              note_id,
+              title,
+              markdown_content,
+              note_type,
+              created_at,
+              created_by
+            )
           )
         `)
         .order('meeting_date', { ascending: false });
@@ -103,6 +115,7 @@ const useCalendarData = (activeTab) => {
           setCalendarEventScore(data[0].score ? parseInt(data[0].score) : null);
           setCalendarEventNotes(data[0].notes || '');
           setCalendarEventDescription(data[0].description || '');
+          setMeetingLinkedNotes((data[0].note_meetings || []).map(nm => nm.notes).filter(Boolean));
         }
       }
       setCalendarLoading(false);
@@ -920,6 +933,8 @@ const useCalendarData = (activeTab) => {
     setCalendarEventScore,
     calendarEventNotes,
     setCalendarEventNotes,
+    meetingLinkedNotes,
+    setMeetingLinkedNotes,
     calendarEventDescription,
     setCalendarEventDescription,
     selectedContactsForMeeting,

@@ -49,7 +49,7 @@ const DesktopLeftPanel = ({
     setCalendarSearchResults, calendarSearchLoading,
     isSearchingCalendar, setIsSearchingCalendar,
     calendarSections, setCalendarSections, calendarLoading, toggleCalendarSection, filterCalendarEvents,
-    setCalendarEventScore, setCalendarEventNotes, setCalendarEventDescription,
+    setCalendarEventScore, setCalendarEventNotes, setCalendarEventDescription, setMeetingLinkedNotes,
     setAddEventTrigger, setWeekViewTrigger,
   } = calendarHook;
   const {
@@ -595,6 +595,7 @@ const DesktopLeftPanel = ({
           setCalendarEventDescription={setCalendarEventDescription}
           setCalendarEventScore={setCalendarEventScore}
           setCalendarEventNotes={setCalendarEventNotes}
+          setMeetingLinkedNotes={setMeetingLinkedNotes}
         />
       );
     }

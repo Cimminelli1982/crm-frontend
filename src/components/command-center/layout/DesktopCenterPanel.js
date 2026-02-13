@@ -110,6 +110,7 @@ const DesktopCenterPanel = ({
     selectedCalendarEvent,
     calendarEventDescription, setCalendarEventDescription,
     calendarEventNotes, setCalendarEventNotes,
+    meetingLinkedNotes,
     calendarEventScore,
     handleUpdateMeetingDescription, handleUpdateMeetingScore, handleUpdateMeetingNotes,
     handleDeleteProcessedMeeting, handleProcessCalendarEvent, handleDeleteCalendarEvent,
@@ -796,6 +797,57 @@ const DesktopCenterPanel = ({
                     <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
                       📝 Notes
                     </div>
+
+                    {/* Linked notes from note_meetings (e.g. Granola AI notes) */}
+                    {meetingLinkedNotes && meetingLinkedNotes.length > 0 && (
+                      <div style={{ marginBottom: '12px' }}>
+                        {meetingLinkedNotes.map((note) => (
+                          <div
+                            key={note.note_id}
+                            style={{
+                              padding: '12px',
+                              borderRadius: '8px',
+                              border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                              backgroundColor: theme === 'light' ? '#fff' : '#1F2937',
+                              marginBottom: '8px'
+                            }}
+                          >
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              marginBottom: '8px'
+                            }}>
+                              <span style={{
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px'
+                              }}>
+                                {note.note_type === 'meeting' ? '🤖 AI Meeting Notes' : note.title}
+                              </span>
+                              <span style={{
+                                fontSize: '11px',
+                                color: theme === 'light' ? '#9CA3AF' : '#6B7280'
+                              }}>
+                                {note.created_at ? new Date(note.created_at).toLocaleDateString() : ''}
+                              </span>
+                            </div>
+                            <div style={{
+                              fontSize: '14px',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              whiteSpace: 'pre-wrap',
+                              lineHeight: '1.6'
+                            }}>
+                              {note.markdown_content || ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Manual notes textarea */}
                     <textarea
                       value={calendarEventNotes}
                       onChange={(e) => setCalendarEventNotes(e.target.value)}
@@ -804,7 +856,7 @@ const DesktopCenterPanel = ({
                       style={{
                         width: '100%',
                         flex: 1,
-                        minHeight: '150px',
+                        minHeight: meetingLinkedNotes && meetingLinkedNotes.length > 0 ? '80px' : '150px',
                         padding: '12px',
                         borderRadius: '8px',
                         border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,

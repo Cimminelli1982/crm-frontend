@@ -31,6 +31,7 @@ const CalendarLeftContent = ({
   setCalendarEventDescription,
   setCalendarEventScore,
   setCalendarEventNotes,
+  setMeetingLinkedNotes,
 }) => {
   const renderSearchResults = () => (
     <>
@@ -115,6 +116,7 @@ const CalendarLeftContent = ({
               setCalendarEventScore(meeting.score ? parseInt(meeting.score) : null);
               setCalendarEventNotes(meeting.notes || '');
               setCalendarEventDescription(meeting.description || '');
+              setMeetingLinkedNotes((meeting.note_meetings || []).map(nm => nm.notes).filter(Boolean));
             }}
           >
             <EmailSender theme={theme}>
@@ -167,6 +169,7 @@ const CalendarLeftContent = ({
             onClick={() => {
               setSelectedCalendarEvent(event);
               setCalendarEventDescription(event.body_text || event.description || '');
+              setMeetingLinkedNotes([]);
             }}
           />
         ))}
