@@ -136,7 +136,7 @@ const DesktopCenterPanel = ({
 
   // Destructure emailActionsHook
   const {
-    saving, handleDoneClick, markAsSpam, deleteEmail,
+    saving, setSaving, handleDoneClick, markAsSpam, deleteEmail,
     handleDownloadAttachment, updateItemStatus,
     handleImportCalendarInvitation, isCalendarInvitation,
     spamMenuOpen, setSpamMenuOpen,
@@ -174,7 +174,7 @@ const DesktopCenterPanel = ({
               theme={theme}
               selectedChat={selectedWhatsappChat}
               onDone={handleWhatsAppDoneAsync}
-              onSpam={handleWhatsAppSpam}
+              onSpam={() => handleWhatsAppSpam(setSaving)}
               onStatusChange={updateItemStatus}
               saving={saving}
               contacts={emailContacts}
