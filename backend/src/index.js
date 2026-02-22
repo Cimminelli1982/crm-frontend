@@ -1534,11 +1534,11 @@ const TODOIST_TOKEN = process.env.TODOIST_API_TOKEN;
 
 // Project IDs to include (Work, Personal, Team, Inbox, Birthdays)
 const INCLUDED_PROJECT_IDS = [
-  '2335921711', // Inbox
-  '2336453097', // Personal
-  '2336882454', // Work
-  '2365787050', // Team
-  '2360053180', // Birthdays
+  '6VhG9MrQwJwqJJfW', // Inbox
+  '6VmX2Jv6wGG8W8V5', // Personal
+  '6VqRM39cGMjV8pP7', // Work
+  '6fp9mp2F253X67f8', // Team
+  '6crr237qxV93wV9q', // Birthdays
 ];
 
 // Helper to make Todoist API requests
@@ -1841,7 +1841,7 @@ app.post('/todoist/tasks', async (req, res) => {
       body: JSON.stringify({
         content,
         description: description || '',
-        project_id: project_id || '2335921711', // Default to Inbox
+        project_id: project_id || '6VhG9MrQwJwqJJfW', // Default to Inbox
         section_id: section_id || undefined,
         due_string: due_string || undefined,
         priority: priority || 1,
