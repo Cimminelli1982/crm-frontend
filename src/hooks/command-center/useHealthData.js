@@ -64,37 +64,43 @@ const useHealthData = (activeTab) => {
     if (activeTab === 'health') fetchBodyMetrics();
   }, [activeTab, bodyMetricsRefresh]);
 
-  // ==================== FETCH MEALS ====================
+  // ==================== FETCH MEALS + MEAL INGREDIENTS ====================
+  const fetchMealIngredientsForDate = useCallback(async (mealsData, date) => {
+    const dateMeals = mealsData.filter(m => m.date === date);
+    const mealIds = dateMeals.map(m => m.id);
+    if (!mealIds.length) { setMealIngredients([]); return; }
+    const { data, error } = await supabase
+      .from('meal_ingredients')
+      .select('*, ingredients(*)')
+      .in('meal_id', mealIds);
+    if (error) console.error('Error fetching meal_ingredients:', error);
+    else setMealIngredients(data || []);
+  }, []);
+
   useEffect(() => {
     const fetchMeals = async () => {
       setMealsLoading(true);
       const { data, error } = await supabase
         .from('meals')
-        .select('*, recipes(id, name, servings, recipe_ingredients(*, ingredients(*)))')
+        .select('*, recipes(id, name, servings, image_url, recipe_ingredients(*, ingredients(*)))')
         .order('date', { ascending: false });
-      if (error) console.error('Error fetching meals:', error);
-      else setMeals(data || []);
+      if (error) {
+        console.error('Error fetching meals:', error);
+      } else {
+        setMeals(data || []);
+        await fetchMealIngredientsForDate(data || [], selectedMealDate);
+      }
       setMealsLoading(false);
     };
     if (activeTab === 'health' && (activeHealthTab === 'nutrition' || activeHealthTab === 'dashboard')) {
       fetchMeals();
     }
-  }, [activeTab, activeHealthTab, mealsRefresh]);
+  }, [activeTab, activeHealthTab, mealsRefresh, fetchMealIngredientsForDate, selectedMealDate]);
 
-  // ==================== FETCH MEAL INGREDIENTS ====================
+  // Re-fetch meal ingredients when date changes (without re-fetching all meals)
   useEffect(() => {
-    const fetchMealIngredients = async (mealIds) => {
-      if (!mealIds.length) { setMealIngredients([]); return; }
-      const { data, error } = await supabase
-        .from('meal_ingredients')
-        .select('*, ingredients(*)')
-        .in('meal_id', mealIds);
-      if (error) console.error('Error fetching meal_ingredients:', error);
-      else setMealIngredients(data || []);
-    };
-    const mealIds = mealsForDateRaw.map(m => m.id);
-    fetchMealIngredients(mealIds);
-  }, [meals, selectedMealDate, mealsRefresh]);
+    fetchMealIngredientsForDate(meals, selectedMealDate);
+  }, [selectedMealDate]);
 
   // Raw filter (no dependency on mealIngredients to avoid circular)
   const mealsForDateRaw = useMemo(() => {
@@ -145,7 +151,7 @@ const useHealthData = (activeTab) => {
 
       const { data, error } = await supabase
         .from('meals')
-        .select('*, meal_ingredients(*, ingredients(*)), recipes(id, name, servings, recipe_ingredients(*, ingredients(*)))')
+        .select('*, meal_ingredients(*, ingredients(*)), recipes(id, name, servings, image_url, recipe_ingredients(*, ingredients(*)))')
         .gte('date', dateStr)
         .order('date', { ascending: true });
       if (error) console.error('Error fetching tracker meals:', error);
@@ -497,7 +503,7 @@ const useHealthData = (activeTab) => {
       const { data: mealData, error: mealError } = await supabase
         .from('meals')
         .insert(mealInsert)
-        .select('*, recipes(id, name, servings, recipe_ingredients(*, ingredients(*)))')
+        .select('*, recipes(id, name, servings, image_url, recipe_ingredients(*, ingredients(*)))')
         .single();
       if (mealError) throw mealError;
 
@@ -762,6 +768,8 @@ const useHealthData = (activeTab) => {
       if (setter) {
         setter(prev => prev.map(item => item.id === entityId ? { ...item, image_url: publicUrl } : item));
       }
+      // Force re-fetch meals so joined data (recipes, ingredients) also refreshes
+      setMealsRefresh(prev => prev + 1);
 
       toast.success('Image uploaded');
       return publicUrl;

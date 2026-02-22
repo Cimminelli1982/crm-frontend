@@ -20,12 +20,14 @@ const MealPlanningView = ({ theme, healthHook }) => {
     updateMealIngredients, updateMealName, updateMealServings,
     getMealMacros, getMealIngredientRows,
     mealIngredients,
-    saveAsNewRecipe, addIngredient,
+    saveAsNewRecipe, addIngredient, updateIngredient,
     uploadHealthImage,
   } = healthHook;
 
   const mealImageInputRef = useRef(null);
   const [uploadingMealImageId, setUploadingMealImageId] = useState(null);
+  const ingImageInputRef = useRef(null);
+  const [uploadingIngImageId, setUploadingIngImageId] = useState(null);
 
   const isDark = theme === 'dark';
   const mealLabel = (key) => {
@@ -43,6 +45,12 @@ const MealPlanningView = ({ theme, healthHook }) => {
     setUploadingMealImageId(mealId);
     await uploadHealthImage('meals', mealId, file);
     setUploadingMealImageId(null);
+  };
+
+  const handleIngImageUpload = async (ingId, file) => {
+    setUploadingIngImageId(ingId);
+    await uploadHealthImage('ingredients', ingId, file);
+    setUploadingIngImageId(null);
   };
 
   // Extra meals for the selected date
@@ -328,345 +336,478 @@ const MealPlanningView = ({ theme, healthHook }) => {
           e.target.value = '';
         }}
       />
-      {/* Date navigation */}
+      <input
+        ref={ingImageInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const id = ingImageInputRef.current?.dataset?.ingId;
+          if (file && id) handleIngImageUpload(id, file);
+          e.target.value = '';
+        }}
+      />
+      {/* Date navigation + Progress bars — side by side */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '20px',
+        padding: '14px 16px', borderRadius: '10px', backgroundColor: bgSecondary,
+        border: `1px solid ${borderColor}`,
       }}>
-        <button
-          onClick={() => navigateDate(-1)}
-          style={{
-            padding: '8px', borderRadius: '8px', border: `1px solid ${borderColor}`,
-            backgroundColor: bgSecondary, color: textSecondary, cursor: 'pointer',
-            display: 'flex', alignItems: 'center',
-          }}
-        >
-          <FaChevronLeft size={12} />
-        </button>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '11px', color: textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            {dayOfWeek}
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: 700, color: textPrimary }}>
-            {dateLabel}
-          </div>
-        </div>
-        <button
-          onClick={() => navigateDate(1)}
-          style={{
-            padding: '8px', borderRadius: '8px', border: `1px solid ${borderColor}`,
-            backgroundColor: bgSecondary, color: textSecondary, cursor: 'pointer',
-            display: 'flex', alignItems: 'center',
-          }}
-        >
-          <FaChevronRight size={12} />
-        </button>
-        {!isToday && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           <button
-            onClick={goToToday}
+            onClick={() => navigateDate(-1)}
             style={{
-              padding: '6px 12px', borderRadius: '6px', border: 'none',
-              backgroundColor: '#3B82F6', color: '#fff', fontSize: '11px',
-              fontWeight: 500, cursor: 'pointer',
+              padding: '8px', borderRadius: '8px', border: `1px solid ${borderColor}`,
+              backgroundColor: bgPrimary, color: textSecondary, cursor: 'pointer',
+              display: 'flex', alignItems: 'center',
             }}
           >
-            Today
+            <FaChevronLeft size={12} />
           </button>
-        )}
-      </div>
+          <div style={{ textAlign: 'center', minWidth: '90px' }}>
+            <div style={{ fontSize: '10px', color: textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {dayOfWeek}
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: textPrimary }}>
+              {dateLabel}
+            </div>
+          </div>
+          <button
+            onClick={() => navigateDate(1)}
+            style={{
+              padding: '8px', borderRadius: '8px', border: `1px solid ${borderColor}`,
+              backgroundColor: bgPrimary, color: textSecondary, cursor: 'pointer',
+              display: 'flex', alignItems: 'center',
+            }}
+          >
+            <FaChevronRight size={12} />
+          </button>
+          {!isToday && (
+            <button
+              onClick={goToToday}
+              style={{
+                padding: '5px 10px', borderRadius: '6px', border: 'none',
+                backgroundColor: '#3B82F6', color: '#fff', fontSize: '11px',
+                fontWeight: 500, cursor: 'pointer',
+              }}
+            >
+              Today
+            </button>
+          )}
+        </div>
 
-      {/* Progress bars */}
-      <div style={{
-        padding: '16px', borderRadius: '10px', backgroundColor: bgSecondary,
-        border: `1px solid ${borderColor}`, marginBottom: '20px', flexShrink: 0,
-      }}>
-        <ProgressBar label="Calories" actual={dailyMacros.kcal} target={dailyTargets.kcal} unit="kcal" />
-        <ProgressBar label="Protein" actual={dailyMacros.protein} target={dailyTargets.protein} unit="g" />
-        <div style={{ display: 'flex', gap: '16px', marginTop: '6px' }}>
-          <span style={{ fontSize: '11px', color: textMuted }}>
-            Fat: <strong style={{ color: textSecondary }}>{dailyMacros.fat}g</strong>
-          </span>
-          <span style={{ fontSize: '11px', color: textMuted }}>
-            Carbs: <strong style={{ color: textSecondary }}>{dailyMacros.carbs}g</strong>
-          </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ProgressBar label="Calories" actual={dailyMacros.kcal} target={dailyTargets.kcal} unit="kcal" />
+          <ProgressBar label="Protein" actual={dailyMacros.protein} target={dailyTargets.protein} unit="g" />
+          <div style={{ display: 'flex', gap: '16px', marginTop: '4px' }}>
+            <span style={{ fontSize: '11px', color: textMuted }}>
+              Fat: <strong style={{ color: textSecondary }}>{dailyMacros.fat}g</strong>
+            </span>
+            <span style={{ fontSize: '11px', color: textMuted }}>
+              Carbs: <strong style={{ color: textSecondary }}>{dailyMacros.carbs}g</strong>
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Meal slot cards */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {MEAL_TYPES.map(({ key, label }) => {
+      {/* Meal slot cards — 3-column grid, one card per meal */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+        {MEAL_TYPES.flatMap(({ key, label }) => {
           const slotMeals = mealsForDate.filter(m => m.meal_type === key);
-          // Aggregate macros across all meals in this slot
-          const slotMacros = slotMeals.length > 0 ? slotMeals.reduce(
-            (acc, m) => {
-              const mm = getMealMacros(m.id);
-              if (mm) { acc.kcal += mm.kcal; acc.protein += mm.protein; acc.fat += mm.fat; acc.carbs += mm.carbs; }
-              return acc;
-            },
-            { kcal: 0, protein: 0, fat: 0, carbs: 0 }
-          ) : null;
 
-          return (
-            <div key={key} style={{
-              padding: '14px 16px',
-              borderRadius: '10px',
-              backgroundColor: bgSecondary,
-              border: `1px solid ${borderColor}`,
-            }}>
-              <div style={{
-                fontSize: '11px', color: textMuted, marginBottom: '8px',
-                textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          if (slotMeals.length === 0) {
+            return [(
+              <div key={key} style={{
+                borderRadius: '12px', backgroundColor: bgSecondary,
+                border: `1px solid ${borderColor}`, overflow: 'hidden',
+                display: 'flex', flexDirection: 'column',
               }}>
-                <span>{label}{slotMeals.length > 1 ? ` (${slotMeals.length})` : ''}</span>
-                {slotMacros && (
-                  <span style={{ fontSize: '11px', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-                    {slotMacros.kcal} kcal
-                    {' | P'}{slotMacros.protein}
-                    {' | F'}{slotMacros.fat}
-                    {' | C'}{slotMacros.carbs}
-                  </span>
-                )}
-              </div>
-
-              {slotMeals.map(meal => {
-                const mealMacros = getMealMacros(meal.id);
-                const mealIngRows = getMealIngredientRows(meal.id);
-                const mealServings = Number(meal.servings) || 1;
-                return (
-                  <div
-                    key={meal.id}
-                    style={{
-                      marginBottom: '10px',
-                      padding: slotMeals.length > 1 ? '10px 12px' : 0,
-                      borderRadius: slotMeals.length > 1 ? '8px' : 0,
-                      backgroundColor: slotMeals.length > 1 ? bgPrimary : 'transparent',
-                      border: slotMeals.length > 1 ? `1px solid ${borderColor}` : 'none',
-                    }}
-                  >
-                    <div style={{ display: 'flex', gap: '12px', marginBottom: '6px' }}>
-                      <div
-                        onClick={() => { mealImageInputRef.current.dataset.mealId = meal.id; mealImageInputRef.current.click(); }}
-                        style={{
-                          width: 80, height: 80, borderRadius: '10px', cursor: 'pointer', flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          overflow: 'hidden',
-                          border: meal.image_url ? 'none' : `1px dashed ${borderColor}`,
-                          backgroundColor: isDark ? '#1F2937' : '#F3F4F6',
-                          opacity: uploadingMealImageId === meal.id ? 0.5 : 1,
-                        }}
-                        title="Click to upload photo"
-                      >
-                        {meal.image_url
-                          ? <img src={meal.image_url} alt="" style={{ width: 80, height: 80, objectFit: 'contain' }} />
-                          : <div style={{ textAlign: 'center', color: textMuted }}><FaCamera size={16} /><div style={{ fontSize: '9px', marginTop: '4px' }}>Photo</div></div>
-                        }
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '14px', fontWeight: 500, color: textPrimary }}>
-                            {meal.name || meal.recipes?.name || label}
-                          </span>
-                          {mealServings > 1 && (
-                            <span style={{ fontSize: '11px', color: textMuted, fontWeight: 400 }}>x{mealServings} servings</span>
-                          )}
-                        </div>
-                        {slotMeals.length > 1 && mealMacros && (
-                          <div style={{ fontSize: '11px', color: textMuted, marginBottom: '4px' }}>
-                            {mealMacros.kcal} kcal | P{mealMacros.protein} | F{mealMacros.fat} | C{mealMacros.carbs}
-                          </div>
-                        )}
-                        {mealIngRows.length > 0 && (
-                          <div style={{ marginBottom: '6px' }}>
-                            {mealIngRows.map(mi => {
-                              const ing = mi.ingredients;
-                              if (!ing) return null;
-                              const qty = (Number(mi.quantity_g) || 0) * mealServings;
-                              const kcal = Math.round((Number(ing.kcal_per_100g) || 0) * qty / 100);
-                              return (
-                                <div key={mi.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: textSecondary, padding: '2px 0' }}>
-                                  <span>{ing.name}</span>
-                                  <span style={{ color: textMuted }}>{Math.round(qty)}g - {kcal} kcal</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button
-                            onClick={() => handleOpenEditor(key, meal, 'scratch')}
-                            style={{ padding: '4px 10px', borderRadius: '4px', border: 'none', backgroundColor: '#3B82F620', color: '#3B82F6', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <FaEdit size={10} /> Edit
-                          </button>
-                          <button
-                            onClick={() => { if (window.confirm(`Delete this ${label} meal?`)) deleteMeal(meal.id); }}
-                            style={{ padding: '4px 10px', borderRadius: '4px', border: 'none', backgroundColor: '#EF444420', color: '#EF4444', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <FaTrash size={10} /> Delete
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                <div style={{
+                  width: '100%', height: 180,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: isDark ? '#0F172A' : '#F3F4F6',
+                }}>
+                  <div style={{ textAlign: 'center', color: textMuted }}>
+                    <FaCamera size={24} />
+                    <div style={{ fontSize: '10px', marginTop: '6px' }}>No meal</div>
                   </div>
-                );
-              })}
-
-              {/* Always show Add Meal button */}
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setAddDropdown(addDropdown === key ? null : key)}
-                  style={{
-                    padding: '8px 14px', borderRadius: '6px',
-                    border: `1px dashed ${borderColor}`,
-                    backgroundColor: 'transparent', color: textMuted,
-                    fontSize: '12px', cursor: 'pointer', width: '100%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  }}
-                >
-                  <FaPlus size={10} /> Add Meal
-                </button>
-                {addDropdown === key && (
+                </div>
+                <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <div style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0,
-                    marginTop: '4px', zIndex: 10,
-                    backgroundColor: bgPrimary, border: `1px solid ${borderColor}`,
-                    borderRadius: '8px', overflow: 'hidden',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    fontSize: '11px', color: textMuted, marginBottom: '6px',
+                    textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em',
                   }}>
-                    <div
-                      onClick={() => handleOpenEditor(key, null, 'recipe')}
-                      style={{
-                        padding: '10px 14px', cursor: 'pointer', fontSize: '12px', color: textSecondary,
-                        borderBottom: `1px solid ${isDark ? '#1F2937' : '#F3F4F6'}`,
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = bgSecondary; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                    >
-                      <FaUtensils size={10} /> From Recipe
-                    </div>
-                    <div
-                      onClick={() => handleOpenEditor(key, null, 'scratch')}
-                      style={{
-                        padding: '10px 14px', cursor: 'pointer', fontSize: '12px', color: textSecondary,
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = bgSecondary; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                    >
-                      <FaPlus size={10} /> From Scratch
-                    </div>
+                    {label}
                   </div>
-                )}
+                  <div style={{ position: 'relative', marginTop: 'auto' }}>
+                    <button
+                      onClick={() => setAddDropdown(addDropdown === key ? null : key)}
+                      style={{ padding: '5px 0', borderRadius: '6px', border: `1px dashed ${borderColor}`, backgroundColor: 'transparent', color: textMuted, fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', width: '100%' }}
+                    >
+                      <FaPlus size={9} /> Add
+                    </button>
+                    {addDropdown === key && (
+                      <div style={{
+                        position: 'absolute', bottom: '100%', left: 0, right: 0,
+                        marginBottom: '4px', zIndex: 10,
+                        backgroundColor: bgPrimary, border: `1px solid ${borderColor}`,
+                        borderRadius: '8px', overflow: 'hidden',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      }}>
+                        <div
+                          onClick={() => handleOpenEditor(key, null, 'recipe')}
+                          style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '12px', color: textSecondary, borderBottom: `1px solid ${isDark ? '#1F2937' : '#F3F4F6'}`, display: 'flex', alignItems: 'center', gap: '8px' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = bgSecondary; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        >
+                          <FaUtensils size={10} /> From Recipe
+                        </div>
+                        <div
+                          onClick={() => handleOpenEditor(key, null, 'scratch')}
+                          style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '12px', color: textSecondary, display: 'flex', alignItems: 'center', gap: '8px' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = bgSecondary; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        >
+                          <FaPlus size={10} /> From Scratch
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            )];
+          }
 
-        {/* ========== EXTRAS SECTION ========== */}
-        <div style={{
-          padding: '14px 16px',
-          borderRadius: '10px',
-          backgroundColor: bgSecondary,
-          border: `1px solid #F59E0B40`,
-          borderLeft: '3px solid #F59E0B',
-        }}>
-          <div style={{
-            fontSize: '11px', color: '#F59E0B', marginBottom: '8px',
-            textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <span>Extras ({extraMeals.length})</span>
-            {extraMeals.length > 0 && (
-              <span style={{ fontSize: '11px', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-                {extrasTotalKcal} kcal total
-              </span>
-            )}
-          </div>
-
-          {extraMeals.map(meal => {
+          return slotMeals.map((meal, mealIdx) => {
             const mealMacros = getMealMacros(meal.id);
             const mealIngRows = getMealIngredientRows(meal.id);
             const mealServings = Number(meal.servings) || 1;
+            const cardKey = `${key}-${meal.id}`;
             return (
-              <div
-                key={meal.id}
-                style={{ padding: '10px 12px', borderRadius: '8px', marginBottom: '8px', backgroundColor: bgPrimary, border: `1px solid ${borderColor}` }}
-              >
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '6px' }}>
+              <div key={cardKey} style={{
+                borderRadius: '12px', backgroundColor: bgSecondary,
+                border: `1px solid ${borderColor}`, overflow: 'hidden',
+                display: 'flex', flexDirection: 'column',
+              }}>
+                {(() => {
+                  const fallbackImg = meal.image_url
+                    || meal.recipes?.image_url
+                    || mealIngRows.find(mi => mi.ingredients?.image_url)?.ingredients?.image_url
+                    || null;
+                  return fallbackImg ? (
                   <div
                     onClick={() => { mealImageInputRef.current.dataset.mealId = meal.id; mealImageInputRef.current.click(); }}
                     style={{
-                      width: 64, height: 64, borderRadius: '8px', cursor: 'pointer', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                      border: meal.image_url ? 'none' : `1px dashed ${borderColor}`,
-                      backgroundColor: isDark ? '#1F2937' : '#F3F4F6',
+                      width: '100%', height: 180, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: isDark ? '#0F172A' : '#F3F4F6',
                       opacity: uploadingMealImageId === meal.id ? 0.5 : 1,
+                    }}
+                    title="Click to change photo"
+                  >
+                    <img src={fallbackImg} alt="" style={{ width: '100%', height: 180, objectFit: 'cover' }} />
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => { mealImageInputRef.current.dataset.mealId = meal.id; mealImageInputRef.current.click(); }}
+                    style={{
+                      width: '100%', height: 180,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: isDark ? '#0F172A' : '#F3F4F6',
+                      cursor: 'pointer',
                     }}
                     title="Click to upload photo"
                   >
-                    {meal.image_url
-                      ? <img src={meal.image_url} alt="" style={{ width: 64, height: 64, objectFit: 'contain' }} />
-                      : <div style={{ textAlign: 'center', color: textMuted }}><FaCamera size={14} /><div style={{ fontSize: '8px', marginTop: '2px' }}>Photo</div></div>
-                    }
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: textPrimary }}>{meal.name || 'Extra'}</span>
-                      {mealMacros && (
-                        <span style={{ fontSize: '11px', color: textMuted }}>
-                          {mealMacros.kcal} kcal | P{mealMacros.protein} | F{mealMacros.fat} | C{mealMacros.carbs}
-                        </span>
-                      )}
+                    <div style={{ textAlign: 'center', color: textMuted }}>
+                      <FaCamera size={24} />
+                      <div style={{ fontSize: '10px', marginTop: '6px' }}>Add photo</div>
                     </div>
-                    {mealIngRows.length > 0 && (
-                      <div style={{ marginBottom: '6px' }}>
-                        {mealIngRows.map(mi => {
-                          const ing = mi.ingredients;
-                          if (!ing) return null;
-                          const qty = (Number(mi.quantity_g) || 0) * mealServings;
-                          return (
-                            <div key={mi.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: textSecondary, padding: '1px 0' }}>
-                              <span>{ing.name}</span>
-                              <span style={{ color: textMuted }}>{Math.round(qty)}g</span>
-                            </div>
-                          );
-                        })}
-                      </div>
+                  </div>
+                );
+                })()}
+
+                <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{
+                    fontSize: '11px', color: textMuted, marginBottom: '4px',
+                    textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <span>{label}{slotMeals.length > 1 ? ` ${mealIdx + 1}/${slotMeals.length}` : ''}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: textPrimary }}>
+                      {meal.name || meal.recipes?.name || label}
+                    </span>
+                    {mealServings > 1 && (
+                      <span style={{ fontSize: '10px', color: textMuted }}>x{mealServings}</span>
                     )}
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                  </div>
+                  {mealMacros && (
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px',
+                      marginBottom: '8px',
+                    }}>
+                      <div style={{
+                        textAlign: 'center', padding: '6px 2px', borderRadius: '6px',
+                        backgroundColor: '#F59E0B18',
+                      }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#F59E0B' }}>{mealMacros.kcal}</div>
+                        <div style={{ fontSize: '9px', fontWeight: 600, color: '#F59E0B', opacity: 0.7, textTransform: 'uppercase' }}>kcal</div>
+                      </div>
+                      <div style={{
+                        textAlign: 'center', padding: '6px 2px', borderRadius: '6px',
+                        backgroundColor: '#3B82F618',
+                      }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#3B82F6' }}>{mealMacros.protein}g</div>
+                        <div style={{ fontSize: '9px', fontWeight: 600, color: '#3B82F6', opacity: 0.7, textTransform: 'uppercase' }}>prot</div>
+                      </div>
+                      <div style={{
+                        textAlign: 'center', padding: '6px 2px', borderRadius: '6px',
+                        backgroundColor: '#EF444418',
+                      }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#EF4444' }}>{mealMacros.fat}g</div>
+                        <div style={{ fontSize: '9px', fontWeight: 600, color: '#EF4444', opacity: 0.7, textTransform: 'uppercase' }}>fat</div>
+                      </div>
+                      <div style={{
+                        textAlign: 'center', padding: '6px 2px', borderRadius: '6px',
+                        backgroundColor: '#10B98118',
+                      }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#10B981' }}>{mealMacros.carbs}g</div>
+                        <div style={{ fontSize: '9px', fontWeight: 600, color: '#10B981', opacity: 0.7, textTransform: 'uppercase' }}>carb</div>
+                      </div>
+                    </div>
+                  )}
+                  {mealIngRows.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                      {mealIngRows.map(mi => {
+                        const ing = mi.ingredients;
+                        if (!ing) return null;
+                        const qty = (Number(mi.quantity_g) || 0) * mealServings;
+                        const kcal = Math.round((Number(ing.kcal_per_100g) || 0) * qty / 100);
+                        const protein = Math.round((Number(ing.protein_per_100g) || 0) * qty / 100);
+                        return (
+                          <div key={mi.id} style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            padding: '5px 8px', borderRadius: '6px',
+                            backgroundColor: isDark ? '#111827' : '#F9FAFB',
+                            border: `1px solid ${isDark ? '#1F2937' : '#F3F4F6'}`,
+                          }}>
+                            <div
+                              onClick={(e) => { e.stopPropagation(); ingImageInputRef.current.dataset.ingId = ing.id; ingImageInputRef.current.click(); }}
+                              style={{ cursor: 'pointer', flexShrink: 0, opacity: uploadingIngImageId === ing.id ? 0.5 : 1 }}
+                              title={`Upload photo for ${ing.name}`}
+                            >
+                              {ing.image_url ? (
+                                <img src={ing.image_url} alt="" style={{ width: 28, height: 28, borderRadius: '4px', objectFit: 'contain' }} />
+                              ) : (
+                                <div style={{ width: 28, height: 28, borderRadius: '4px', backgroundColor: isDark ? '#1F2937' : '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <FaCamera size={10} color={textMuted} />
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ing.name}</div>
+                              <div style={{ fontSize: '9px', color: textMuted }}>{Math.round(qty)}g</div>
+                            </div>
+                            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                              <div style={{ fontSize: '11px', fontWeight: 700, color: '#F59E0B' }}>{kcal}</div>
+                              <div style={{ fontSize: '9px', color: '#3B82F6' }}>P{protein}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '4px', marginTop: 'auto' }}>
+                    <button
+                      onClick={() => handleOpenEditor(key, meal, 'scratch')}
+                      title="Edit"
+                      style={{ padding: '7px 0', borderRadius: '6px', border: `1px solid ${borderColor}`, backgroundColor: 'transparent', color: '#3B82F6', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}
+                    >
+                      <FaEdit size={12} />
+                    </button>
+                    <button
+                      onClick={() => { if (window.confirm(`Delete this ${label} meal?`)) deleteMeal(meal.id); }}
+                      title="Delete"
+                      style={{ padding: '7px 0', borderRadius: '6px', border: `1px solid ${borderColor}`, backgroundColor: 'transparent', color: '#EF4444', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}
+                    >
+                      <FaTrash size={12} />
+                    </button>
+                    <div style={{ position: 'relative', flex: 1 }}>
                       <button
-                        onClick={() => handleOpenEditor('E', meal, 'scratch')}
-                        style={{ padding: '3px 8px', borderRadius: '4px', border: 'none', backgroundColor: '#3B82F620', color: '#3B82F6', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => setAddDropdown(addDropdown === cardKey ? null : cardKey)}
+                        title="Add meal"
+                        style={{ padding: '7px 0', borderRadius: '6px', border: `1px dashed ${borderColor}`, backgroundColor: 'transparent', color: textMuted, fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
                       >
-                        <FaEdit size={9} /> Edit
+                        <FaPlus size={12} />
                       </button>
-                      <button
-                        onClick={() => { if (window.confirm('Delete this extra meal?')) deleteMeal(meal.id); }}
-                        style={{ padding: '3px 8px', borderRadius: '4px', border: 'none', backgroundColor: '#EF444420', color: '#EF4444', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                      >
-                        <FaTrash size={9} /> Delete
-                      </button>
+                      {addDropdown === cardKey && (
+                        <div style={{
+                          position: 'absolute', bottom: '100%', left: 0, right: 0,
+                          marginBottom: '4px', zIndex: 10,
+                          backgroundColor: bgPrimary, border: `1px solid ${borderColor}`,
+                          borderRadius: '8px', overflow: 'hidden',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        }}>
+                          <div
+                            onClick={() => handleOpenEditor(key, null, 'recipe')}
+                            style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '12px', color: textSecondary, borderBottom: `1px solid ${isDark ? '#1F2937' : '#F3F4F6'}`, display: 'flex', alignItems: 'center', gap: '8px' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = bgSecondary; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                          >
+                            <FaUtensils size={10} /> From Recipe
+                          </div>
+                          <div
+                            onClick={() => handleOpenEditor(key, null, 'scratch')}
+                            style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '12px', color: textSecondary, display: 'flex', alignItems: 'center', gap: '8px' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = bgSecondary; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                          >
+                            <FaPlus size={10} /> From Scratch
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             );
-          })}
+          });
+        })}
+      </div>
 
-          <button
-            onClick={() => handleOpenEditor('E', null, 'scratch')}
-            style={{
-              padding: '8px 14px', borderRadius: '6px',
-              border: `1px dashed #F59E0B60`,
-              backgroundColor: 'transparent', color: '#F59E0B',
-              fontSize: '12px', cursor: 'pointer', width: '100%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-            }}
-          >
-            <FaPlus size={10} /> Add Extra
-          </button>
+      {/* ========== EXTRAS SECTION — full width below grid ========== */}
+      <div style={{
+        padding: '14px 16px',
+        borderRadius: '10px',
+        backgroundColor: bgSecondary,
+        border: `1px solid #F59E0B40`,
+        borderLeft: '3px solid #F59E0B',
+        marginTop: '12px',
+      }}>
+        <div style={{
+          fontSize: '11px', color: '#F59E0B', marginBottom: '8px',
+          textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span>Extras ({extraMeals.length})</span>
+          {extraMeals.length > 0 && (
+            <span style={{ fontSize: '11px', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {extrasTotalKcal} kcal total
+            </span>
+          )}
         </div>
+
+        {extraMeals.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '10px' }}>
+            {extraMeals.map(meal => {
+              const mealMacros = getMealMacros(meal.id);
+              const mealIngRows = getMealIngredientRows(meal.id);
+              const mealServings = Number(meal.servings) || 1;
+              return (
+                <div
+                  key={meal.id}
+                  style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: bgPrimary, border: `1px solid ${borderColor}` }}
+                >
+                  {(() => {
+                    const extraImg = meal.image_url
+                      || meal.recipes?.image_url
+                      || mealIngRows.find(mi => mi.ingredients?.image_url)?.ingredients?.image_url
+                      || null;
+                    return extraImg ? (
+                    <div
+                      onClick={() => { mealImageInputRef.current.dataset.mealId = meal.id; mealImageInputRef.current.click(); }}
+                      style={{
+                        width: '100%', height: 100, borderRadius: '6px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                        backgroundColor: isDark ? '#0F172A' : '#F3F4F6', marginBottom: '8px',
+                        opacity: uploadingMealImageId === meal.id ? 0.5 : 1,
+                      }}
+                    >
+                      <img src={extraImg} alt="" style={{ width: '100%', height: 100, objectFit: 'cover' }} />
+                    </div>
+                  ) : null;
+                  })()}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: textPrimary }}>{meal.name || 'Extra'}</span>
+                    {mealMacros && (
+                      <span style={{ fontSize: '10px', color: textMuted }}>
+                        {mealMacros.kcal} kcal
+                      </span>
+                    )}
+                  </div>
+                  {mealIngRows.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+                      {mealIngRows.map(mi => {
+                        const ing = mi.ingredients;
+                        if (!ing) return null;
+                        const qty = (Number(mi.quantity_g) || 0) * mealServings;
+                        const kcal = Math.round((Number(ing.kcal_per_100g) || 0) * qty / 100);
+                        const protein = Math.round((Number(ing.protein_per_100g) || 0) * qty / 100);
+                        return (
+                          <div key={mi.id} style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '4px 6px', borderRadius: '5px',
+                            backgroundColor: isDark ? '#111827' : '#F9FAFB',
+                            border: `1px solid ${isDark ? '#1F2937' : '#F3F4F6'}`,
+                          }}>
+                            <div
+                              onClick={(e) => { e.stopPropagation(); ingImageInputRef.current.dataset.ingId = ing.id; ingImageInputRef.current.click(); }}
+                              style={{ cursor: 'pointer', flexShrink: 0, opacity: uploadingIngImageId === ing.id ? 0.5 : 1 }}
+                              title={`Upload photo for ${ing.name}`}
+                            >
+                              {ing.image_url ? (
+                                <img src={ing.image_url} alt="" style={{ width: 22, height: 22, borderRadius: '3px', objectFit: 'contain' }} />
+                              ) : (
+                                <div style={{ width: 22, height: 22, borderRadius: '3px', backgroundColor: isDark ? '#1F2937' : '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <FaCamera size={8} color={textMuted} />
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '10px', fontWeight: 600, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ing.name}</div>
+                            </div>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#F59E0B', flexShrink: 0 }}>{kcal}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      onClick={() => handleOpenEditor('E', meal, 'scratch')}
+                      title="Edit"
+                      style={{ padding: '6px 0', borderRadius: '5px', border: `1px solid ${borderColor}`, backgroundColor: 'transparent', color: '#3B82F6', fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}
+                    >
+                      <FaEdit size={11} />
+                    </button>
+                    <button
+                      onClick={() => { if (window.confirm('Delete this extra meal?')) deleteMeal(meal.id); }}
+                      title="Delete"
+                      style={{ padding: '6px 0', borderRadius: '5px', border: `1px solid ${borderColor}`, backgroundColor: 'transparent', color: '#EF4444', fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}
+                    >
+                      <FaTrash size={11} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <button
+          onClick={() => handleOpenEditor('E', null, 'scratch')}
+          style={{
+            padding: '8px 14px', borderRadius: '6px',
+            border: `1px dashed #F59E0B60`,
+            backgroundColor: 'transparent', color: '#F59E0B',
+            fontSize: '12px', cursor: 'pointer', width: '100%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+          }}
+        >
+          <FaPlus size={10} /> Add Extra
+        </button>
       </div>
 
       {/* ========== MEAL EDITOR MODAL ========== */}
@@ -897,7 +1038,29 @@ const MealPlanningView = ({ theme, healthHook }) => {
                           const carbs = Math.round((Number(ing?.carbs_per_100g) || 0) * f);
                           return (
                             <tr key={idx} style={{ borderBottom: `1px solid ${isDark ? '#1F2937' : '#F3F4F6'}` }}>
-                              <td style={{ padding: '6px 10px', color: textSecondary }}>{ing?.name || 'Unknown'}</td>
+                              <td style={{ padding: '6px 10px', color: textSecondary }}>
+                                <input
+                                  type="text"
+                                  defaultValue={ing?.name || ''}
+                                  onBlur={(e) => {
+                                    const newName = e.target.value.trim();
+                                    if (newName && newName !== ing?.name && ing?.id) {
+                                      updateIngredient(ing.id, { name: newName });
+                                      setEditorIngredientRows(prev => prev.map((r, i) =>
+                                        i === idx ? { ...r, ingredient: { ...r.ingredient, name: newName } } : r
+                                      ));
+                                    }
+                                  }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                  style={{
+                                    width: '100%', padding: '3px 6px', borderRadius: '4px',
+                                    border: `1px solid transparent`, backgroundColor: 'transparent', color: textSecondary,
+                                    fontSize: '12px', outline: 'none',
+                                  }}
+                                  onFocus={(e) => { e.target.style.border = `1px solid ${borderColor}`; e.target.style.backgroundColor = bgPrimary; }}
+                                  onBlurCapture={(e) => { e.target.style.border = '1px solid transparent'; e.target.style.backgroundColor = 'transparent'; }}
+                                />
+                              </td>
                               <td style={{ padding: '6px 10px', textAlign: 'right' }}>
                                 <input
                                   type="number"
