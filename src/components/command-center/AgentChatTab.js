@@ -1,5 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaPaperPlane, FaChevronDown, FaRobot, FaStop } from 'react-icons/fa';
+import { FaPaperPlane, FaChevronDown, FaRobot, FaStop, FaTasks, FaCalendarAlt, FaStickyNote, FaEnvelope, FaHandshake } from 'react-icons/fa';
+
+const QUICK_ACTIONS = [
+  { label: 'Task', icon: FaTasks, command: '/task ', color: '#3B82F6' },
+  { label: 'Calendar', icon: FaCalendarAlt, command: '/calendar ', color: '#F59E0B' },
+  { label: 'Note', icon: FaStickyNote, command: '/note ', color: '#10B981' },
+  { label: 'Email', icon: FaEnvelope, command: '/email ', color: '#8B5CF6' },
+  { label: 'Intro', icon: FaHandshake, command: '/intro ', color: '#EC4899' },
+];
+
+// Build a context label for the badge
+function getContextLabel(contextType, emailSubject, whatsappChat, calendarEvent, dealName, contactName) {
+  const parts = [];
+  if (contextType) {
+    const tabLabels = {
+      email: 'Email', whatsapp: 'WhatsApp', calendar: 'Calendar',
+      deals: 'Deals', tasks: 'Tasks', notes: 'Notes',
+      keepintouch: 'Keep in Touch', introductions: 'Introductions',
+      lists: 'Lists',
+    };
+    parts.push(tabLabels[contextType] || contextType);
+  }
+  if (emailSubject) parts.push(emailSubject);
+  else if (whatsappChat) parts.push(whatsappChat);
+  else if (calendarEvent) parts.push(calendarEvent);
+  else if (dealName) parts.push(dealName);
+  else if (contactName) parts.push(contactName);
+  return parts.join(': ');
+}
 
 const AgentChatTab = ({
   theme,
@@ -30,6 +58,7 @@ const AgentChatTab = ({
     abort,
     messagesEndRef,
     chatContainerRef,
+    activeTab,
   } = agentChatHook;
 
   const [showAgentDropdown, setShowAgentDropdown] = useState(false);
@@ -71,13 +100,21 @@ const AgentChatTab = ({
     }
   };
 
+  const handleQuickAction = (command) => {
+    setInput(command);
+    // Focus input after setting command
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   const isDark = theme === 'dark';
   const bg = isDark ? '#1a1a2e' : '#ffffff';
   const msgBg = isDark ? '#16213e' : '#f0f0f0';
-  const userMsgBg = selectedAgent?.color || '#3B82F6';
+  const userMsgBg = selectedAgent?.color || '#8B5CF6';
   const textColor = isDark ? '#e0e0e0' : '#333';
   const mutedColor = isDark ? '#888' : '#999';
   const borderColor = isDark ? '#333' : '#e0e0e0';
+
+  const contextLabel = getContextLabel(contextType, emailSubject, whatsappChat, calendarEvent, dealName, contactName);
 
   return (
     <div style={{
@@ -87,7 +124,7 @@ const AgentChatTab = ({
       background: bg,
       overflow: 'hidden',
     }}>
-      {/* Header — Kevin + connection status */}
+      {/* Header — PA + connection status + context badge */}
       <div style={{
         padding: '8px 12px',
         borderBottom: `1px solid ${borderColor}`,
@@ -105,6 +142,23 @@ const AgentChatTab = ({
         }} />
         <span style={{ fontSize: 16 }}>{selectedAgent?.emoji}</span>
         <span style={{ fontSize: 14, fontWeight: 600, color: textColor }}>{selectedAgent?.name}</span>
+        {/* Context badge */}
+        {contextLabel && (
+          <span style={{
+            marginLeft: 'auto',
+            fontSize: 11,
+            color: isDark ? '#a78bfa' : '#7c3aed',
+            background: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.1)',
+            padding: '2px 8px',
+            borderRadius: 10,
+            maxWidth: 180,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {contextLabel}
+          </span>
+        )}
       </div>
 
       {/* Error banner */}
@@ -148,7 +202,7 @@ const AgentChatTab = ({
               Chat with {selectedAgent?.name}
             </span>
             <span style={{ fontSize: 12, opacity: 0.7 }}>
-              {connected ? 'Connected via OpenClaw — send a message' : 'Connecting to Gateway...'}
+              {connected ? 'Connected via OpenClaw — send a message or use a quick action' : 'Connecting to Gateway...'}
             </span>
           </div>
         ) : (
@@ -266,6 +320,50 @@ const AgentChatTab = ({
         </div>
       )}
 
+      {/* Quick-action buttons */}
+      <div style={{
+        padding: '6px 12px',
+        borderTop: `1px solid ${borderColor}`,
+        display: 'flex',
+        gap: 4,
+        flexWrap: 'wrap',
+      }}>
+        {QUICK_ACTIONS.map(action => {
+          const Icon = action.icon;
+          return (
+            <button
+              key={action.label}
+              onClick={() => handleQuickAction(action.command)}
+              disabled={!connected}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 8px',
+                borderRadius: 6,
+                border: `1px solid ${isDark ? '#444' : '#ddd'}`,
+                background: isDark ? '#1e1e3a' : '#f8f8ff',
+                color: connected ? action.color : mutedColor,
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: connected ? 'pointer' : 'not-allowed',
+                opacity: connected ? 1 : 0.5,
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (connected) e.target.style.background = isDark ? '#2a2a4a' : '#efefff';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = isDark ? '#1e1e3a' : '#f8f8ff';
+              }}
+            >
+              <Icon size={10} />
+              {action.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Input area */}
       <div style={{
         padding: '8px 12px',
@@ -279,7 +377,7 @@ const AgentChatTab = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={connected ? `Message ${selectedAgent?.name}...` : 'Connecting...'}
+          placeholder={connected ? `Message ${selectedAgent?.name}... (or use /command)` : 'Connecting...'}
           disabled={!connected}
           rows={1}
           style={{
@@ -322,7 +420,7 @@ const AgentChatTab = ({
             onClick={handleSend}
             disabled={!input.trim() || !connected}
             style={{
-              background: selectedAgent?.color || '#3B82F6',
+              background: selectedAgent?.color || '#8B5CF6',
               color: '#fff',
               border: 'none',
               borderRadius: 8,

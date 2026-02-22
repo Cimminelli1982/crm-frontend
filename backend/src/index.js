@@ -1543,7 +1543,9 @@ const INCLUDED_PROJECT_IDS = [
 
 // Helper to make Todoist API requests
 async function todoistRequest(endpoint, options = {}) {
-  const response = await fetch(`${TODOIST_API_URL}${endpoint}`, {
+  const url = new URL(`${TODOIST_API_URL}${endpoint}`);
+
+  const response = await fetch(url.toString(), {
     ...options,
     headers: {
       'Authorization': `Bearer ${TODOIST_TOKEN}`,
@@ -1565,9 +1567,33 @@ async function todoistRequest(endpoint, options = {}) {
   const data = await response.json();
 
   // Todoist API v1 returns { results: [...], next_cursor } for list endpoints
-  // Unwrap to maintain compatibility with code expecting arrays
+  // Handle pagination: fetch all pages automatically for GET requests
   if (data && Array.isArray(data.results) && options.method === undefined) {
-    return data.results;
+    const allResults = [...data.results];
+    let cursor = data.next_cursor;
+
+    while (cursor) {
+      const nextUrl = new URL(`${TODOIST_API_URL}${endpoint}`);
+      nextUrl.searchParams.set('cursor', cursor);
+
+      const nextResponse = await fetch(nextUrl.toString(), {
+        headers: {
+          'Authorization': `Bearer ${TODOIST_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!nextResponse.ok) break;
+      const nextData = await nextResponse.json();
+      if (nextData && Array.isArray(nextData.results)) {
+        allResults.push(...nextData.results);
+        cursor = nextData.next_cursor;
+      } else {
+        break;
+      }
+    }
+
+    return allResults;
   }
 
   return data;

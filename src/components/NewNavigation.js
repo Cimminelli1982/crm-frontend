@@ -10,6 +10,7 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiCommand,
+  FiHeart,
   FiLogOut
 } from 'react-icons/fi';
 import Logo from './Logo';
@@ -47,6 +48,13 @@ const NewNavigation = ({
       icon: FiSearch,
       path: '/search',
       description: 'Find contacts by name, company, or details'
+    },
+    {
+      id: 'health',
+      label: 'Health',
+      icon: FiHeart,
+      path: '/health',
+      description: 'Weight, nutrition, training & planner'
     }
   ];
 

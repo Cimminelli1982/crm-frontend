@@ -1,11 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { supabase } from '../../lib/supabaseClient';
 
-const GATEWAY_URL = 'ws://localhost:18789';
+const GATEWAY_URL = 'wss://5.75.171.198:8443';
 const GATEWAY_TOKEN = '7715c0390967f22d6262c93f067b06a84228d174cea01a2c';
 
 const AGENTS = [
-  { id: 'kevin', name: 'Kevin', emoji: '🏗️', color: '#F59E0B', sessionKey: 'agent:main:main' },
+  { id: 'pa', name: 'PA', emoji: '🤖', color: '#8B5CF6' },
 ];
+
+// Slash command definitions
+const SLASH_COMMANDS = {
+  '/task': 'task',
+  '/calendar': 'calendar',
+  '/note': 'note',
+  '/email': 'email',
+  '/intro': 'intro',
+};
 
 function uuid() {
   if (crypto?.randomUUID) return crypto.randomUUID();
@@ -74,7 +84,24 @@ function extractCleanText(content, role) {
   return text;
 }
 
-const useAgentChat = () => {
+// Parse slash command from message text
+function parseSlashCommand(text) {
+  const trimmed = text.trim();
+  for (const [prefix, type] of Object.entries(SLASH_COMMANDS)) {
+    if (trimmed.startsWith(prefix + ' ') || trimmed === prefix) {
+      return { type, description: trimmed.slice(prefix.length).trim() || trimmed };
+    }
+  }
+  return { type: 'freeform', description: trimmed };
+}
+
+// Build dynamic session key based on active tab
+function buildSessionKey(activeTab) {
+  const tab = activeTab || 'general';
+  return `agent:pa:${tab}`;
+}
+
+const useAgentChat = (activeTab) => {
   const [selectedAgent, setSelectedAgent] = useState(AGENTS[0]);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -95,8 +122,11 @@ const useAgentChat = () => {
   const connectedRef = useRef(false);
   const selectedAgentRef = useRef(selectedAgent);
   const mountedRef = useRef(false);
+  const activeTabRef = useRef(activeTab);
+  const currentRequestIdRef = useRef(null);
 
   useEffect(() => { selectedAgentRef.current = selectedAgent; }, [selectedAgent]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   // --- Low-level WS request ---
   function wsRequest(method, params) {
@@ -114,10 +144,9 @@ const useAgentChat = () => {
   // --- Load history ---
   function loadHistory() {
     if (!connectedRef.current) return;
-    const agent = selectedAgentRef.current;
-    if (!agent?.sessionKey) return;
+    const sessionKey = buildSessionKey(activeTabRef.current);
     setLoading(true);
-    wsRequest('chat.history', { sessionKey: agent.sessionKey, limit: 100 })
+    wsRequest('chat.history', { sessionKey, limit: 100 })
       .then(result => {
         if (Array.isArray(result?.messages)) {
           // Only show CRM conversations: CRM user messages + final assistant response
@@ -195,6 +224,55 @@ const useAgentChat = () => {
       .finally(() => setLoading(false));
   }
 
+  // --- Save request to Supabase agent_requests ---
+  async function saveAgentRequest(content, context, requestType) {
+    try {
+      const { data, error: insertError } = await supabase
+        .from('agent_requests')
+        .insert({
+          requested_by: 'simone',
+          request_type: requestType,
+          description: content,
+          context: {
+            tab: context.type || activeTabRef.current,
+            contactId: context.contactId || null,
+            contextId: context.id || null,
+            metadata: context.metadata || {},
+          },
+          assigned_to: 'pa',
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        console.error('[AgentChat] Failed to save agent_request:', insertError);
+        return null;
+      }
+      return data?.id || null;
+    } catch (err) {
+      console.error('[AgentChat] Failed to save agent_request:', err);
+      return null;
+    }
+  }
+
+  // --- Update agent_request with result ---
+  async function updateAgentRequest(requestId, status, result) {
+    if (!requestId) return;
+    try {
+      await supabase
+        .from('agent_requests')
+        .update({
+          status,
+          result,
+          completed_at: status === 'completed' || status === 'failed' ? new Date().toISOString() : null,
+        })
+        .eq('id', requestId);
+    } catch (err) {
+      console.error('[AgentChat] Failed to update agent_request:', err);
+    }
+  }
+
   // --- Handle incoming WS message ---
   function handleWsMessage(raw) {
     let msg;
@@ -236,11 +314,22 @@ const useAgentChat = () => {
             setStreamText(prev => (!prev || text.length >= prev.length) ? text : prev);
           }
         } else if (p.state === 'final') {
+          // Update agent_request with result
+          const finalText = extractText(p.message?.content || p.message);
+          if (currentRequestIdRef.current) {
+            updateAgentRequest(currentRequestIdRef.current, 'completed', finalText || '');
+            currentRequestIdRef.current = null;
+          }
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
           loadHistory();
         } else if (p.state === 'aborted' || p.state === 'error') {
+          // Update agent_request with failure
+          if (currentRequestIdRef.current) {
+            updateAgentRequest(currentRequestIdRef.current, 'failed', p.errorMessage || 'Aborted');
+            currentRequestIdRef.current = null;
+          }
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
@@ -316,6 +405,16 @@ const useAgentChat = () => {
     }
   }, [selectedAgent]);
 
+  // Reload history when activeTab changes (contextual sessions)
+  useEffect(() => {
+    if (connectedRef.current) {
+      setMessages([]);
+      setStreamText(null);
+      setError(null);
+      loadHistory();
+    }
+  }, [activeTab]);
+
   // Scroll to bottom — instant on load, smooth on new messages
   const chatContainerRef = useRef(null);
   useEffect(() => {
@@ -331,14 +430,17 @@ const useAgentChat = () => {
 
   // --- Send message ---
   const sendMessage = useCallback(async (content, context = {}) => {
-    if (!content.trim() || !selectedAgentRef.current?.sessionKey) return;
+    if (!content.trim()) return;
+    const sessionKey = buildSessionKey(activeTabRef.current);
     if (!connectedRef.current) {
       setError('Not connected');
       return;
     }
 
-    const agent = selectedAgentRef.current;
     const idempotencyKey = uuid();
+
+    // Parse slash command for request type
+    const { type: requestType } = parseSlashCommand(content);
 
     let fullMessage = content.trim();
     const ctxParts = [];
@@ -366,9 +468,18 @@ const useAgentChat = () => {
     setStreamText('');
     runIdRef.current = idempotencyKey;
 
+    // Save to agent_requests
+    const requestId = await saveAgentRequest(content.trim(), context, requestType);
+    currentRequestIdRef.current = requestId;
+
+    // Update status to in_progress
+    if (requestId) {
+      updateAgentRequest(requestId, 'in_progress', null);
+    }
+
     try {
       await wsRequest('chat.send', {
-        sessionKey: agent.sessionKey,
+        sessionKey,
         message: fullMessage,
         deliver: false,
         idempotencyKey,
@@ -378,6 +489,11 @@ const useAgentChat = () => {
       setError(String(err));
       setSending(false);
       runIdRef.current = null;
+      // Update request as failed
+      if (requestId) {
+        updateAgentRequest(requestId, 'failed', String(err));
+        currentRequestIdRef.current = null;
+      }
       setMessages(prev => [...prev, {
         id: uuid(),
         role: 'assistant',
@@ -390,11 +506,11 @@ const useAgentChat = () => {
   // --- Abort ---
   const abort = useCallback(async () => {
     if (!connectedRef.current) return;
-    const agent = selectedAgentRef.current;
+    const sessionKey = buildSessionKey(activeTabRef.current);
     try {
       await wsRequest('chat.abort', runIdRef.current
-        ? { sessionKey: agent.sessionKey, runId: runIdRef.current }
-        : { sessionKey: agent.sessionKey }
+        ? { sessionKey, runId: runIdRef.current }
+        : { sessionKey }
       );
     } catch (err) {
       console.error('[AgentChat] Abort failed:', err);
@@ -418,6 +534,7 @@ const useAgentChat = () => {
     messagesEndRef,
     chatContainerRef,
     fetchMessages: loadHistory,
+    activeTab,
   };
 };
 

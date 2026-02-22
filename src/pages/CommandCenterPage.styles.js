@@ -25,6 +25,9 @@ const HeaderTitle = styled.h1`
 const TabsContainer = styled.div`
   display: flex;
   gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
 `;
 
 const Tab = styled.button`
@@ -32,6 +35,7 @@ const Tab = styled.button`
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
+  flex-shrink: 0;
   border: none;
   border-radius: 8px;
   cursor: pointer;

@@ -19,7 +19,7 @@ const useTodoistTasks = (activeActionTab, selectedThread) => {
   // New/Edit task form state
   const [newTaskContent, setNewTaskContent] = useState('');
   const [newTaskDueString, setNewTaskDueString] = useState('');
-  const [newTaskProjectId, setNewTaskProjectId] = useState('2335921711'); // Inbox
+  const [newTaskProjectId, setNewTaskProjectId] = useState('6VhG9MrQwJwqJJfW'); // Inbox
   const [newTaskSectionId, setNewTaskSectionId] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState(1);
   const [newTaskDescription, setNewTaskDescription] = useState('');
@@ -27,7 +27,7 @@ const useTodoistTasks = (activeActionTab, selectedThread) => {
   const [editingTask, setEditingTask] = useState(null);
 
   // UI state for collapsible sections
-  const [expandedProjects, setExpandedProjects] = useState({ '2335921711': true }); // Only Inbox expanded by default
+  const [expandedProjects, setExpandedProjects] = useState({ '6VhG9MrQwJwqJJfW': true }); // Only Inbox expanded by default
   const [expandedSections, setExpandedSections] = useState({}); // { sectionId: true/false }
 
   // Fetch Todoist tasks, projects, and sections
@@ -78,7 +78,7 @@ const useTodoistTasks = (activeActionTab, selectedThread) => {
     setNewTaskContent('');
     setNewTaskDescription('');
     setNewTaskDueString('');
-    setNewTaskProjectId('2335921711');
+    setNewTaskProjectId('6VhG9MrQwJwqJJfW');
     setNewTaskSectionId('');
     setNewTaskPriority(1);
     setEditingTask(null);

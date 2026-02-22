@@ -291,8 +291,8 @@ const DesktopRightPanel = ({
               </CollapseButton>
               {!rightPanelCollapsed && (
                 <>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'agentChat'} onClick={() => setActiveActionTab('agentChat')} title="Kevin Chat (⌥G)" style={{ color: activeActionTab === 'agentChat' ? '#F59E0B' : undefined }}>
-                    <FaUsers /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>G</span>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'agentChat'} onClick={() => setActiveActionTab('agentChat')} title="PA Chat (⌥G)" style={{ color: activeActionTab === 'agentChat' ? '#8B5CF6' : undefined }}>
+                    <FaRobot /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>G</span>
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details (⌥P)">
                     <FaUser /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>P</span>

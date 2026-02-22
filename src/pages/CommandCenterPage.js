@@ -711,7 +711,7 @@ const CommandCenterPage = ({ theme }) => {
 
   // Notes hook
   const notesHook = useNotesData(activeTab);
-  const agentChatHook = useAgentChat();
+  const agentChatHook = useAgentChat(activeTab);
 
   // Sync notes linked entities to right panel
   useEffect(() => {
