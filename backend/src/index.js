@@ -1529,7 +1529,7 @@ app.get('/attachment/:blobId', async (req, res) => {
 
 // ============ TODOIST INTEGRATION ============
 
-const TODOIST_API_URL = 'https://api.todoist.com/rest/v1';
+const TODOIST_API_URL = process.env.TODOIST_API_URL || 'https://api.todoist.com/rest/v1';
 const TODOIST_TOKEN = process.env.TODOIST_API_TOKEN;
 
 // Project IDs to include (Work, Personal, Team, Inbox, Birthdays)
