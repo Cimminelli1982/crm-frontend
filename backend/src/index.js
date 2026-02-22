@@ -1529,7 +1529,7 @@ app.get('/attachment/:blobId', async (req, res) => {
 
 // ============ TODOIST INTEGRATION ============
 
-const TODOIST_API_URL = process.env.TODOIST_API_URL || 'https://api.todoist.com/rest/v1';
+const TODOIST_API_URL = process.env.TODOIST_API_URL || 'https://api.todoist.com/api/v1';
 const TODOIST_TOKEN = process.env.TODOIST_API_TOKEN;
 
 // Project IDs to include (Work, Personal, Team, Inbox, Birthdays)
@@ -1562,7 +1562,15 @@ async function todoistRequest(endpoint, options = {}) {
     return { success: true };
   }
 
-  return response.json();
+  const data = await response.json();
+
+  // Todoist API v1 returns { results: [...], next_cursor } for list endpoints
+  // Unwrap to maintain compatibility with code expecting arrays
+  if (data && Array.isArray(data.results) && options.method === undefined) {
+    return data.results;
+  }
+
+  return data;
 }
 
 // Sync Todoist tasks to Supabase (runs every 5 minutes)
