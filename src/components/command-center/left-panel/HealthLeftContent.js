@@ -20,10 +20,18 @@ const NUTRITION_SUB_TABS = [
   { id: 'tracker', label: 'Tracker', icon: FaChartBar, color: '#F59E0B' },
 ];
 
+const TRAINING_SUB_TABS = [
+  { id: 'exercises', label: 'Exercises', icon: FaListAlt, color: '#8B5CF6' },
+  { id: 'workout-templates', label: 'Templates', icon: FaBook, color: '#8B5CF6' },
+  { id: 'training-planning', label: 'Training Plan', icon: FaCalendarDay, color: '#8B5CF6' },
+  { id: 'training-tracker', label: 'Tracker', icon: FaChartBar, color: '#8B5CF6' },
+];
+
 const HealthLeftContent = ({ theme, healthHook }) => {
   const {
     activeHealthTab, setActiveHealthTab,
     activeNutritionSubTab, setActiveNutritionSubTab,
+    activeTrainingSubTab, setActiveTrainingSubTab,
     bodyMetrics, bodyMetricsLoading,
     selectedBodyMetric, setSelectedBodyMetric,
     recipes, recipesLoading,
@@ -31,9 +39,12 @@ const HealthLeftContent = ({ theme, healthHook }) => {
     selectedRecipe, setSelectedRecipe,
     trainingSessions, trainingLoading,
     selectedTrainingSession, setSelectedTrainingSession,
+    exercises,
+    workoutTemplates,
     weeklyPlans, plannerLoading,
     dashboardData,
     dailyMacros,
+    dailyTrainingSummary,
     getRecipeMacros,
     currentWeek,
   } = healthHook;
@@ -67,19 +78,32 @@ const HealthLeftContent = ({ theme, healthHook }) => {
     }
   };
 
-  // Items to render in navigation: when nutrition is active, show nutrition sub-tabs only
+  const getTrainingSubtitle = (subTabId) => {
+    switch (subTabId) {
+      case 'exercises': return `${exercises.length} exercises`;
+      case 'workout-templates': return `${workoutTemplates.length} templates`;
+      case 'training-planning': return `${dailyTrainingSummary.sessionCount} today`;
+      case 'training-tracker': return 'Progress';
+      default: return '';
+    }
+  };
+
+  // Items to render in navigation
   const isNutritionActive = activeHealthTab === 'nutrition';
+  const isTrainingActive = activeHealthTab === 'training';
 
   const navItems = isNutritionActive
     ? NUTRITION_SUB_TABS
-    : HEALTH_TABS;
+    : isTrainingActive
+      ? TRAINING_SUB_TABS
+      : HEALTH_TABS;
 
   return (
     <EmailList>
       {/* Navigation */}
       <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
-        {/* Back button when inside Nutrition */}
-        {isNutritionActive && (
+        {/* Back button when inside Nutrition or Training */}
+        {(isNutritionActive || isTrainingActive) && (
           <div
             onClick={() => setActiveHealthTab('dashboard')}
             style={{
@@ -102,12 +126,16 @@ const HealthLeftContent = ({ theme, healthHook }) => {
           const Icon = tab.icon;
           const isActive = isNutritionActive
             ? activeNutritionSubTab === tab.id
-            : activeHealthTab === tab.id;
+            : isTrainingActive
+              ? activeTrainingSubTab === tab.id
+              : activeHealthTab === tab.id;
           const tabColor = tab.color;
 
           const handleClick = () => {
             if (isNutritionActive) {
               setActiveNutritionSubTab(tab.id);
+            } else if (isTrainingActive) {
+              setActiveTrainingSubTab(tab.id);
             } else {
               setActiveHealthTab(tab.id);
             }
@@ -115,7 +143,9 @@ const HealthLeftContent = ({ theme, healthHook }) => {
 
           const subtitle = isNutritionActive
             ? getNutritionSubtitle(tab.id)
-            : getSubtitle(tab.id);
+            : isTrainingActive
+              ? getTrainingSubtitle(tab.id)
+              : getSubtitle(tab.id);
 
           return (
             <div
@@ -129,7 +159,7 @@ const HealthLeftContent = ({ theme, healthHook }) => {
                 borderRadius: '8px',
                 cursor: 'pointer',
                 backgroundColor: isActive
-                  ? (theme === 'dark' ? '#1F2937' : (isNutritionActive ? '#FFFBEB' : '#EFF6FF'))
+                  ? (theme === 'dark' ? '#1F2937' : (isNutritionActive ? '#FFFBEB' : isTrainingActive ? '#F5F3FF' : '#EFF6FF'))
                   : 'transparent',
                 borderLeft: isActive ? `3px solid ${tabColor}` : '3px solid transparent',
                 marginBottom: '2px',
@@ -179,15 +209,7 @@ const HealthLeftContent = ({ theme, healthHook }) => {
             getRecipeMacros={getRecipeMacros}
           />
         )}
-        {activeHealthTab === 'training' && (
-          <TrainingList
-            theme={theme}
-            sessions={trainingSessions}
-            loading={trainingLoading}
-            selected={selectedTrainingSession}
-            onSelect={setSelectedTrainingSession}
-          />
-        )}
+        {/* TrainingList removed — training now uses sub-tab navigation */}
         {activeHealthTab === 'planner' && (
           <PlannerList
             theme={theme}

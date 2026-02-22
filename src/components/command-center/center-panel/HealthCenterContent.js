@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -9,12 +9,16 @@ import {
 } from '../../../pages/CommandCenterPage.styles';
 import {
   FaChartLine, FaUtensils, FaWeight, FaDumbbell, FaCalendarAlt,
-  FaPlus, FaTrash, FaCheck, FaTimes,
+  FaPlus, FaTrash, FaCheck, FaTimes, FaChevronLeft, FaChevronRight,
 } from 'react-icons/fa';
 import IngredientsView from './nutrition/IngredientsView';
 import RecipesView from './nutrition/RecipesView';
 import MealPlanningView from './nutrition/MealPlanningView';
 import TrackerView from './nutrition/TrackerView';
+import ExercisesView from './training/ExercisesView';
+import WorkoutTemplatesView from './training/WorkoutTemplatesView';
+import TrainingPlanningView from './training/TrainingPlanningView';
+import TrainingTrackerView from './training/TrainingTrackerView';
 
 const HealthCenterContent = ({ theme, healthHook }) => {
   const { activeHealthTab } = healthHook;
@@ -372,149 +376,33 @@ const BodyView = ({ theme, healthHook }) => {
   );
 };
 
-// ==================== TRAINING VIEW ====================
+// ==================== TRAINING VIEW (DISPATCHER) ====================
 const TrainingView = ({ theme, healthHook }) => {
-  const { trainingSessions, trainingLoading, addTrainingSession, deleteTrainingSession } = healthHook;
-  const isDark = theme === 'dark';
-
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formType, setFormType] = useState('');
-  const [formDuration, setFormDuration] = useState('');
-  const [formNotes, setFormNotes] = useState('');
-
-  const SESSION_TYPES = ['Pilates', 'Cardio', 'Weights', 'Walking', 'Stretching', 'HIIT', 'Yoga', 'Swimming'];
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formType) return;
-    await addTrainingSession(formDate, formType, formDuration ? parseInt(formDuration) : null, formNotes);
-    setFormType('');
-    setFormDuration('');
-    setFormNotes('');
-  };
-
-  const inputStyle = {
-    padding: '8px 12px',
-    borderRadius: '8px',
-    border: `1px solid ${isDark ? '#374151' : '#D1D5DB'}`,
-    backgroundColor: isDark ? '#1F2937' : '#fff',
-    color: isDark ? '#F9FAFB' : '#111827',
-    fontSize: '14px',
-    width: '100%',
-  };
-
-  const typeColors = {
-    'Pilates': '#8B5CF6', 'Cardio': '#EF4444', 'Weights': '#F59E0B',
-    'Walking': '#10B981', 'Stretching': '#3B82F6', 'HIIT': '#EC4899',
-    'Yoga': '#14B8A6', 'Swimming': '#06B6D4',
-  };
-
-  return (
-    <div style={{ padding: '24px' }}>
-      {/* Add form */}
-      <form onSubmit={handleSubmit} style={{
-        display: 'flex', gap: '10px', alignItems: 'flex-end', marginBottom: '24px',
-        flexWrap: 'wrap',
-      }}>
-        <div style={{ flex: '0 0 150px' }}>
-          <label style={{ fontSize: '11px', color: isDark ? '#6B7280' : '#9CA3AF', marginBottom: '4px', display: 'block' }}>Date</label>
-          <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ flex: '0 0 150px' }}>
-          <label style={{ fontSize: '11px', color: isDark ? '#6B7280' : '#9CA3AF', marginBottom: '4px', display: 'block' }}>Type *</label>
-          <select value={formType} onChange={(e) => setFormType(e.target.value)} style={inputStyle} required>
-            <option value="">Select type...</option>
-            {SESSION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div style={{ flex: '0 0 120px' }}>
-          <label style={{ fontSize: '11px', color: isDark ? '#6B7280' : '#9CA3AF', marginBottom: '4px', display: 'block' }}>Duration (min)</label>
-          <input type="number" value={formDuration} onChange={(e) => setFormDuration(e.target.value)} placeholder="45" style={inputStyle} />
-        </div>
-        <div style={{ flex: '1 1 200px' }}>
-          <label style={{ fontSize: '11px', color: isDark ? '#6B7280' : '#9CA3AF', marginBottom: '4px', display: 'block' }}>Notes</label>
-          <input type="text" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="Optional notes..." style={inputStyle} />
-        </div>
-        <button type="submit" style={{
-          padding: '8px 16px',
-          borderRadius: '8px',
-          border: 'none',
-          backgroundColor: '#8B5CF6',
-          color: '#fff',
-          fontSize: '14px',
-          fontWeight: 500,
-          cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '6px',
-        }}>
-          <FaPlus size={12} /> Log
-        </button>
-      </form>
-
-      {/* Sessions table */}
-      <div style={{ borderRadius: '8px', border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-          <thead>
-            <tr style={{ backgroundColor: isDark ? '#1F2937' : '#F9FAFB' }}>
-              {['Date', 'Type', 'Duration', 'Notes', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '10px 12px', color: isDark ? '#6B7280' : '#9CA3AF', fontWeight: 500 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {trainingLoading ? (
-              <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: isDark ? '#6B7280' : '#9CA3AF' }}>Loading...</td></tr>
-            ) : trainingSessions.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: isDark ? '#6B7280' : '#9CA3AF' }}>No training sessions yet</td></tr>
-            ) : trainingSessions.map(s => (
-              <tr key={s.id} style={{ borderBottom: `1px solid ${isDark ? '#1F2937' : '#F3F4F6'}` }}>
-                <td style={{ padding: '8px 12px', color: isDark ? '#D1D5DB' : '#374151' }}>
-                  {new Date(s.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
-                </td>
-                <td style={{ padding: '8px 12px' }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                    padding: '2px 8px', borderRadius: '4px',
-                    backgroundColor: (typeColors[s.session_type] || '#6B7280') + '20',
-                    color: typeColors[s.session_type] || '#6B7280',
-                    fontSize: '12px', fontWeight: 500,
-                  }}>
-                    <FaDumbbell size={10} /> {s.session_type}
-                  </span>
-                </td>
-                <td style={{ padding: '8px 12px', color: isDark ? '#D1D5DB' : '#374151' }}>
-                  {s.duration_min ? `${s.duration_min} min` : '-'}
-                </td>
-                <td style={{ padding: '8px 12px', color: isDark ? '#6B7280' : '#9CA3AF', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {s.notes || '-'}
-                </td>
-                <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                  <button
-                    onClick={() => deleteTrainingSession(s.id)}
-                    style={{
-                      padding: '4px 8px', borderRadius: '4px', border: 'none',
-                      backgroundColor: 'transparent', color: '#EF4444', cursor: 'pointer',
-                    }}
-                  >
-                    <FaTrash size={11} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  switch (healthHook.activeTrainingSubTab) {
+    case 'exercises': return <ExercisesView theme={theme} healthHook={healthHook} />;
+    case 'workout-templates': return <WorkoutTemplatesView theme={theme} healthHook={healthHook} />;
+    case 'training-tracker': return <TrainingTrackerView theme={theme} healthHook={healthHook} />;
+    default: return <TrainingPlanningView theme={theme} healthHook={healthHook} />;
+  }
 };
 
-// ==================== PLANNER VIEW ====================
+// ==================== PLANNER VIEW (Enhanced with Priorities) ====================
 const PlannerView = ({ theme, healthHook }) => {
-  const { goals, routineSchedule, weeklyPlans, currentWeek, toggleGoal, addGoal, deleteGoal } = healthHook;
+  const {
+    goals, routineSchedule, weeklyPlans, currentWeek, toggleGoal, addGoal, deleteGoal,
+    prioritiesForScope, selectedPriorityScope, setSelectedPriorityScope,
+    selectedPriorityDate, setSelectedPriorityDate,
+    addPriority, togglePriority, deletePriority,
+  } = healthHook;
   const isDark = theme === 'dark';
+  const bgSecondary = isDark ? '#1F2937' : '#F9FAFB';
+  const textPrimary = isDark ? '#F9FAFB' : '#111827';
+  const textSecondary = isDark ? '#D1D5DB' : '#374151';
+  const textMuted = isDark ? '#6B7280' : '#9CA3AF';
+  const borderColor = isDark ? '#374151' : '#E5E7EB';
 
   const [newGoalTitle, setNewGoalTitle] = useState('');
-
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const [newPriorityTitle, setNewPriorityTitle] = useState('');
 
   const handleAddGoal = async () => {
     if (!newGoalTitle.trim()) return;
@@ -522,53 +410,234 @@ const PlannerView = ({ theme, healthHook }) => {
     setNewGoalTitle('');
   };
 
+  const handleAddPriority = async () => {
+    if (!newPriorityTitle.trim()) return;
+    const scopeDate = getScopeDate(selectedPriorityScope, selectedPriorityDate);
+    await addPriority({
+      title: newPriorityTitle.trim(),
+      scope: selectedPriorityScope,
+      scope_date: scopeDate,
+      sort_order: prioritiesForScope.length,
+    });
+    setNewPriorityTitle('');
+  };
+
+  // Scope date helpers
+  const getScopeDate = (scope, dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    if (scope === 'daily') return dateStr;
+    if (scope === 'weekly') {
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + diff);
+      return monday.toISOString().split('T')[0];
+    }
+    if (scope === 'monthly') {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+    if (scope === 'yearly') {
+      return `${d.getFullYear()}-01-01`;
+    }
+    return dateStr;
+  };
+
+  const getScopeDateLabel = (scope, dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    if (scope === 'daily') {
+      return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    }
+    if (scope === 'weekly') {
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + diff);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const startOfYear = new Date(monday.getFullYear(), 0, 1);
+      const weekNum = Math.ceil(((monday - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+      return `W${String(weekNum).padStart(2, '0')} — ${monday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${sunday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+    }
+    if (scope === 'monthly') {
+      return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    }
+    if (scope === 'yearly') {
+      return String(d.getFullYear());
+    }
+    return dateStr;
+  };
+
+  const navigateScopeDate = (offset) => {
+    const d = new Date(selectedPriorityDate + 'T12:00:00');
+    if (selectedPriorityScope === 'daily') d.setDate(d.getDate() + offset);
+    else if (selectedPriorityScope === 'weekly') d.setDate(d.getDate() + (offset * 7));
+    else if (selectedPriorityScope === 'monthly') d.setMonth(d.getMonth() + offset);
+    else if (selectedPriorityScope === 'yearly') d.setFullYear(d.getFullYear() + offset);
+    setSelectedPriorityDate(d.toISOString().split('T')[0]);
+  };
+
+  const goToTodayScope = () => setSelectedPriorityDate(new Date().toISOString().split('T')[0]);
+
   // Current week plan
   const currentPlan = weeklyPlans.find(wp => wp.week_number === currentWeek);
 
+  const SCOPES = ['daily', 'weekly', 'monthly', 'yearly'];
+
   return (
     <div style={{ padding: '24px' }}>
-      {/* Current Week Header */}
+      {/* ===== PRIORITIES SECTION ===== */}
       <div style={{
         padding: '16px',
         borderRadius: '12px',
-        backgroundColor: isDark ? '#1F2937' : '#EFF6FF',
-        border: `1px solid ${isDark ? '#374151' : '#BFDBFE'}`,
+        backgroundColor: isDark ? '#1F2937' : '#FDF2F8',
+        border: `1px solid ${isDark ? '#374151' : '#FBCFE8'}`,
+        borderLeft: '3px solid #EC4899',
         marginBottom: '20px',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#3B82F6' }}>
-              Week {currentWeek} {currentPlan?.label ? `- ${currentPlan.label}` : ''}
-            </div>
-            {currentPlan?.date_start && (
-              <div style={{ fontSize: '12px', color: isDark ? '#6B7280' : '#6B7280', marginTop: '4px' }}>
-                {new Date(currentPlan.date_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
-                {currentPlan.date_end && ` - ${new Date(currentPlan.date_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}`}
-              </div>
-            )}
-          </div>
+        {/* Scope tabs */}
+        <div style={{
+          display: 'flex', gap: '4px', marginBottom: '14px',
+          backgroundColor: isDark ? '#111827' : '#fff',
+          borderRadius: '8px', padding: '3px',
+          border: `1px solid ${borderColor}`, width: 'fit-content',
+        }}>
+          {SCOPES.map(scope => (
+            <button
+              key={scope}
+              onClick={() => setSelectedPriorityScope(scope)}
+              style={{
+                padding: '6px 14px', borderRadius: '6px', border: 'none',
+                backgroundColor: selectedPriorityScope === scope ? '#EC4899' : 'transparent',
+                color: selectedPriorityScope === scope ? '#fff' : textMuted,
+                fontSize: '12px', fontWeight: selectedPriorityScope === scope ? 600 : 400,
+                cursor: 'pointer', textTransform: 'capitalize',
+              }}
+            >
+              {scope}
+            </button>
+          ))}
         </div>
-        {currentPlan?.notes && (
-          <div style={{ marginTop: '8px', fontSize: '13px', color: isDark ? '#D1D5DB' : '#374151' }}>
-            {currentPlan.notes}
+
+        {/* Date/period navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+          <button
+            onClick={() => navigateScopeDate(-1)}
+            style={{
+              padding: '6px 8px', borderRadius: '6px', border: `1px solid ${borderColor}`,
+              backgroundColor: isDark ? '#111827' : '#fff', color: textSecondary, cursor: 'pointer',
+              display: 'flex', alignItems: 'center',
+            }}
+          >
+            <FaChevronLeft size={10} />
+          </button>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: textPrimary, minWidth: '180px', textAlign: 'center' }}>
+            {getScopeDateLabel(selectedPriorityScope, selectedPriorityDate)}
           </div>
-        )}
+          <button
+            onClick={() => navigateScopeDate(1)}
+            style={{
+              padding: '6px 8px', borderRadius: '6px', border: `1px solid ${borderColor}`,
+              backgroundColor: isDark ? '#111827' : '#fff', color: textSecondary, cursor: 'pointer',
+              display: 'flex', alignItems: 'center',
+            }}
+          >
+            <FaChevronRight size={10} />
+          </button>
+          <button
+            onClick={goToTodayScope}
+            style={{
+              padding: '4px 10px', borderRadius: '6px', border: 'none',
+              backgroundColor: '#EC4899', color: '#fff', fontSize: '11px',
+              fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            Today
+          </button>
+        </div>
+
+        {/* Priority list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+          {prioritiesForScope.length === 0 && (
+            <div style={{ padding: '10px', textAlign: 'center', color: textMuted, fontSize: '12px' }}>
+              No priorities for this {selectedPriorityScope} period
+            </div>
+          )}
+          {prioritiesForScope.map((p, idx) => (
+            <div key={p.id} style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 12px', borderRadius: '8px',
+              backgroundColor: isDark ? '#111827' : '#fff',
+              border: `1px solid ${borderColor}`,
+            }}>
+              <button
+                onClick={() => togglePriority(p.id, p.is_completed)}
+                style={{
+                  width: '20px', height: '20px', borderRadius: '4px',
+                  border: `2px solid ${p.is_completed ? '#EC4899' : (isDark ? '#4B5563' : '#D1D5DB')}`,
+                  backgroundColor: p.is_completed ? '#EC4899' : 'transparent',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {p.is_completed && <FaCheck size={10} style={{ color: '#fff' }} />}
+              </button>
+              <span style={{ fontSize: '11px', color: textMuted, fontWeight: 600, minWidth: '18px' }}>
+                {idx + 1}.
+              </span>
+              <span style={{
+                flex: 1, fontSize: '13px',
+                color: p.is_completed ? textMuted : textPrimary,
+                textDecoration: p.is_completed ? 'line-through' : 'none',
+              }}>
+                {p.title}
+              </span>
+              <button
+                onClick={() => deletePriority(p.id)}
+                style={{ padding: '2px', border: 'none', backgroundColor: 'transparent', color: '#EF4444', cursor: 'pointer' }}
+              >
+                <FaTimes size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Add priority input */}
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <input
+            type="text"
+            value={newPriorityTitle}
+            onChange={(e) => setNewPriorityTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddPriority()}
+            placeholder={`Add ${selectedPriorityScope} priority...`}
+            style={{
+              flex: 1, padding: '6px 10px', borderRadius: '6px',
+              border: `1px solid ${borderColor}`,
+              backgroundColor: isDark ? '#111827' : '#fff',
+              color: textPrimary, fontSize: '12px', outline: 'none',
+            }}
+          />
+          <button onClick={handleAddPriority} style={{
+            padding: '6px 12px', borderRadius: '6px', border: 'none',
+            backgroundColor: '#EC4899', color: '#fff', cursor: 'pointer', fontSize: '12px',
+          }}>
+            <FaPlus size={10} />
+          </button>
+        </div>
       </div>
 
+      {/* ===== EXISTING: Goals + Routine ===== */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         {/* Goals */}
         <div>
-          <h3 style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#D1D5DB' : '#374151', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 600, color: textSecondary, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <FaCheck size={12} style={{ color: '#10B981' }} /> Goals
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
             {goals.map(g => (
               <div key={g.id} style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                backgroundColor: isDark ? '#1F2937' : '#F9FAFB',
-                border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
+                padding: '8px 12px', borderRadius: '8px',
+                backgroundColor: bgSecondary, border: `1px solid ${borderColor}`,
               }}>
                 <button
                   onClick={() => toggleGoal(g.id, g.is_completed)}
@@ -576,8 +645,7 @@ const PlannerView = ({ theme, healthHook }) => {
                     width: '20px', height: '20px', borderRadius: '4px',
                     border: `2px solid ${g.is_completed ? '#10B981' : (isDark ? '#4B5563' : '#D1D5DB')}`,
                     backgroundColor: g.is_completed ? '#10B981' : 'transparent',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0,
                   }}
                 >
@@ -585,12 +653,12 @@ const PlannerView = ({ theme, healthHook }) => {
                 </button>
                 <span style={{
                   flex: 1, fontSize: '13px',
-                  color: g.is_completed ? (isDark ? '#6B7280' : '#9CA3AF') : (isDark ? '#F9FAFB' : '#111827'),
+                  color: g.is_completed ? textMuted : textPrimary,
                   textDecoration: g.is_completed ? 'line-through' : 'none',
                 }}>
                   {g.title}
                 </span>
-                <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: isDark ? '#374151' : '#E5E7EB', color: isDark ? '#6B7280' : '#9CA3AF' }}>
+                <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: isDark ? '#374151' : '#E5E7EB', color: textMuted }}>
                   {g.category}
                 </span>
                 <button
@@ -611,10 +679,9 @@ const PlannerView = ({ theme, healthHook }) => {
               placeholder="Add a goal..."
               style={{
                 flex: 1, padding: '6px 10px', borderRadius: '6px',
-                border: `1px solid ${isDark ? '#374151' : '#D1D5DB'}`,
+                border: `1px solid ${borderColor}`,
                 backgroundColor: isDark ? '#1F2937' : '#fff',
-                color: isDark ? '#F9FAFB' : '#111827',
-                fontSize: '12px',
+                color: textPrimary, fontSize: '12px',
               }}
             />
             <button onClick={handleAddGoal} style={{
@@ -628,11 +695,11 @@ const PlannerView = ({ theme, healthHook }) => {
 
         {/* Routine Schedule */}
         <div>
-          <h3 style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#D1D5DB' : '#374151', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 600, color: textSecondary, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <FaCalendarAlt size={12} style={{ color: '#EC4899' }} /> Daily Routine
           </h3>
           {routineSchedule.length === 0 ? (
-            <div style={{ padding: '16px', textAlign: 'center', color: isDark ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+            <div style={{ padding: '16px', textAlign: 'center', color: textMuted, fontSize: '13px' }}>
               No routine schedule set
             </div>
           ) : (
@@ -640,9 +707,8 @@ const PlannerView = ({ theme, healthHook }) => {
               {routineSchedule.filter(r => r.is_active).map(r => (
                 <div key={r.id} style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  backgroundColor: isDark ? '#1F2937' : '#F9FAFB',
+                  padding: '6px 12px', borderRadius: '6px',
+                  backgroundColor: bgSecondary,
                 }}>
                   <span style={{
                     fontSize: '12px', fontWeight: 600, color: '#3B82F6',
@@ -650,11 +716,11 @@ const PlannerView = ({ theme, healthHook }) => {
                   }}>
                     {r.time_slot?.substring(0, 5)}
                   </span>
-                  <span style={{ fontSize: '13px', color: isDark ? '#D1D5DB' : '#374151', flex: 1 }}>
+                  <span style={{ fontSize: '13px', color: textSecondary, flex: 1 }}>
                     {r.activity}
                   </span>
                   {r.duration_min && (
-                    <span style={{ fontSize: '11px', color: isDark ? '#6B7280' : '#9CA3AF' }}>
+                    <span style={{ fontSize: '11px', color: textMuted }}>
                       {r.duration_min}m
                     </span>
                   )}
@@ -668,22 +734,21 @@ const PlannerView = ({ theme, healthHook }) => {
       {/* Weekly Plans Overview */}
       {weeklyPlans.length > 0 && (
         <div style={{ marginTop: '24px' }}>
-          <h3 style={{ fontSize: '14px', fontWeight: 600, color: isDark ? '#D1D5DB' : '#374151', marginBottom: '12px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 600, color: textSecondary, marginBottom: '12px' }}>
             Upcoming Weeks
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
             {weeklyPlans.filter(wp => wp.week_number >= currentWeek).map(wp => (
               <div key={wp.id} style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                backgroundColor: wp.week_number === currentWeek ? (isDark ? '#1E3A5F' : '#EFF6FF') : (isDark ? '#1F2937' : '#F9FAFB'),
-                border: `1px solid ${wp.week_number === currentWeek ? '#3B82F6' : (isDark ? '#374151' : '#E5E7EB')}`,
+                padding: '10px 14px', borderRadius: '8px',
+                backgroundColor: wp.week_number === currentWeek ? (isDark ? '#1E3A5F' : '#EFF6FF') : bgSecondary,
+                border: `1px solid ${wp.week_number === currentWeek ? '#3B82F6' : borderColor}`,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: wp.week_number === currentWeek ? '#3B82F6' : (isDark ? '#F9FAFB' : '#111827') }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: wp.week_number === currentWeek ? '#3B82F6' : textPrimary }}>
                     W{String(wp.week_number).padStart(2, '0')}
                   </span>
-                  {wp.label && <span style={{ fontSize: '11px', color: isDark ? '#6B7280' : '#9CA3AF' }}>{wp.label}</span>}
+                  {wp.label && <span style={{ fontSize: '11px', color: textMuted }}>{wp.label}</span>}
                 </div>
               </div>
             ))}

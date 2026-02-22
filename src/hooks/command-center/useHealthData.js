@@ -9,6 +9,9 @@ const useHealthData = (activeTab) => {
   // Nutrition sub-tab navigation
   const [activeNutritionSubTab, setActiveNutritionSubTab] = useState('meal-planning');
 
+  // Training sub-tab navigation (mirrors activeNutritionSubTab)
+  const [activeTrainingSubTab, setActiveTrainingSubTab] = useState('training-planning');
+
   // Body metrics
   const [bodyMetrics, setBodyMetrics] = useState([]);
   const [bodyMetricsLoading, setBodyMetricsLoading] = useState(false);
@@ -34,6 +37,26 @@ const useHealthData = (activeTab) => {
   // Training
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [trainingLoading, setTrainingLoading] = useState(false);
+
+  // Exercises (mirrors ingredients)
+  const [exercises, setExercises] = useState([]);
+  const [exercisesLoading, setExercisesLoading] = useState(false);
+
+  // Workout Templates (mirrors recipes)
+  const [workoutTemplates, setWorkoutTemplates] = useState([]);
+  const [workoutTemplatesLoading, setWorkoutTemplatesLoading] = useState(false);
+
+  // Training planning date (mirrors selectedMealDate)
+  const [selectedTrainingDate, setSelectedTrainingDate] = useState(new Date().toISOString().split('T')[0]);
+  const [sessionExercises, setSessionExercises] = useState([]);
+  const [trainingRefresh, setTrainingRefresh] = useState(0);
+
+  // Priorities
+  const [priorities, setPriorities] = useState([]);
+  const [prioritiesLoading, setPrioritiesLoading] = useState(false);
+  const [selectedPriorityScope, setSelectedPriorityScope] = useState('daily');
+  const [selectedPriorityDate, setSelectedPriorityDate] = useState(new Date().toISOString().split('T')[0]);
+  const [plannerRefresh, setPlannerRefresh] = useState(0);
 
   // Planner
   const [weeklyPlans, setWeeklyPlans] = useState([]);
@@ -163,22 +186,93 @@ const useHealthData = (activeTab) => {
     }
   }, [activeTab, activeHealthTab, activeNutritionSubTab, mealsRefresh]);
 
-  // ==================== FETCH TRAINING ====================
+  // ==================== FETCH EXERCISES ====================
+  useEffect(() => {
+    const fetchExercises = async () => {
+      setExercisesLoading(true);
+      const { data, error } = await supabase
+        .from('exercises')
+        .select('*')
+        .order('name', { ascending: true });
+      if (error) console.error('Error fetching exercises:', error);
+      else setExercises(data || []);
+      setExercisesLoading(false);
+    };
+    if (activeTab === 'health' && activeHealthTab === 'training') {
+      fetchExercises();
+    }
+  }, [activeTab, activeHealthTab, trainingRefresh]);
+
+  // ==================== FETCH WORKOUT TEMPLATES ====================
+  useEffect(() => {
+    const fetchWorkoutTemplates = async () => {
+      setWorkoutTemplatesLoading(true);
+      const { data, error } = await supabase
+        .from('workout_templates')
+        .select('*, workout_template_exercises(*, exercises(*))')
+        .order('name', { ascending: true });
+      if (error) console.error('Error fetching workout_templates:', error);
+      else setWorkoutTemplates(data || []);
+      setWorkoutTemplatesLoading(false);
+    };
+    if (activeTab === 'health' && activeHealthTab === 'training') {
+      fetchWorkoutTemplates();
+    }
+  }, [activeTab, activeHealthTab, trainingRefresh]);
+
+  // ==================== FETCH TRAINING (enhanced with joins) ====================
+  const fetchSessionExercisesForDate = useCallback(async (sessionsData, date) => {
+    const dateSessions = sessionsData.filter(s => s.date === date);
+    const sessionIds = dateSessions.map(s => s.id);
+    if (!sessionIds.length) { setSessionExercises([]); return; }
+    const { data, error } = await supabase
+      .from('training_session_exercises')
+      .select('*, exercises(*)')
+      .in('session_id', sessionIds);
+    if (error) console.error('Error fetching training_session_exercises:', error);
+    else setSessionExercises(data || []);
+  }, []);
+
   useEffect(() => {
     const fetchTraining = async () => {
       setTrainingLoading(true);
       const { data, error } = await supabase
         .from('training_sessions')
-        .select('*')
+        .select('*, workout_templates(id, name, template_type, image_url, workout_template_exercises(*, exercises(*)))')
         .order('date', { ascending: false });
       if (error) console.error('Error fetching training_sessions:', error);
-      else setTrainingSessions(data || []);
+      else {
+        setTrainingSessions(data || []);
+        await fetchSessionExercisesForDate(data || [], selectedTrainingDate);
+      }
       setTrainingLoading(false);
     };
     if (activeTab === 'health' && (activeHealthTab === 'training' || activeHealthTab === 'dashboard')) {
       fetchTraining();
     }
-  }, [activeTab, activeHealthTab]);
+  }, [activeTab, activeHealthTab, trainingRefresh, fetchSessionExercisesForDate, selectedTrainingDate]);
+
+  // Re-fetch session exercises when date changes
+  useEffect(() => {
+    fetchSessionExercisesForDate(trainingSessions, selectedTrainingDate);
+  }, [selectedTrainingDate]);
+
+  // ==================== FETCH PRIORITIES ====================
+  useEffect(() => {
+    const fetchPriorities = async () => {
+      setPrioritiesLoading(true);
+      const { data, error } = await supabase
+        .from('priorities')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      if (error) console.error('Error fetching priorities:', error);
+      else setPriorities(data || []);
+      setPrioritiesLoading(false);
+    };
+    if (activeTab === 'health' && activeHealthTab === 'planner') {
+      fetchPriorities();
+    }
+  }, [activeTab, activeHealthTab, plannerRefresh]);
 
   // ==================== FETCH PLANNER ====================
   useEffect(() => {
@@ -295,7 +389,6 @@ const useHealthData = (activeTab) => {
   }, []);
 
   // Compute macros for a meal from meal_ingredients × servings
-  // meal_ingredients stores per-serving quantities; meals.servings = how many servings eaten
   const getMealMacros = useCallback((mealId) => {
     const items = mealIngredients.filter(mi => mi.meal_id === mealId);
     if (!items.length) return { kcal: 0, protein: 0, fat: 0, carbs: 0 };
@@ -334,7 +427,7 @@ const useHealthData = (activeTab) => {
   // Filter meals by selected date
   const mealsForDate = mealsForDateRaw;
 
-  // Daily macros total — meal_ingredients (per-serving) × meal.servings, fallback: recipe-based
+  // Daily macros total
   const dailyMacros = useMemo(() => {
     let kcal = 0, protein = 0, fat = 0, carbs = 0;
     mealsForDate.forEach(meal => {
@@ -369,12 +462,58 @@ const useHealthData = (activeTab) => {
   // Daily targets based on day of week
   const dailyTargets = useMemo(() => {
     const date = new Date(selectedMealDate + 'T12:00:00');
-    const day = date.getDay(); // 0=Sun, 6=Sat
+    const day = date.getDay();
     let kcalTarget = 1700;
-    if (day === 6) kcalTarget = 2600; // Saturday
-    if (day === 0) kcalTarget = 2200; // Sunday
+    if (day === 6) kcalTarget = 2600;
+    if (day === 0) kcalTarget = 2200;
     return { kcal: kcalTarget, protein: 135 };
   }, [selectedMealDate]);
+
+  // ==================== TRAINING COMPUTED ====================
+
+  // Sessions for selected date (mirrors mealsForDate)
+  const sessionsForDate = useMemo(() =>
+    trainingSessions.filter(s => s.date === selectedTrainingDate),
+    [trainingSessions, selectedTrainingDate]
+  );
+
+  // Get exercises for a specific session (mirrors getMealIngredientRows)
+  const getSessionExerciseRows = useCallback((sessionId) =>
+    sessionExercises.filter(se => se.session_id === sessionId),
+    [sessionExercises]
+  );
+
+  // Daily training summary
+  const dailyTrainingSummary = useMemo(() => ({
+    sessionCount: sessionsForDate.length,
+    totalDuration: sessionsForDate.reduce((sum, s) => sum + (s.duration_min || 0), 0),
+  }), [sessionsForDate]);
+
+  // Normalize selectedPriorityDate to the scope's canonical date
+  const normalizedPriorityDate = useMemo(() => {
+    const d = new Date(selectedPriorityDate + 'T12:00:00');
+    if (selectedPriorityScope === 'daily') return selectedPriorityDate;
+    if (selectedPriorityScope === 'weekly') {
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + diff);
+      return monday.toISOString().split('T')[0];
+    }
+    if (selectedPriorityScope === 'monthly') {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+    if (selectedPriorityScope === 'yearly') {
+      return `${d.getFullYear()}-01-01`;
+    }
+    return selectedPriorityDate;
+  }, [selectedPriorityScope, selectedPriorityDate]);
+
+  // Priorities filtered by scope and normalized date
+  const prioritiesForScope = useMemo(() =>
+    priorities.filter(p => p.scope === selectedPriorityScope && p.scope_date === normalizedPriorityDate),
+    [priorities, selectedPriorityScope, normalizedPriorityDate]
+  );
 
   // ==================== HANDLERS ====================
 
@@ -417,17 +556,232 @@ const useHealthData = (activeTab) => {
     }
   }, []);
 
-  const addTrainingSession = useCallback(async (date, session_type, duration_min, notes) => {
+  // ==================== EXERCISE CRUD ====================
+
+  const addExercise = useCallback(async (data) => {
     try {
-      const { error } = await supabase
-        .from('training_sessions')
-        .insert({ date, session_type, duration_min, notes: notes || null });
+      const { data: newEx, error } = await supabase
+        .from('exercises')
+        .insert(data)
+        .select()
+        .single();
       if (error) throw error;
+      toast.success('Exercise added');
+      setExercises(prev => [...prev, newEx].sort((a, b) => a.name.localeCompare(b.name)));
+      return newEx;
+    } catch (err) {
+      console.error('Error adding exercise:', err);
+      toast.error('Failed to add exercise');
+      return null;
+    }
+  }, []);
+
+  const updateExercise = useCallback(async (id, updates) => {
+    try {
+      const { data: updated, error } = await supabase
+        .from('exercises')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      setExercises(prev => prev.map(e => e.id === id ? updated : e));
+      return updated;
+    } catch (err) {
+      console.error('Error updating exercise:', err);
+      toast.error('Failed to update exercise');
+      return null;
+    }
+  }, []);
+
+  const deleteExercise = useCallback(async (id) => {
+    try {
+      const { error } = await supabase.from('exercises').delete().eq('id', id);
+      if (error) throw error;
+      setExercises(prev => prev.filter(e => e.id !== id));
+      toast.success('Exercise deleted');
+    } catch (err) {
+      console.error('Error deleting exercise:', err);
+      toast.error('Failed to delete exercise (may be in use)');
+    }
+  }, []);
+
+  // ==================== WORKOUT TEMPLATE CRUD ====================
+
+  const addWorkoutTemplate = useCallback(async (templateData, exerciseRows) => {
+    try {
+      const { data: newTemplate, error: templateError } = await supabase
+        .from('workout_templates')
+        .insert(templateData)
+        .select()
+        .single();
+      if (templateError) throw templateError;
+
+      if (exerciseRows && exerciseRows.length > 0) {
+        const rows = exerciseRows.map((er, idx) => ({
+          template_id: newTemplate.id,
+          exercise_id: er.exercise_id,
+          sort_order: idx,
+          sets: er.sets || null,
+          reps: er.reps || null,
+          weight_kg: er.weight_kg || null,
+          duration_min: er.duration_min || null,
+          distance_km: er.distance_km || null,
+          rest_seconds: er.rest_seconds || null,
+          notes: er.notes || null,
+        }));
+        await supabase.from('workout_template_exercises').insert(rows);
+      }
+
+      toast.success('Template created');
+      setTrainingRefresh(prev => prev + 1);
+      return newTemplate;
+    } catch (err) {
+      console.error('Error adding workout template:', err);
+      toast.error('Failed to create template');
+      return null;
+    }
+  }, []);
+
+  const updateWorkoutTemplate = useCallback(async (id, templateData, exerciseRows) => {
+    try {
+      const { error: templateError } = await supabase
+        .from('workout_templates')
+        .update(templateData)
+        .eq('id', id);
+      if (templateError) throw templateError;
+
+      if (exerciseRows !== undefined) {
+        await supabase.from('workout_template_exercises').delete().eq('template_id', id);
+        if (exerciseRows.length > 0) {
+          const rows = exerciseRows.map((er, idx) => ({
+            template_id: id,
+            exercise_id: er.exercise_id,
+            sort_order: idx,
+            sets: er.sets || null,
+            reps: er.reps || null,
+            weight_kg: er.weight_kg || null,
+            duration_min: er.duration_min || null,
+            distance_km: er.distance_km || null,
+            rest_seconds: er.rest_seconds || null,
+            notes: er.notes || null,
+          }));
+          await supabase.from('workout_template_exercises').insert(rows);
+        }
+      }
+
+      toast.success('Template updated');
+      setTrainingRefresh(prev => prev + 1);
+    } catch (err) {
+      console.error('Error updating workout template:', err);
+      toast.error('Failed to update template');
+    }
+  }, []);
+
+  const deleteWorkoutTemplate = useCallback(async (id) => {
+    try {
+      const { error } = await supabase.from('workout_templates').delete().eq('id', id);
+      if (error) throw error;
+      setWorkoutTemplates(prev => prev.filter(t => t.id !== id));
+      toast.success('Template deleted');
+    } catch (err) {
+      console.error('Error deleting workout template:', err);
+      toast.error('Failed to delete template');
+    }
+  }, []);
+
+  // ==================== TRAINING SESSION CRUD (enhanced) ====================
+
+  const addTrainingSession = useCallback(async (date, session_type, duration_min, notes, template_id, name, exerciseRows) => {
+    try {
+      const { data: sessionData, error } = await supabase
+        .from('training_sessions')
+        .insert({
+          date,
+          session_type,
+          duration_min,
+          notes: notes || null,
+          template_id: template_id || null,
+          name: name || null,
+        })
+        .select('*, workout_templates(id, name, template_type, image_url, workout_template_exercises(*, exercises(*)))')
+        .single();
+      if (error) throw error;
+
+      // If template_id and no custom exerciseRows, copy from template
+      if (template_id && (!exerciseRows || exerciseRows.length === 0)) {
+        const template = workoutTemplates.find(t => t.id === template_id);
+        if (template?.workout_template_exercises) {
+          const rows = template.workout_template_exercises.map((te, idx) => ({
+            session_id: sessionData.id,
+            exercise_id: te.exercise_id,
+            sort_order: idx,
+            sets_completed: te.sets || null,
+            reps_completed: te.reps || null,
+            weight_kg: te.weight_kg || null,
+            duration_min: te.duration_min || null,
+            distance_km: te.distance_km || null,
+            notes: te.notes || null,
+          }));
+          await supabase.from('training_session_exercises').insert(rows);
+        }
+      } else if (exerciseRows && exerciseRows.length > 0) {
+        const rows = exerciseRows.map((er, idx) => ({
+          session_id: sessionData.id,
+          exercise_id: er.exercise_id,
+          sort_order: idx,
+          sets_completed: er.sets_completed || null,
+          reps_completed: er.reps_completed || null,
+          weight_kg: er.weight_kg || null,
+          duration_min: er.duration_min || null,
+          distance_km: er.distance_km || null,
+          notes: er.notes || null,
+        }));
+        await supabase.from('training_session_exercises').insert(rows);
+      }
+
       toast.success('Training session logged');
-      setTrainingSessions(prev => [{ date, session_type, duration_min, notes, created_at: new Date().toISOString() }, ...prev]);
+      setTrainingRefresh(prev => prev + 1);
     } catch (err) {
       console.error('Error adding training session:', err);
       toast.error('Failed to log training session');
+    }
+  }, [workoutTemplates]);
+
+  const updateSessionExercises = useCallback(async (sessionId, exerciseRows) => {
+    try {
+      await supabase.from('training_session_exercises').delete().eq('session_id', sessionId);
+      if (exerciseRows.length > 0) {
+        const rows = exerciseRows.map((er, idx) => ({
+          session_id: sessionId,
+          exercise_id: er.exercise_id,
+          sort_order: idx,
+          sets_completed: er.sets_completed || null,
+          reps_completed: er.reps_completed || null,
+          weight_kg: er.weight_kg || null,
+          duration_min: er.duration_min || null,
+          distance_km: er.distance_km || null,
+          notes: er.notes || null,
+        }));
+        const { error } = await supabase.from('training_session_exercises').insert(rows);
+        if (error) throw error;
+      }
+      toast.success('Session updated');
+      setTrainingRefresh(prev => prev + 1);
+    } catch (err) {
+      console.error('Error updating session exercises:', err);
+      toast.error('Failed to update session');
+    }
+  }, []);
+
+  const updateTrainingSession = useCallback(async (id, updates) => {
+    try {
+      const { error } = await supabase.from('training_sessions').update(updates).eq('id', id);
+      if (error) throw error;
+      setTrainingSessions(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    } catch (err) {
+      console.error('Error updating training session:', err);
+      toast.error('Failed to update session');
     }
   }, []);
 
@@ -440,11 +794,71 @@ const useHealthData = (activeTab) => {
       if (error) throw error;
       toast.success('Training session deleted');
       setTrainingSessions(prev => prev.filter(s => s.id !== id));
+      setSessionExercises(prev => prev.filter(se => se.session_id !== id));
     } catch (err) {
       console.error('Error deleting training session:', err);
       toast.error('Failed to delete');
     }
   }, []);
+
+  // ==================== PRIORITY CRUD ====================
+
+  const addPriority = useCallback(async (data) => {
+    try {
+      const { data: newPriority, error } = await supabase
+        .from('priorities')
+        .insert(data)
+        .select()
+        .single();
+      if (error) throw error;
+      toast.success('Priority added');
+      setPriorities(prev => [...prev, newPriority]);
+      return newPriority;
+    } catch (err) {
+      console.error('Error adding priority:', err);
+      toast.error('Failed to add priority');
+      return null;
+    }
+  }, []);
+
+  const updatePriority = useCallback(async (id, updates) => {
+    try {
+      const { error } = await supabase.from('priorities').update(updates).eq('id', id);
+      if (error) throw error;
+      setPriorities(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    } catch (err) {
+      console.error('Error updating priority:', err);
+      toast.error('Failed to update priority');
+    }
+  }, []);
+
+  const togglePriority = useCallback(async (id, currentValue) => {
+    try {
+      const { error } = await supabase
+        .from('priorities')
+        .update({ is_completed: !currentValue })
+        .eq('id', id);
+      if (error) throw error;
+      setPriorities(prev => prev.map(p => p.id === id ? { ...p, is_completed: !currentValue } : p));
+    } catch (err) {
+      console.error('Error toggling priority:', err);
+      toast.error('Failed to update priority');
+    }
+  }, []);
+
+  const deletePriority = useCallback(async (id) => {
+    try {
+      const { error } = await supabase.from('priorities').delete().eq('id', id);
+      if (error) throw error;
+      setPriorities(prev => prev.filter(p => p.id !== id));
+      toast.success('Priority deleted');
+    } catch (err) {
+      console.error('Error deleting priority:', err);
+      toast.error('Failed to delete priority');
+    }
+  }, []);
+
+  // ==================== GOAL CRUD ====================
 
   const toggleGoal = useCallback(async (id, currentValue) => {
     try {
@@ -492,7 +906,6 @@ const useHealthData = (activeTab) => {
 
   const addMeal = useCallback(async (date, meal_type, recipe_id, servings, name, ingredientRows) => {
     try {
-      // Insert the meal
       const mealInsert = {
         date,
         meal_type,
@@ -507,7 +920,6 @@ const useHealthData = (activeTab) => {
         .single();
       if (mealError) throw mealError;
 
-      // If recipe_id provided and no custom ingredientRows, copy from recipe (per-serving)
       if (recipe_id && (!ingredientRows || ingredientRows.length === 0)) {
         const recipeServings = Number(mealData.recipes?.servings) || 1;
         const { data: riData } = await supabase
@@ -523,7 +935,6 @@ const useHealthData = (activeTab) => {
           await supabase.from('meal_ingredients').insert(miRows);
         }
       } else if (ingredientRows && ingredientRows.length > 0) {
-        // Insert custom ingredient rows
         const miRows = ingredientRows.map(ir => ({
           meal_id: mealData.id,
           ingredient_id: ir.ingredient_id,
@@ -555,9 +966,7 @@ const useHealthData = (activeTab) => {
 
   const updateMealIngredients = useCallback(async (mealId, ingredientRows) => {
     try {
-      // Delete old
       await supabase.from('meal_ingredients').delete().eq('meal_id', mealId);
-      // Insert new
       if (ingredientRows.length > 0) {
         const miRows = ingredientRows.map(ir => ({
           meal_id: mealId,
@@ -733,7 +1142,6 @@ const useHealthData = (activeTab) => {
 
   const uploadHealthImage = useCallback(async (entityType, entityId, file) => {
     try {
-      // Validate file
       const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
       if (!allowedTypes.includes(file.type)) {
         toast.error('Only JPEG, PNG, or WebP images are allowed');
@@ -763,13 +1171,21 @@ const useHealthData = (activeTab) => {
       if (updateError) throw updateError;
 
       // Update local state
-      const setterMap = { ingredients: setIngredients, meals: setMeals, recipes: setRecipes };
+      const setterMap = {
+        ingredients: setIngredients,
+        meals: setMeals,
+        recipes: setRecipes,
+        exercises: setExercises,
+        workout_templates: setWorkoutTemplates,
+        training_sessions: setTrainingSessions,
+      };
       const setter = setterMap[entityType];
       if (setter) {
         setter(prev => prev.map(item => item.id === entityId ? { ...item, image_url: publicUrl } : item));
       }
-      // Force re-fetch meals so joined data (recipes, ingredients) also refreshes
+      // Force re-fetch
       setMealsRefresh(prev => prev + 1);
+      setTrainingRefresh(prev => prev + 1);
 
       toast.success('Image uploaded');
       return publicUrl;
@@ -788,7 +1204,14 @@ const useHealthData = (activeTab) => {
         .eq('id', entityId);
       if (error) throw error;
 
-      const setterMap = { ingredients: setIngredients, meals: setMeals, recipes: setRecipes };
+      const setterMap = {
+        ingredients: setIngredients,
+        meals: setMeals,
+        recipes: setRecipes,
+        exercises: setExercises,
+        workout_templates: setWorkoutTemplates,
+        training_sessions: setTrainingSessions,
+      };
       const setter = setterMap[entityType];
       if (setter) {
         setter(prev => prev.map(item => item.id === entityId ? { ...item, image_url: null } : item));
@@ -807,6 +1230,9 @@ const useHealthData = (activeTab) => {
 
     // Nutrition sub-tab
     activeNutritionSubTab, setActiveNutritionSubTab,
+
+    // Training sub-tab
+    activeTrainingSubTab, setActiveTrainingSubTab,
 
     // Body metrics
     bodyMetrics, bodyMetricsLoading,
@@ -843,7 +1269,28 @@ const useHealthData = (activeTab) => {
     // Training
     trainingSessions, trainingLoading,
     selectedTrainingSession, setSelectedTrainingSession,
-    addTrainingSession, deleteTrainingSession,
+    addTrainingSession, updateTrainingSession, deleteTrainingSession,
+
+    // Exercises
+    exercises, exercisesLoading,
+    addExercise, updateExercise, deleteExercise,
+
+    // Workout Templates
+    workoutTemplates, workoutTemplatesLoading,
+    addWorkoutTemplate, updateWorkoutTemplate, deleteWorkoutTemplate,
+
+    // Training Planning
+    selectedTrainingDate, setSelectedTrainingDate,
+    sessionExercises, getSessionExerciseRows,
+    updateSessionExercises,
+    sessionsForDate, dailyTrainingSummary,
+
+    // Priorities
+    priorities, prioritiesLoading,
+    selectedPriorityScope, setSelectedPriorityScope,
+    selectedPriorityDate, setSelectedPriorityDate,
+    prioritiesForScope,
+    addPriority, updatePriority, togglePriority, deletePriority,
 
     // Planner
     weeklyPlans, goals, routineSchedule, plannerLoading,
