@@ -20,7 +20,7 @@ const PlannerPage = ({ theme }) => {
     navigateScopeDate, goToToday, normalizedScopeDate,
     prioritiesForScope, prioritiesLoading, addPriority, togglePriority, deletePriority,
     tasksByProject, todoistLoading, todoistProjects, allTodoistTasks,
-    completeTask, deleteTask, setTaskDueToday, handleSaveTask, resetTaskForm,
+    completeTask, deleteTask, setTaskDueToday, quickAddTask, handleSaveTask, resetTaskForm,
     taskModalOpen, setTaskModalOpen,
     newTaskContent, setNewTaskContent, newTaskDescription, setNewTaskDescription,
     newTaskDueString, setNewTaskDueString, newTaskProjectId, setNewTaskProjectId,
@@ -40,6 +40,10 @@ const PlannerPage = ({ theme }) => {
   const [newPriorityTitle, setNewPriorityTitle] = useState('');
   const [editingPlanId, setEditingPlanId] = useState(null);
   const [editingLabel, setEditingLabel] = useState('');
+
+  // Quick add task inputs
+  const [quickAddPersonal, setQuickAddPersonal] = useState('');
+  const [quickAddWork, setQuickAddWork] = useState('');
 
   // Browse Tasks state
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -83,6 +87,25 @@ const PlannerPage = ({ theme }) => {
     const d = new Date(task.due.date + (task.due.date.includes('T') ? '' : 'T12:00:00'));
     return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   };
+
+  // Fixed project groups: always show Personal and Work
+  const FIXED_PROJECTS = ['Personal', 'Work'];
+  const fixedProjectGroups = useMemo(() => {
+    return FIXED_PROJECTS.map(name => {
+      const project = todoistProjects.find(p => p.name === name);
+      const projectId = project?.id || name;
+      const tasks = tasksByProject[projectId]?.tasks || [];
+      return { projectId, projectName: name, tasks };
+    });
+  }, [todoistProjects, tasksByProject]);
+
+  // Remaining project groups (not Personal/Work)
+  const otherProjectGroups = useMemo(() => {
+    const fixedIds = new Set(fixedProjectGroups.map(g => g.projectId));
+    return Object.entries(tasksByProject)
+      .filter(([id]) => !fixedIds.has(id))
+      .map(([id, group]) => ({ projectId: id, projectName: group.projectName, tasks: group.tasks }));
+  }, [tasksByProject, fixedProjectGroups]);
 
   // Filtered tasks for the browser (excluding already-visible scope tasks)
   const filteredTaskIds = useMemo(() => {
@@ -266,14 +289,60 @@ const PlannerPage = ({ theme }) => {
               </button>
             </div>
 
-            {Object.keys(tasksByProject).length === 0 && !todoistLoading && (
-              <EmptyMessage style={{ color: textMuted }}>
-                No tasks due in this {scope === 'daily' ? 'day' : scope === 'weekly' ? 'week' : scope === 'monthly' ? 'month' : 'year'}
-              </EmptyMessage>
-            )}
+            {/* Fixed project groups: Personal & Work */}
+            {fixedProjectGroups.map((group, idx) => {
+              const inputValue = group.projectName === 'Personal' ? quickAddPersonal : quickAddWork;
+              const setInputValue = group.projectName === 'Personal' ? setQuickAddPersonal : setQuickAddWork;
+              return (
+                <ProjectGroup key={group.projectId}>
+                  <ProjectHeader style={{ color: textSecondary, borderColor }}>
+                    {group.projectName}
+                    {group.tasks.length > 0 && (
+                      <span style={{ fontSize: '11px', color: textMuted, marginLeft: '8px' }}>
+                        {group.tasks.length}
+                      </span>
+                    )}
+                  </ProjectHeader>
+                  {group.tasks.map(task => (
+                    <TaskItem key={task.id} theme={theme}>
+                      <TaskCheckbox
+                        onClick={() => completeTask(task.id)}
+                        title="Complete task"
+                      >
+                        <FaCheck size={8} />
+                      </TaskCheckbox>
+                      <TaskContent style={{ color: textPrimary }}>
+                        {task.content}
+                      </TaskContent>
+                      {task.due && (
+                        <TaskDue style={{ color: textMuted }}>
+                          {formatTaskDue(task)}
+                        </TaskDue>
+                      )}
+                      <TaskDeleteBtn onClick={() => deleteTask(task.id)} title="Delete task">
+                        <FaTimes size={9} />
+                      </TaskDeleteBtn>
+                    </TaskItem>
+                  ))}
+                  <QuickAddInput
+                    theme={theme}
+                    placeholder={`Add task to ${group.projectName}...`}
+                    value={inputValue}
+                    onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && inputValue.trim()) {
+                        quickAddTask(inputValue, group.projectId);
+                        setInputValue('');
+                      }
+                    }}
+                  />
+                </ProjectGroup>
+              );
+            })}
 
-            {Object.entries(tasksByProject).map(([projectId, group]) => (
-              <ProjectGroup key={projectId}>
+            {/* Other project groups */}
+            {otherProjectGroups.map(group => (
+              <ProjectGroup key={group.projectId}>
                 <ProjectHeader style={{ color: textSecondary, borderColor }}>
                   {group.projectName}
                   <span style={{ fontSize: '11px', color: textMuted, marginLeft: '8px' }}>
@@ -886,6 +955,29 @@ const ProjectHeader = styled.div`
   margin-bottom: 6px;
   display: flex;
   align-items: center;
+`;
+
+const QuickAddInput = styled.input`
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px dashed ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  background: transparent;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+  margin-top: 2px;
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+    font-style: italic;
+  }
+
+  &:focus {
+    border-bottom-color: #3B82F6;
+    border-bottom-style: solid;
+  }
 `;
 
 const TaskItem = styled.div`

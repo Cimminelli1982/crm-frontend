@@ -274,6 +274,32 @@ const usePlannerData = () => {
     }
   }, []);
 
+  const quickAddTask = useCallback(async (content, projectId) => {
+    if (!content.trim()) return;
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const taskData = {
+        content: content.trim(),
+        project_id: projectId,
+        due_string: 'today',
+      };
+      const response = await fetch(`${BACKEND_URL}/todoist/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(taskData),
+      });
+      if (response.ok) {
+        toast.success('Task added!');
+        fetchTodoistData();
+      } else {
+        toast.error('Failed to create task');
+      }
+    } catch (error) {
+      console.error('Error creating task:', error);
+      toast.error('Failed to create task');
+    }
+  }, [fetchTodoistData]);
+
   const resetTaskForm = useCallback(() => {
     setNewTaskContent('');
     setNewTaskDescription('');
@@ -461,6 +487,7 @@ const usePlannerData = () => {
     completeTask,
     deleteTask,
     setTaskDueToday,
+    quickAddTask,
     handleSaveTask,
     resetTaskForm,
     taskModalOpen,

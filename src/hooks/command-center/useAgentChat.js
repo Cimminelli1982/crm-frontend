@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
-const GATEWAY_URL = 'wss://5.75.171.198:8443';
+const GATEWAY_URL = 'wss://gw.angelinvesting.it';
 const GATEWAY_TOKEN = '7715c0390967f22d6262c93f067b06a84228d174cea01a2c';
 
 const AGENTS = [
