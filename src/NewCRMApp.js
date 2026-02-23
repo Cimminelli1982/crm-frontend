@@ -18,6 +18,7 @@ import TagContactsPage from './pages/TagContactsPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
 import CommandCenterPage from './pages/CommandCenterPage';
 import HealthPage from './pages/HealthPage';
+import PlannerPage from './pages/PlannerPage';
 import DealSubmissionPage from './pages/DealSubmissionPage';
 import NewCRMLogin from './pages/NewCRMLogin';
 import AuthCallback from './pages/AuthCallback';
@@ -138,6 +139,7 @@ const CRMAppContent = () => {
   // Map paths to page IDs for navigation highlighting
   const getPageIdFromPath = (pathname) => {
     if (pathname.includes('/command-center')) return 'command-center';
+    if (pathname.includes('/planner')) return 'planner';
     if (pathname.includes('/health')) return 'health';
     if (pathname.includes('/sort')) return 'sort';
     if (pathname.includes('/interactions')) return 'interactions';
@@ -340,6 +342,7 @@ const CRMAppContent = () => {
             <Route path="/" element={<Navigate to="/command-center" replace />} />
             <Route path="/command-center" element={<ProtectedRoute><CommandCenterPage theme={theme} /></ProtectedRoute>} />
             <Route path="/health" element={<ProtectedRoute><HealthPage theme={theme} /></ProtectedRoute>} />
+            <Route path="/planner" element={<ProtectedRoute><PlannerPage theme={theme} /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><SearchPage theme={theme} /></ProtectedRoute>} />
             <Route path="/sort" element={<ProtectedRoute><SortPage theme={theme} onInboxCountChange={setInboxCount} /></ProtectedRoute>} />
             <Route path="/interactions" element={<ProtectedRoute><InteractionsPage theme={theme} /></ProtectedRoute>} />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaChartLine, FaUtensils, FaWeight, FaDumbbell, FaCalendarAlt, FaCheck, FaListAlt, FaBook, FaCalendarDay, FaChartBar, FaChevronLeft } from 'react-icons/fa';
+import { FaChartLine, FaUtensils, FaWeight, FaDumbbell, FaListAlt, FaBook, FaCalendarDay, FaChartBar, FaChevronLeft } from 'react-icons/fa';
 import {
   EmailList,
   EmailItem,
@@ -10,7 +10,6 @@ const HEALTH_TABS = [
   { id: 'nutrition', label: 'Nutrition', icon: FaUtensils, color: '#F59E0B' },
   { id: 'body', label: 'Body', icon: FaWeight, color: '#10B981' },
   { id: 'training', label: 'Training', icon: FaDumbbell, color: '#8B5CF6' },
-  { id: 'planner', label: 'Planner', icon: FaCalendarAlt, color: '#EC4899' },
 ];
 
 const NUTRITION_SUB_TABS = [
@@ -41,12 +40,10 @@ const HealthLeftContent = ({ theme, healthHook }) => {
     selectedTrainingSession, setSelectedTrainingSession,
     exercises,
     workoutTemplates,
-    weeklyPlans, plannerLoading,
     dashboardData,
     dailyMacros,
     dailyTrainingSummary,
     getRecipeMacros,
-    currentWeek,
   } = healthHook;
 
   const latestWeight = bodyMetrics.length > 0 ? Number(bodyMetrics[bodyMetrics.length - 1].weight_kg) : null;
@@ -61,8 +58,6 @@ const HealthLeftContent = ({ theme, healthHook }) => {
         return latestWeight ? `${latestWeight} kg` : 'No data';
       case 'training':
         return `${trainingSessions.length} sessions`;
-      case 'planner':
-        return `W${String(currentWeek).padStart(2, '0')}`;
       default:
         return '';
     }
@@ -210,14 +205,6 @@ const HealthLeftContent = ({ theme, healthHook }) => {
           />
         )}
         {/* TrainingList removed — training now uses sub-tab navigation */}
-        {activeHealthTab === 'planner' && (
-          <PlannerList
-            theme={theme}
-            weeklyPlans={weeklyPlans}
-            loading={plannerLoading}
-            currentWeek={currentWeek}
-          />
-        )}
       </div>
     </EmailList>
   );
@@ -321,57 +308,6 @@ const TrainingList = ({ theme, sessions, loading, selected, onSelect }) => {
       </div>
     </EmailItem>
   ));
-};
-
-const PlannerList = ({ theme, weeklyPlans, loading, currentWeek }) => {
-  if (loading) return <div style={{ padding: '20px', textAlign: 'center', color: theme === 'dark' ? '#6B7280' : '#9CA3AF' }}>Loading...</div>;
-  if (weeklyPlans.length === 0) return <div style={{ padding: '20px', textAlign: 'center', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>No weekly plans yet</div>;
-
-  return weeklyPlans.map(wp => {
-    const isCurrent = wp.week_number === currentWeek;
-    return (
-      <EmailItem
-        key={wp.id}
-        theme={theme}
-        $selected={isCurrent}
-        style={{ padding: '10px 16px' }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{
-                fontSize: '13px',
-                fontWeight: isCurrent ? 700 : 500,
-                color: isCurrent ? '#3B82F6' : (theme === 'dark' ? '#F9FAFB' : '#111827'),
-              }}>
-                W{String(wp.week_number).padStart(2, '0')}
-              </span>
-              {wp.label && (
-                <span style={{
-                  fontSize: '11px',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: theme === 'dark' ? '#374151' : '#F3F4F6',
-                  color: theme === 'dark' ? '#D1D5DB' : '#6B7280',
-                }}>
-                  {wp.label}
-                </span>
-              )}
-            </div>
-            {wp.date_start && (
-              <div style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginTop: '2px' }}>
-                {new Date(wp.date_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                {wp.date_end && ` - ${new Date(wp.date_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
-              </div>
-            )}
-          </div>
-          {isCurrent && (
-            <FaCheck size={12} style={{ color: '#10B981' }} />
-          )}
-        </div>
-      </EmailItem>
-    );
-  });
 };
 
 export default HealthLeftContent;

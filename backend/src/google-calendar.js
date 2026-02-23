@@ -123,6 +123,45 @@ export class GoogleCalendarClient {
     };
   }
 
+  // List all calendars the user has access to
+  async listCalendars() {
+    const endpoint = '/users/me/calendarList';
+    const data = await this.request(endpoint);
+    return data.items || [];
+  }
+
+  // Get events from a specific calendar by ID
+  async getEventsFromCalendar(calendarId, options = {}) {
+    const {
+      timeMin,
+      timeMax,
+      maxResults = 250,
+      singleEvents = true,
+      orderBy = 'startTime',
+    } = options;
+
+    const params = new URLSearchParams({
+      maxResults: maxResults.toString(),
+      singleEvents: singleEvents.toString(),
+    });
+
+    if (timeMin) params.set('timeMin', timeMin);
+    if (timeMax) params.set('timeMax', timeMax);
+    if (orderBy) params.set('orderBy', orderBy);
+
+    const endpoint = `/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
+    const data = await this.request(endpoint);
+    return data.items || [];
+  }
+
+  // Get events from multiple calendars merged together
+  async getEventsMultiCalendar(calendarIds, options = {}) {
+    const results = await Promise.all(
+      calendarIds.map(id => this.getEventsFromCalendar(id, options).catch(() => []))
+    );
+    return results.flat();
+  }
+
   // Get a single event by ID
   async getEvent(eventId) {
     const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events/${encodeURIComponent(eventId)}`;

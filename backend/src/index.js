@@ -3386,6 +3386,101 @@ app.get('/google-calendar/events', async (req, res) => {
   }
 });
 
+// List all Google Calendars
+app.get('/google-calendar/calendars', async (req, res) => {
+  try {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    const gcal = getGoogleCalendarClient();
+    const calendars = await gcal.listCalendars();
+
+    res.json({ success: true, calendars });
+  } catch (error) {
+    console.error('[GoogleCalendar] List calendars error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get events from multiple calendars
+app.get('/google-calendar/events/all', async (req, res) => {
+  try {
+    const { timeMin, timeMax, calendarIds } = req.query;
+
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    // Google Calendar event colorId → hex mapping
+    const EVENT_COLORS = {
+      '1': '#7986CB', // Lavender
+      '2': '#33B679', // Sage
+      '3': '#8E24AA', // Grape
+      '4': '#E67C73', // Flamingo
+      '5': '#F6BF26', // Banana
+      '6': '#F4511E', // Tangerine
+      '7': '#039BE5', // Peacock
+      '8': '#616161', // Graphite
+      '9': '#3F51B5', // Blueberry
+      '10': '#0B8043', // Basil
+      '11': '#D50000', // Tomato
+    };
+
+    const gcal = getGoogleCalendarClient();
+
+    // Get all calendars with their colors
+    const calendars = await gcal.listCalendars();
+    const calColorMap = {};
+    calendars.forEach(c => {
+      calColorMap[c.id] = c.backgroundColor || '#4285F4';
+    });
+
+    let ids;
+    if (calendarIds) {
+      ids = calendarIds.split(',');
+    } else {
+      ids = calendars
+        .filter(c => c.accessRole === 'owner')
+        .map(c => c.id);
+    }
+
+    const allEvents = await gcal.getEventsMultiCalendar(ids, { timeMin, timeMax });
+
+    // Deduplicate by iCalUID (same event can appear on multiple calendars)
+    const seen = new Set();
+    const events = allEvents.filter(e => {
+      const key = e.iCalUID || e.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Enrich each event with resolved color
+    events.forEach(e => {
+      if (e.colorId && EVENT_COLORS[e.colorId]) {
+        e._color = EVENT_COLORS[e.colorId];
+      } else {
+        // Use the calendar's background color
+        const calId = e.organizer?.email || '';
+        e._color = calColorMap[calId] || '#4285F4';
+      }
+    });
+
+    // Sort by start time
+    events.sort((a, b) => {
+      const aTime = a.start?.dateTime || a.start?.date || '';
+      const bTime = b.start?.dateTime || b.start?.date || '';
+      return aTime.localeCompare(bTime);
+    });
+
+    res.json({ success: true, events });
+  } catch (error) {
+    console.error('[GoogleCalendar] Get all events error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Manual sync trigger for Google Calendar
 app.post('/google-calendar/sync', async (req, res) => {
   try {

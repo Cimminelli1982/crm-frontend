@@ -36,31 +36,6 @@ const TASK_PROJECTS = [
   { id: 'Team', label: 'Team', color: '#808080' },
 ];
 
-// Section IDs by project (Todoist section IDs)
-const SECTION_IDS = {
-  'Personal': {
-    'This Week': '212234199',
-    'Next Week': '212234187',
-    'This Month': '212234192',
-    'This Sprint': '212234194',
-    'This Year': '212234189',
-    'Next Year': '212234193',
-    'Someday': '212234190',
-  },
-  'Work': {
-    'This Week': '212234191',
-    'Next Week': '212234200',
-    'This Month': '212234196',
-    'This Sprint': '212234188',
-    'This Year': '212234195',
-    'Next Year': '212234198',
-    'Someday': '212234197',
-  },
-  'Team': {
-    'Rosaria': '212756755',
-    'Katherine': '213491890',
-  },
-};
 
 // Section options based on project
 const getSectionsForProject = (project) => {
@@ -1316,17 +1291,26 @@ Il mio impegno è:`
 
     setCreatingTask(true);
     try {
-      // 1. Get project_id from project name
+      // 1. Get project_id and section_id from names
       let todoistProjectId = null;
+      let todoistSectionId = null;
       try {
-        const projectsRes = await fetch(`${BACKEND_URL}/todoist/projects`);
+        const [projectsRes, sectionsRes] = await Promise.all([
+          fetch(`${BACKEND_URL}/todoist/projects`),
+          fetch(`${BACKEND_URL}/todoist/sections`),
+        ]);
         if (projectsRes.ok) {
           const { projects } = await projectsRes.json();
           const proj = projects.find(p => p.name === newTaskProject);
           if (proj) todoistProjectId = proj.id;
         }
+        if (sectionsRes.ok && todoistProjectId && newTaskSection) {
+          const { sections } = await sectionsRes.json();
+          const sec = sections.find(s => s.project_id === todoistProjectId && s.name === newTaskSection);
+          if (sec) todoistSectionId = sec.id;
+        }
       } catch (e) {
-        console.warn('Failed to fetch Todoist projects:', e);
+        console.warn('Failed to fetch Todoist projects/sections:', e);
       }
 
       // 2. Create in Todoist FIRST
@@ -1340,10 +1324,8 @@ Il mio impegno è:`
         todoistPayload.project_id = todoistProjectId;
       }
 
-      // Add section if applicable
-      const sectionId = SECTION_IDS[newTaskProject]?.[newTaskSection];
-      if (sectionId) {
-        todoistPayload.section_id = sectionId;
+      if (todoistSectionId) {
+        todoistPayload.section_id = todoistSectionId;
       }
 
       const todoistResponse = await fetch(`${BACKEND_URL}/todoist/tasks`, {
@@ -1375,7 +1357,7 @@ Il mio impegno è:`
         todoist_url: todoistUrl,
         todoist_project_id: returnedProjectId,
         todoist_project_name: newTaskProject,
-        todoist_section_id: sectionId || null,
+        todoist_section_id: todoistSectionId || null,
         todoist_section_name: newTaskSection || null,
         created_at: new Date().toISOString()
       };

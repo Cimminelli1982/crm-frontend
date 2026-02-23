@@ -3,14 +3,13 @@ import styled from 'styled-components';
 import useHealthData from '../hooks/command-center/useHealthData';
 import HealthLeftContent from '../components/command-center/left-panel/HealthLeftContent';
 import HealthCenterContent from '../components/command-center/center-panel/HealthCenterContent';
-import { FaChartLine, FaUtensils, FaWeight, FaDumbbell, FaCalendarAlt } from 'react-icons/fa';
+import { FaChartLine, FaUtensils, FaWeight, FaDumbbell } from 'react-icons/fa';
 
 const HEALTH_TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: FaChartLine },
   { id: 'nutrition', label: 'Nutrition', icon: FaUtensils },
   { id: 'body', label: 'Body', icon: FaWeight },
   { id: 'training', label: 'Training', icon: FaDumbbell },
-  { id: 'planner', label: 'Planner', icon: FaCalendarAlt },
 ];
 
 const HealthPage = ({ theme }) => {

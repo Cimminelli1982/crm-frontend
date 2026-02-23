@@ -11,6 +11,7 @@ import {
   FiChevronRight,
   FiCommand,
   FiHeart,
+  FiCalendar,
   FiLogOut
 } from 'react-icons/fi';
 import Logo from './Logo';
@@ -54,7 +55,14 @@ const NewNavigation = ({
       label: 'Health',
       icon: FiHeart,
       path: '/health',
-      description: 'Weight, nutrition, training & planner'
+      description: 'Weight, nutrition & training'
+    },
+    {
+      id: 'planner',
+      label: 'Planner',
+      icon: FiCalendar,
+      path: '/planner',
+      description: 'Tasks, agenda & priorities'
     }
   ];
 
