@@ -4,6 +4,19 @@ import toast from 'react-hot-toast';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 
+// Extract submitter email from noreply email body (Deal Submission)
+function extractSubmitterFromBody(email) {
+  if (email.from_email?.toLowerCase() !== 'noreply@cimminelli.com') return null;
+  if (!email.body_text) return null;
+  const emailMatch = email.body_text.match(/Email:\s*([^\s\n]+@[^\s\n]+)/i);
+  if (!emailMatch) return null;
+  const nameMatch = email.body_text.match(/Name:\s*([^\n]+)/i);
+  return {
+    email: emailMatch[1].trim(),
+    name: nameMatch ? nameMatch[1].trim() : ''
+  };
+}
+
 const EMAIL_SIGNATURE = `
 
 --
@@ -201,6 +214,12 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
       toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
     }
 
+    // Override: for noreply emails (e.g. Deal Submission), use submitter from body
+    const submitter = extractSubmitterFromBody(latestEmail);
+    if (submitter) {
+      toRecipients = [submitter];
+    }
+
     // Get CC recipients for Reply All (excluding myself)
     let ccRecipients = [];
     if (replyAll) {
@@ -249,6 +268,12 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
       toRecipients = latestEmail.to_recipients.map(r => ({ email: r.email, name: r.name || '' }));
     } else {
       toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
+    }
+
+    // Override: for noreply emails (e.g. Deal Submission), use submitter from body
+    const submitter = extractSubmitterFromBody(latestEmail);
+    if (submitter) {
+      toRecipients = [submitter];
     }
 
     // Get CC recipients (including other TO recipients and original CC, excluding myself)
