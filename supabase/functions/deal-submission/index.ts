@@ -25,7 +25,8 @@ async function sendNotificationEmail(dealData: any): Promise<void> {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: 'Deal Submission <noreply@cimminelli.com>',
+        from: `${dealData.firstName} ${dealData.lastName} via Deal Submission <noreply@cimminelli.com>`,
+        reply_to: dealData.email,
         to: notificationEmail,
         subject: `New Deal: ${dealData.companyName}`,
         html: `

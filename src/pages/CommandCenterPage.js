@@ -1395,7 +1395,7 @@ const CommandCenterPage = ({ theme }) => {
       }
       const { data: refreshed } = await supabase
         .from('deals_contacts')
-        .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
+        .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_url, file_type, file_size, permanent_url)))')
         .in('contact_id', contactIds);
       if (refreshed) {
         const dealsMap = new Map();
@@ -1502,7 +1502,7 @@ const CommandCenterPage = ({ theme }) => {
           deal_id,
           contact_id,
           relationship,
-          deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))
+          deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_url, file_type, file_size, permanent_url)))
         `)
         .in('contact_id', contactIds);
 
@@ -1557,7 +1557,7 @@ const CommandCenterPage = ({ theme }) => {
               deal_id,
               contact_id,
               relationship,
-              deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))
+              deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_url, file_type, file_size, permanent_url)))
             `)
             .in('contact_id', companyContactIds);
 
@@ -2853,7 +2853,7 @@ const CommandCenterPage = ({ theme }) => {
                                 const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
                                 const { data: refreshed } = await supabase
                                   .from('deals_contacts')
-                                  .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
+                                  .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_url, file_type, file_size, permanent_url)))')
                                   .in('contact_id', contactIds);
                                 if (refreshed) {
                                   const dealsMap = new Map();
@@ -2955,7 +2955,7 @@ const CommandCenterPage = ({ theme }) => {
                   const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
                   const { data: refreshed } = await supabase
                     .from('deals_contacts')
-                    .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
+                    .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_url, file_type, file_size, permanent_url)))')
                     .in('contact_id', contactIds);
 
                   if (refreshed) {
@@ -4686,7 +4686,7 @@ const CommandCenterPage = ({ theme }) => {
 
             const { data: dealsContactsData } = await supabase
               .from('deals_contacts')
-              .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_type, file_size, permanent_url)))')
+              .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at, deal_attachments(attachment_id, attachments(attachment_id, file_name, file_url, file_type, file_size, permanent_url)))')
               .in('contact_id', contactIds);
 
             const dealsMap = new Map();

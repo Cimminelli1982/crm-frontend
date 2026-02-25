@@ -859,6 +859,25 @@ function extractEmailParticipants(selectedThread) {
     }
   }
 
+  // For automated emails (e.g. Deal Submission from noreply), extract contact email from body
+  for (const email of selectedThread) {
+    if (email.from_email?.toLowerCase() === 'noreply@cimminelli.com' && email.body_text) {
+      const emailMatch = email.body_text.match(/Email:\s*([^\s\n]+@[^\s\n]+)/i);
+      if (emailMatch) {
+        const submitterEmail = emailMatch[1].toLowerCase().trim();
+        if (submitterEmail !== MY_EMAIL.toLowerCase() && !participantsMap.has(submitterEmail)) {
+          // Extract name from body if available
+          const nameMatch = email.body_text.match(/Name:\s*([^\n]+)/i);
+          participantsMap.set(submitterEmail, {
+            email: submitterEmail,
+            name: nameMatch ? nameMatch[1].trim() : submitterEmail,
+            roles: new Set(['from'])
+          });
+        }
+      }
+    }
+  }
+
   return {
     emails: Array.from(participantsMap.keys()),
     phones: [],

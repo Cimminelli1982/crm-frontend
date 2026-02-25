@@ -611,7 +611,7 @@ const DealsTab = ({
                         <AttachmentItem
                           key={da.attachment_id}
                           theme={theme}
-                          href={att.permanent_url}
+                          href={att.permanent_url || att.file_url}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
@@ -734,7 +734,7 @@ const DealsTab = ({
                         <AttachmentItem
                           key={da.attachment_id}
                           theme={theme}
-                          href={att.permanent_url}
+                          href={att.permanent_url || att.file_url}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
