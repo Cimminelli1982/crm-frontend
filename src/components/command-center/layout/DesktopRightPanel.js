@@ -9,7 +9,7 @@ import {
   FaEnvelope, FaWhatsapp, FaCalendarAlt, FaChevronLeft, FaChevronRight,
   FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane,
   FaHandshake, FaTasks, FaPaperclip, FaRobot, FaTag, FaLinkedin, FaRocket,
-  FaGlobe, FaMapMarkerAlt, FaUsers, FaLink, FaExclamationTriangle,
+  FaGlobe, FaMapMarkerAlt, FaUsers, FaLink, FaExclamationTriangle, FaGavel,
 } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import DataIntegrityWarningBar from '../DataIntegrityWarningBar';
@@ -31,6 +31,7 @@ import TasksTab from '../TasksTab';
 import DealsTab from '../DealsTab';
 import DataIntegrityTab from '../DataIntegrityTab';
 import AgentChatTab from '../AgentChatTab';
+import DecisionsPanelTab from '../DecisionsPanelTab';
 
 const DesktopRightPanel = ({
   theme,
@@ -345,6 +346,9 @@ const DesktopRightPanel = ({
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'related'} onClick={() => setActiveActionTab('related')} title="Related by Tag (⌥R)" style={{ color: activeActionTab === 'related' ? '#F59E0B' : undefined }}>
                     <FaTag /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>R</span>
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'decisions'} onClick={() => setActiveActionTab('decisions')} title="Decisions" style={{ color: activeActionTab === 'decisions' ? '#8B5CF6' : undefined }}>
+                    <FaGavel />
                   </ActionTabIcon>
                 </>
               )}
@@ -1777,6 +1781,14 @@ const DesktopRightPanel = ({
                   theme={theme}
                   contactId={selectedRightPanelContactId}
                   contact={rightPanelContactDetails}
+                />
+              )}
+
+              {activeActionTab === 'decisions' && (
+                <DecisionsPanelTab
+                  theme={theme}
+                  contactId={selectedRightPanelContactId}
+                  contactName={rightPanelContactDetails?.contact ? `${rightPanelContactDetails.contact.first_name || ''} ${rightPanelContactDetails.contact.last_name || ''}`.trim() : ''}
                 />
               )}
 

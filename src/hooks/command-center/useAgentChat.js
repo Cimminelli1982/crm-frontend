@@ -155,6 +155,7 @@ const useAgentChat = (activeTab) => {
           let currentCrmUser = null;
           let lastAssistantResponse = null;
 
+          let crmBlockEnded = false; // true after a non-CRM user msg interrupts
           for (const m of allMsgs) {
             if (m.role === 'user') {
               const text = extractText(m.content);
@@ -167,21 +168,14 @@ const useAgentChat = (activeTab) => {
                 }
                 currentCrmUser = m;
                 lastAssistantResponse = null;
+                crmBlockEnded = false;
               } else {
-                // Non-CRM user message — ends the CRM conversation block
-                if (currentCrmUser) {
-                  if (lastAssistantResponse) {
-                    conversations.push({ user: currentCrmUser, assistant: lastAssistantResponse });
-                  } else {
-                    conversations.push({ user: currentCrmUser });
-                  }
-                  currentCrmUser = null;
-                  lastAssistantResponse = null;
-                }
+                // Non-CRM user message (Kevin/Slack/etc) — stop capturing assistant responses
+                crmBlockEnded = true;
               }
-            } else if (m.role === 'assistant' && currentCrmUser) {
+            } else if (m.role === 'assistant' && currentCrmUser && !crmBlockEnded) {
               if (isVisibleMessage(m)) {
-                lastAssistantResponse = m; // Keep overwriting — we want the LAST one
+                lastAssistantResponse = m;
               }
             }
           }
