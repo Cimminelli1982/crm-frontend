@@ -3452,7 +3452,7 @@ app.delete('/google-calendar/delete-event/:eventId', async (req, res) => {
 // Get Google Calendar events directly
 app.get('/google-calendar/events', async (req, res) => {
   try {
-    const { timeMin, timeMax, maxResults = 100 } = req.query;
+    const { timeMin, timeMax, maxResults = 100, calendarId } = req.query;
 
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
       return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
@@ -3463,6 +3463,7 @@ app.get('/google-calendar/events', async (req, res) => {
       timeMin,
       timeMax,
       maxResults: parseInt(maxResults),
+      calendarId: calendarId || undefined,
     });
 
     res.json({ success: true, events });
