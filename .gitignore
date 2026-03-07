@@ -1,5 +1,6 @@
 tmp_fresh/
 node_modules/
+.mcp.json
 
 # Local Netlify folder
 .netlify
