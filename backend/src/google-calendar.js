@@ -89,6 +89,7 @@ export class GoogleCalendarClient {
   // Get events from calendar (for sync)
   async getEvents(options = {}) {
     const {
+      calendarId = this.calendarId,
       timeMin = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(), // 3 months ago
       timeMax = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year ahead
       maxResults = 250,
@@ -113,7 +114,7 @@ export class GoogleCalendarClient {
       params.set('orderBy', orderBy);
     }
 
-    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events?${params}`;
+    const endpoint = `/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
     const data = await this.request(endpoint);
 
     return {
@@ -163,8 +164,8 @@ export class GoogleCalendarClient {
   }
 
   // Get a single event by ID
-  async getEvent(eventId) {
-    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events/${encodeURIComponent(eventId)}`;
+  async getEvent(eventId, calendarId = this.calendarId) {
+    const endpoint = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
     return this.request(endpoint);
   }
 
@@ -184,6 +185,7 @@ export class GoogleCalendarClient {
     timezone = 'Europe/Rome',
     useGoogleMeet = false,
     colorId,
+    calendarId = this.calendarId,
   }) {
     // Normalize date format - ensure full ISO 8601 format with seconds
     const normalizeDateTime = (dateStr) => {
@@ -236,7 +238,7 @@ export class GoogleCalendarClient {
 
     // Add conferenceDataVersion=1 if using Google Meet
     const conferenceParam = useGoogleMeet ? '&conferenceDataVersion=1' : '';
-    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events?sendUpdates=${sendUpdates}${conferenceParam}`;
+    const endpoint = `/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=${sendUpdates}${conferenceParam}`;
     const result = await this.request(endpoint, 'POST', event);
 
     console.log('[GoogleCalendar] Event created:', result.id);
@@ -248,11 +250,11 @@ export class GoogleCalendarClient {
   }
 
   // Update an existing event
-  async updateEvent(eventId, updates, sendUpdates = 'all') {
-    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates}`;
+  async updateEvent(eventId, updates, sendUpdates = 'all', calendarId = this.calendarId) {
+    const endpoint = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates}`;
 
     // First get the existing event
-    const existing = await this.getEvent(eventId);
+    const existing = await this.getEvent(eventId, calendarId);
 
     // Merge updates
     const updated = {
@@ -288,8 +290,8 @@ export class GoogleCalendarClient {
   }
 
   // Delete an event
-  async deleteEvent(eventId, sendUpdates = 'all') {
-    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates}`;
+  async deleteEvent(eventId, sendUpdates = 'all', calendarId = this.calendarId) {
+    const endpoint = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates}`;
 
     const token = await this.getAccessToken();
     const response = await fetch(`${CALENDAR_API_BASE}${endpoint}`, {

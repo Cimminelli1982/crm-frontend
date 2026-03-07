@@ -3324,6 +3324,7 @@ app.post('/google-calendar/create-event', async (req, res) => {
       timezone,
       useGoogleMeet,
       colorId,
+      calendarId,
       sendUpdates = 'all', // 'all' sends invite emails
     } = req.body;
 
@@ -3337,7 +3338,7 @@ app.post('/google-calendar/create-event', async (req, res) => {
 
     const gcal = getGoogleCalendarClient();
 
-    console.log('[GoogleCalendar] Creating event:', title, 'at', startDate, 'timezone:', timezone, 'googleMeet:', useGoogleMeet);
+    console.log('[GoogleCalendar] Creating event:', title, 'at', startDate, 'timezone:', timezone, 'googleMeet:', useGoogleMeet, 'calendar:', calendarId || 'default');
 
     const result = await gcal.createEvent({
       title,
@@ -3351,6 +3352,7 @@ app.post('/google-calendar/create-event', async (req, res) => {
       timezone: timezone || 'Europe/Rome',
       useGoogleMeet: useGoogleMeet || false,
       colorId: colorId || undefined,
+      calendarId: calendarId || undefined,
     });
 
     console.log('[GoogleCalendar] Event created:', result.id);
@@ -3400,14 +3402,14 @@ app.post('/google-calendar/create-event', async (req, res) => {
 app.put('/google-calendar/update-event/:eventId', async (req, res) => {
   try {
     const { eventId } = req.params;
-    const updates = req.body;
+    const { calendarId, sendUpdates = 'all', ...updates } = req.body;
 
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
       return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
     }
 
     const gcal = getGoogleCalendarClient();
-    const result = await gcal.updateEvent(eventId, updates);
+    const result = await gcal.updateEvent(eventId, updates, sendUpdates, calendarId || undefined);
 
     console.log('[GoogleCalendar] Event updated:', eventId);
 
@@ -3422,14 +3424,14 @@ app.put('/google-calendar/update-event/:eventId', async (req, res) => {
 app.delete('/google-calendar/delete-event/:eventId', async (req, res) => {
   try {
     const { eventId } = req.params;
-    const { sendUpdates = 'all' } = req.query;
+    const { sendUpdates = 'all', calendarId } = req.query;
 
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
       return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
     }
 
     const gcal = getGoogleCalendarClient();
-    await gcal.deleteEvent(eventId, sendUpdates);
+    await gcal.deleteEvent(eventId, sendUpdates, calendarId || undefined);
 
     // Also remove from command_center_inbox
     await supabase
