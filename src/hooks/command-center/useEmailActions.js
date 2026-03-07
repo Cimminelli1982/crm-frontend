@@ -31,6 +31,9 @@ const useEmailActions = ({
   // Spam menu state
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
 
+  // News menu state
+  const [newsMenuOpen, setNewsMenuOpen] = useState(false);
+
   // Archive email in Fastmail
   const archiveInFastmail = async (fastmailId) => {
     try {
@@ -964,20 +967,18 @@ const useEmailActions = ({
         deletedCount = deleted?.length || 0;
         console.log('Deleted emails:', deleted);
 
-        // Update local state - remove all emails from this sender
-        const idsToRemove = new Set(deleted?.map(e => e.id) || []);
-        setEmails(prev => prev.filter(e => !idsToRemove.has(e.id)));
+        // Update local state - remove all emails from this sender by email address
+        setEmails(prev => prev.filter(e => e.from_email?.toLowerCase() !== emailAddr));
         setThreads(prev => {
           const updated = prev.map(t => ({
             ...t,
-            emails: t.emails.filter(e => !idsToRemove.has(e.id)),
-            count: t.emails.filter(e => !idsToRemove.has(e.id)).length
+            emails: t.emails.filter(e => e.from_email?.toLowerCase() !== emailAddr),
           })).filter(t => t.emails.length > 0);
 
-          // Update latestEmail for remaining threads
           return updated.map(t => ({
             ...t,
-            latestEmail: t.emails[0]
+            latestEmail: t.emails[0],
+            count: t.emails.length
           }));
         });
 
@@ -1051,19 +1052,18 @@ const useEmailActions = ({
         deletedCount = deleted?.length || 0;
         console.log('Deleted emails:', deleted);
 
-        // Update local state - remove all emails from this domain
-        const idsToRemove = new Set(deleted?.map(e => e.id) || []);
-        setEmails(prev => prev.filter(e => !idsToRemove.has(e.id)));
+        // Update local state - remove all emails from this domain by domain match
+        setEmails(prev => prev.filter(e => !e.from_email?.toLowerCase().endsWith(`@${domain}`)));
         setThreads(prev => {
           const updated = prev.map(t => ({
             ...t,
-            emails: t.emails.filter(e => !idsToRemove.has(e.id)),
-            count: t.emails.filter(e => !idsToRemove.has(e.id)).length
+            emails: t.emails.filter(e => !e.from_email?.toLowerCase().endsWith(`@${domain}`)),
           })).filter(t => t.emails.length > 0);
 
           return updated.map(t => ({
             ...t,
-            latestEmail: t.emails[0]
+            latestEmail: t.emails[0],
+            count: t.emails.length
           }));
         });
 
@@ -1085,6 +1085,106 @@ const useEmailActions = ({
     } catch (error) {
       console.error('Spam error:', error);
       toast.error('Failed to mark as spam');
+    }
+  };
+
+  // Mark email/domain as news (newsletters, mailing lists)
+  const markAsNews = async (type) => {
+    const latestEmail = getLatestEmail();
+    if (!latestEmail) return;
+
+    const emailAddr = latestEmail.from_email?.toLowerCase();
+    const domain = emailAddr?.split('@')[1];
+
+    try {
+      if (type === 'email') {
+        // Upsert into emails_news
+        const { data: existingArr } = await supabase
+          .from('emails_news')
+          .select('counter')
+          .eq('email', emailAddr);
+
+        const existing = existingArr?.[0];
+        if (existing) {
+          await supabase
+            .from('emails_news')
+            .update({
+              counter: existing.counter + 1,
+              last_modified_at: new Date().toISOString()
+            })
+            .eq('email', emailAddr);
+        } else {
+          await supabase.from('emails_news').insert({
+            email: emailAddr,
+            counter: 1,
+            created_at: new Date().toISOString(),
+            last_modified_at: new Date().toISOString(),
+          });
+        }
+
+        // Update all emails from this sender: set status='news'
+        await supabase
+          .from('command_center_inbox')
+          .update({ status: 'news' })
+          .ilike('from_email', emailAddr);
+
+        // Update local state — thread status follows latestEmail status
+        setThreads(prev => prev.map(t => {
+          const updatedEmails = t.emails.map(e =>
+            e.from_email?.toLowerCase() === emailAddr ? { ...e, status: 'news' } : e
+          );
+          const updatedLatest = updatedEmails[0];
+          return { ...t, emails: updatedEmails, latestEmail: updatedLatest, status: updatedLatest?.status || null };
+        }));
+
+        toast.success(`Marked ${emailAddr} as news`);
+      } else {
+        // Upsert into domains_news
+        const { data: existingArr } = await supabase
+          .from('domains_news')
+          .select('counter')
+          .eq('domain', domain);
+
+        const existing = existingArr?.[0];
+        if (existing) {
+          await supabase
+            .from('domains_news')
+            .update({
+              counter: existing.counter + 1,
+              last_modified_at: new Date().toISOString()
+            })
+            .eq('domain', domain);
+        } else {
+          await supabase.from('domains_news').insert({
+            domain: domain,
+            counter: 1,
+            created_at: new Date().toISOString(),
+            last_modified_at: new Date().toISOString(),
+          });
+        }
+
+        // Update all emails from this domain: set status='news'
+        await supabase
+          .from('command_center_inbox')
+          .update({ status: 'news' })
+          .ilike('from_email', `%@${domain}`);
+
+        // Update local state — thread status follows latestEmail status
+        setThreads(prev => prev.map(t => {
+          const updatedEmails = t.emails.map(e =>
+            e.from_email?.toLowerCase().endsWith(`@${domain}`) ? { ...e, status: 'news' } : e
+          );
+          const updatedLatest = updatedEmails[0];
+          return { ...t, emails: updatedEmails, latestEmail: updatedLatest, status: updatedLatest?.status || null };
+        }));
+
+        toast.success(`Marked @${domain} as news`);
+      }
+
+      setNewsMenuOpen(false);
+    } catch (error) {
+      console.error('News mark error:', error);
+      toast.error('Failed to mark as news');
     }
   };
 
@@ -1132,6 +1232,49 @@ const useEmailActions = ({
     }
   };
 
+  // Move email back to inbox (clear status)
+  const moveToInbox = async () => {
+    const latestEmail = getLatestEmail();
+    if (!latestEmail) return;
+
+    try {
+      const threadId = latestEmail.thread_id || latestEmail.id;
+
+      // Get all email IDs in this thread
+      const emailIds = selectedThread?.map(e => e.id) || [latestEmail.id];
+
+      // Clear status in DB
+      const { error } = await supabase
+        .from('command_center_inbox')
+        .update({ status: null })
+        .in('id', emailIds);
+
+      if (error) {
+        console.error('Move to inbox error:', error);
+        toast.error('Failed to move to inbox');
+        return;
+      }
+
+      // Update local state
+      setThreads(prev => prev.map(t =>
+        t.threadId === threadId
+          ? {
+              ...t,
+              status: null,
+              emails: t.emails.map(e => ({ ...e, status: null })),
+              latestEmail: { ...t.latestEmail, status: null },
+            }
+          : t
+      ));
+      setSelectedThread(prev => prev?.map(e => ({ ...e, status: null })) || null);
+
+      toast.success('Moved to inbox');
+    } catch (error) {
+      console.error('Move to inbox error:', error);
+      toast.error('Failed to move to inbox');
+    }
+  };
+
   // Download email attachment via backend proxy
   const handleDownloadAttachment = async (att) => {
     try {
@@ -1173,6 +1316,8 @@ const useEmailActions = ({
     setSaveAndArchiveCallback,
     spamMenuOpen,
     setSpamMenuOpen,
+    newsMenuOpen,
+    setNewsMenuOpen,
 
     // Handlers
     archiveInFastmail,
@@ -1186,6 +1331,8 @@ const useEmailActions = ({
     saveAndArchiveAsync,
     updateItemStatus,
     markAsSpam,
+    markAsNews,
+    moveToInbox,
     deleteEmail,
     handleDownloadAttachment,
   };

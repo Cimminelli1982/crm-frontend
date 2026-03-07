@@ -26,11 +26,13 @@ function getDomain(email) {
   return parts.length === 2 ? parts[1].toLowerCase() : null;
 }
 
-// Load spam lists from DB
-async function loadSpamLists() {
-  const [emailsResult, domainsResult] = await Promise.all([
+// Load spam and news lists from DB
+async function loadSpamAndNewsLists() {
+  const [emailsResult, domainsResult, newsEmailsResult, newsDomainsResult] = await Promise.all([
     supabase.from('emails_spam').select('email'),
     supabase.from('domains_spam').select('domain'),
+    supabase.from('emails_news').select('email'),
+    supabase.from('domains_news').select('domain'),
   ]);
 
   if (emailsResult.error) {
@@ -39,6 +41,12 @@ async function loadSpamLists() {
   if (domainsResult.error) {
     console.error('Error loading domains_spam:', domainsResult.error.message);
   }
+  if (newsEmailsResult.error) {
+    console.error('Error loading emails_news:', newsEmailsResult.error.message);
+  }
+  if (newsDomainsResult.error) {
+    console.error('Error loading domains_news:', newsDomainsResult.error.message);
+  }
 
   const spamEmails = new Set(
     (emailsResult.data || []).map(e => e.email?.toLowerCase()).filter(Boolean)
@@ -46,8 +54,14 @@ async function loadSpamLists() {
   const spamDomains = new Set(
     (domainsResult.data || []).map(d => d.domain?.toLowerCase()).filter(Boolean)
   );
+  const newsEmails = new Set(
+    (newsEmailsResult.data || []).map(e => e.email?.toLowerCase()).filter(Boolean)
+  );
+  const newsDomains = new Set(
+    (newsDomainsResult.data || []).map(d => d.domain?.toLowerCase()).filter(Boolean)
+  );
 
-  return { spamEmails, spamDomains };
+  return { spamEmails, spamDomains, newsEmails, newsDomains };
 }
 
 // Add email to spam list
@@ -104,12 +118,13 @@ async function incrementDomainSpamCounter(domain) {
 // Filter and upsert emails with spam detection
 // Returns { validEmails: [...], spamByEmail: [...], spamByDomain: [...] }
 export async function upsertEmailsWithSpamFilter(emails) {
-  const { spamEmails, spamDomains } = await loadSpamLists();
+  const { spamEmails, spamDomains, newsEmails, newsDomains } = await loadSpamAndNewsLists();
 
   const validEmails = [];
   const spamByEmail = []; // Fastmail IDs blocked by email address -> Skip_Email
   const spamByDomain = []; // Fastmail IDs blocked by domain -> Skip_Domain
   const myEmail = process.env.FASTMAIL_USERNAME?.toLowerCase();
+  let newsCount = 0;
 
   for (const email of emails) {
     const fromEmail = email.from_email?.toLowerCase();
@@ -146,6 +161,24 @@ export async function upsertEmailsWithSpamFilter(emails) {
       continue;
     }
 
+    // Check 4: Email in news list
+    if (fromEmail && newsEmails.has(fromEmail)) {
+      console.log(`  [NEWS] Email: ${fromEmail}`);
+      email.status = 'news';
+      validEmails.push(email);
+      newsCount++;
+      continue;
+    }
+
+    // Check 5: Domain in news list
+    if (domain && newsDomains.has(domain)) {
+      console.log(`  [NEWS] Domain: ${domain}`);
+      email.status = 'news';
+      validEmails.push(email);
+      newsCount++;
+      continue;
+    }
+
     // Passed all filters
     validEmails.push(email);
   }
@@ -153,6 +186,9 @@ export async function upsertEmailsWithSpamFilter(emails) {
   const totalSpam = spamByEmail.length + spamByDomain.length;
   if (totalSpam > 0) {
     console.log(`  Filtered ${totalSpam} spam emails (${spamByEmail.length} by email, ${spamByDomain.length} by domain)`);
+  }
+  if (newsCount > 0) {
+    console.log(`  Tagged ${newsCount} emails as news`);
   }
 
   let insertedData = [];

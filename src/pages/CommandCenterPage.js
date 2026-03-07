@@ -518,6 +518,8 @@ const CommandCenterPage = ({ theme }) => {
     inbox: true,
     need_actions: false,
     waiting_input: false,
+    news: false,
+    potential_spam: false,
     archiving: false
   });
 

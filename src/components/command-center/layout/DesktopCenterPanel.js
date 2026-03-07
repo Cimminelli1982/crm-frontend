@@ -15,7 +15,7 @@ import {
   FaEnvelope, FaCalendar, FaCalendarPlus, FaChevronDown, FaUser, FaBuilding,
   FaDollarSign, FaTimes, FaTrash, FaLightbulb, FaHandshake, FaArchive, FaCrown,
   FaPaperclip, FaCheck, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaUserCheck,
-  FaTag, FaUpload, FaFileAlt, FaMapMarkerAlt, FaVideo,
+  FaTag, FaUpload, FaFileAlt, FaMapMarkerAlt, FaVideo, FaNewspaper,
 } from 'react-icons/fa';
 import { FiEye } from 'react-icons/fi';
 import FilePreviewModal, { isPreviewable } from '../../modals/FilePreviewModal';
@@ -136,10 +136,11 @@ const DesktopCenterPanel = ({
 
   // Destructure emailActionsHook
   const {
-    saving, setSaving, handleDoneClick, markAsSpam, deleteEmail,
+    saving, setSaving, handleDoneClick, markAsSpam, markAsNews, moveToInbox, deleteEmail,
     handleDownloadAttachment, updateItemStatus,
     handleImportCalendarInvitation, isCalendarInvitation,
     spamMenuOpen, setSpamMenuOpen,
+    newsMenuOpen, setNewsMenuOpen,
   } = emailActionsHook;
 
   // Destructure emailCompose
@@ -3068,6 +3069,34 @@ const DesktopCenterPanel = ({
                   {selectedThread.length > 1 && <span style={{ opacity: 0.6, marginLeft: '8px' }}>({selectedThread.length} messages)</span>}
                 </EmailSubjectFull>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* Move to Inbox - only for potential_spam emails */}
+                  {selectedThread[0]?.status === 'potential_spam' && (
+                    <button
+                      onClick={moveToInbox}
+                      disabled={saving}
+                      title="Move to Inbox"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        height: '36px',
+                        padding: '0 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: theme === 'light' ? '#DBEAFE' : '#1E3A5F',
+                        color: theme === 'light' ? '#2563EB' : '#93C5FD',
+                        cursor: saving ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        opacity: saving ? 0.5 : 1,
+                        fontSize: '13px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <FaEnvelope size={14} />
+                      Move to Inbox
+                    </button>
+                  )}
+
                   {/* Spam - only for received emails */}
                   {selectedThread[0]?.from_email?.toLowerCase() !== MY_EMAIL && (
                     <div style={{ position: 'relative' }}>
@@ -3142,6 +3171,86 @@ const DesktopCenterPanel = ({
                             onMouseOut={(e) => e.target.style.background = 'transparent'}
                           >
                             Block Domain: {selectedThread[0]?.from_email?.split('@')[1]}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* News - only for received emails */}
+                  {selectedThread[0]?.from_email?.toLowerCase() !== MY_EMAIL && (
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => setNewsMenuOpen(!newsMenuOpen)}
+                        disabled={saving}
+                        title="Mark as news"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: theme === 'light' ? '#DBEAFE' : '#1E3A5F',
+                          color: theme === 'light' ? '#2563EB' : '#93C5FD',
+                          cursor: saving ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s ease',
+                          opacity: saving ? 0.5 : 1,
+                          fontSize: '16px',
+                        }}
+                      >
+                        <FaNewspaper size={16} />
+                      </button>
+                      {newsMenuOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: '4px',
+                          background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          overflow: 'hidden',
+                          zIndex: 100,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <button
+                            onClick={() => markAsNews('email')}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              padding: '10px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              fontSize: '14px',
+                              textAlign: 'left',
+                              cursor: 'pointer'
+                            }}
+                            onMouseOver={(e) => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                            onMouseOut={(e) => e.target.style.background = 'transparent'}
+                          >
+                            News Email: {selectedThread[0]?.from_email}
+                          </button>
+                          <button
+                            onClick={() => markAsNews('domain')}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              padding: '10px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              fontSize: '14px',
+                              textAlign: 'left',
+                              cursor: 'pointer'
+                            }}
+                            onMouseOver={(e) => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                            onMouseOut={(e) => e.target.style.background = 'transparent'}
+                          >
+                            News Domain: {selectedThread[0]?.from_email?.split('@')[1]}
                           </button>
                         </div>
                       )}

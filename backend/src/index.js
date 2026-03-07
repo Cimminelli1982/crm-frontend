@@ -56,6 +56,85 @@ const CRM_AGENT_URL = process.env.CRM_AGENT_URL || 'http://localhost:8000';
 let lastSyncTime = null;
 let syncCount = 0;
 
+// Classify new emails as potential spam using Claude Haiku
+async function classifyPotentialSpam(emails) {
+  if (!emails || emails.length === 0) return;
+
+  // Only classify emails without a status (inbox emails, not already news/spam)
+  const toClassify = emails.filter(e => !e.status && e.from_email);
+  if (toClassify.length === 0) return;
+
+  console.log(`[SpamClassifier] Classifying ${toClassify.length} emails...`);
+
+  const batch = toClassify.map(e => ({
+    id: e.id,
+    from: `${e.from_name || ''} <${e.from_email}>`,
+    subject: e.subject || '(no subject)',
+    snippet: (e.snippet || e.body_text || '').substring(0, 200),
+  }));
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `You are a spam classifier for a personal CRM inbox. The user is a venture capital professional.
+
+Classify each email as SPAM or OK.
+
+SPAM means: unsolicited commercial, newsletters the user didn't sign up for, cold outreach from vendors/recruiters, automated notifications from services, promotional emails, mass marketing.
+
+OK means: personal emails, business emails from known contacts, deal-related communications, introductions, meeting requests, replies to conversations.
+
+When in doubt, mark as OK (false negatives are better than false positives).
+
+Emails to classify:
+${batch.map((e, i) => `${i + 1}. ID: ${e.id}\n   From: ${e.from}\n   Subject: ${e.subject}\n   Preview: ${e.snippet}`).join('\n\n')}
+
+Reply with ONLY a JSON array of objects with "id" and "spam" (boolean) fields. No explanation.
+Example: [{"id":"abc","spam":true},{"id":"def","spam":false}]`
+      }]
+    });
+
+    const text = response.content[0]?.text?.trim();
+    let results;
+    try {
+      results = JSON.parse(text);
+    } catch {
+      // Try to extract JSON from response
+      const match = text.match(/\[[\s\S]*\]/);
+      if (match) results = JSON.parse(match[0]);
+      else {
+        console.error('[SpamClassifier] Could not parse response:', text.substring(0, 200));
+        return;
+      }
+    }
+
+    const spamIds = results.filter(r => r.spam).map(r => r.id);
+    if (spamIds.length === 0) {
+      console.log('[SpamClassifier] No potential spam detected');
+      return;
+    }
+
+    // Update status to 'potential_spam' for classified emails
+    const { error } = await supabase
+      .from('command_center_inbox')
+      .update({ status: 'potential_spam' })
+      .in('id', spamIds);
+
+    if (error) {
+      console.error('[SpamClassifier] Update error:', error.message);
+    } else {
+      const spamEmails = batch.filter(e => spamIds.includes(e.id));
+      console.log(`[SpamClassifier] Marked ${spamIds.length} as potential spam:`);
+      spamEmails.forEach(e => console.log(`  - ${e.from}: ${e.subject}`));
+    }
+  } catch (error) {
+    console.error('[SpamClassifier] Error:', error.message);
+  }
+}
+
 // Send new emails to CRM Agent for analysis
 async function notifyAgentOfNewEmails(emails) {
   if (!emails || emails.length === 0) return;
@@ -186,8 +265,13 @@ async function autoSync() {
 
     console.log(`[${lastSyncTime}] Synced ${validEmails.length} emails (total syncs: ${syncCount})`);
 
-    // Notify CRM Agent of new emails (async, don't block)
+    // Classify potential spam with LLM (async, don't block sync)
     if (validEmails.length > 0) {
+      classifyPotentialSpam(validEmails).catch(err => {
+        console.error('[SpamClassifier] Background error:', err.message);
+      });
+
+      // Notify CRM Agent of new emails (async, don't block)
       notifyAgentOfNewEmails(validEmails).catch(err => {
         console.error('[Agent] Background notification error:', err.message);
       });
