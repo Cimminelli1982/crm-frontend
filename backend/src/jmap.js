@@ -239,6 +239,14 @@ export class JMAPClient {
     return this.getOrCreateFolder('Skip_Domain');
   }
 
+  async getNewsFolderId() {
+    return this.getOrCreateFolder('News');
+  }
+
+  async getPotentialSpamFolderId() {
+    return this.getOrCreateFolder('Potential_Spam');
+  }
+
   async moveToFolder(emailId, folderId, markAsRead = false) {
     const update = {
       mailboxIds: { [folderId]: true }

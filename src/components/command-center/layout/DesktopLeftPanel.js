@@ -8,6 +8,7 @@ import DealsLeftContent from '../left-panel/DealsLeftContent';
 import KITLeftContent from '../left-panel/KITLeftContent';
 import IntroductionsLeftContent from '../left-panel/IntroductionsLeftContent';
 import NotesLeftContent from '../left-panel/NotesLeftContent';
+import DataQualityLeftContent from '../left-panel/DataQualityLeftContent';
 
 const DesktopLeftPanel = ({
   theme,
@@ -23,6 +24,7 @@ const DesktopLeftPanel = ({
   emailCompose,
   rightPanelHook,
   notesHook,
+  dataQualityHook,
 }) => {
   const { emails, threads, selectedThread, threadsLoading, refreshThreads } = emailThreads;
   const {
@@ -74,7 +76,7 @@ const DesktopLeftPanel = ({
   } = introductionsHook;
   const { emailContacts } = contextContactsHook;
   const { openNewCompose } = emailCompose || {};
-  const { setActiveActionTab } = rightPanelHook || {};
+  const { setActiveActionTab, setSelectedRightPanelContactId } = rightPanelHook || {};
 
   if (['lists', 'tasks'].includes(activeTab)) return null;
 
@@ -536,6 +538,9 @@ const DesktopLeftPanel = ({
     if (activeTab === 'notes' && notesHook) {
       return `${notesHook.filteredNotes.length} notes`;
     }
+    if (activeTab === 'dataquality' && dataQualityHook) {
+      return `${dataQualityHook.dqContacts.length} pending`;
+    }
     return null;
   })();
 
@@ -662,6 +667,26 @@ const DesktopLeftPanel = ({
           handleSelectNote={notesHook.handleSelectNote}
           loading={notesHook.loading}
           FOLDER_CONFIG={notesHook.FOLDER_CONFIG}
+        />
+      );
+    }
+    if (activeTab === 'dataquality' && dataQualityHook) {
+      return (
+        <DataQualityLeftContent
+          theme={theme}
+          dqContacts={dataQualityHook.dqContacts}
+          dqLoading={dataQualityHook.dqLoading}
+          selectedDqContact={dataQualityHook.selectedDqContact}
+          onSelectContact={(contact) => {
+            dataQualityHook.setSelectedDqContact(contact);
+            if (contact?.contact_id) {
+              setSelectedRightPanelContactId(contact.contact_id);
+              setActiveActionTab('crm');
+            }
+          }}
+          dqSections={dataQualityHook.dqSections}
+          toggleDqSection={dataQualityHook.toggleDqSection}
+          filterByBucket={dataQualityHook.filterByBucket}
         />
       );
     }

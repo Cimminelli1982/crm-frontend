@@ -15,6 +15,7 @@ const useRightPanelState = ({
   keepInTouchContactDetails,
   archivedWhatsappContact,
   onKeepInTouchUpdated,
+  selectedDqContact,
 }) => {
   // Active action tab (right panel tab)
   const [activeActionTab, setActiveActionTab] = useState('agentChat');
@@ -448,8 +449,21 @@ const useRightPanelState = ({
       }));
     }
 
+    if (activeTab === 'dataquality' && selectedDqContact) {
+      return [{
+        contact_id: selectedDqContact.contact_id,
+        first_name: selectedDqContact.first_name || '',
+        last_name: selectedDqContact.last_name || '',
+        email: null,
+        role: 'Contact',
+        completeness_score: selectedDqContact.score || 0,
+        show_missing: true,
+        profile_image_url: selectedDqContact.profile_image_url,
+      }];
+    }
+
     return [];
-  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts, tasksChatContacts, tasksCompanyContacts, tasksDealsContacts, archivedWhatsappContact, notesLinkedContacts]);
+  }, [activeTab, emailContacts, selectedIntroductionItem, selectedKeepInTouchContact, keepInTouchContactDetails, selectedListMember, tasksLinkedContacts, tasksChatContacts, tasksCompanyContacts, tasksDealsContacts, archivedWhatsappContact, notesLinkedContacts, selectedDqContact]);
 
   // Enrich contacts with completeness scores from DB
   const [enrichedRightPanelContacts, setEnrichedRightPanelContacts] = useState([]);

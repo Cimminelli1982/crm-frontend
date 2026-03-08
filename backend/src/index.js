@@ -57,7 +57,7 @@ let lastSyncTime = null;
 let syncCount = 0;
 
 // Classify new emails as potential spam using Claude Haiku
-async function classifyPotentialSpam(emails) {
+async function classifyPotentialSpam(emails, jmap) {
   if (!emails || emails.length === 0) return;
 
   // Only classify emails without a status (inbox emails, not already news/spam)
@@ -129,6 +129,24 @@ Example: [{"id":"abc","spam":true},{"id":"def","spam":false}]`
       const spamEmails = batch.filter(e => spamIds.includes(e.id));
       console.log(`[SpamClassifier] Marked ${spamIds.length} as potential spam:`);
       spamEmails.forEach(e => console.log(`  - ${e.from}: ${e.subject}`));
+
+      // Move potential_spam emails to Potential_Spam folder in Fastmail
+      if (jmap) {
+        const spamFastmailIds = toClassify
+          .filter(e => spamIds.includes(e.id))
+          .map(e => e.fastmail_id)
+          .filter(Boolean);
+
+        if (spamFastmailIds.length > 0) {
+          try {
+            const potentialSpamFolderId = await jmap.getPotentialSpamFolderId();
+            const moveResult = await jmap.moveMultipleToFolder(spamFastmailIds, potentialSpamFolderId, true);
+            console.log(`[SpamClassifier] Moved ${moveResult.moved} to Potential_Spam folder`);
+          } catch (moveError) {
+            console.error('[SpamClassifier] Error moving to Potential_Spam:', moveError.message);
+          }
+        }
+      }
     }
   } catch (error) {
     console.error('[SpamClassifier] Error:', error.message);
@@ -228,7 +246,7 @@ async function autoSync() {
     const uniqueEmails = [...new Map(allEmails.map(e => [e.id, e])).values()];
 
     const transformed = uniqueEmails.map(transformEmail);
-    const { validEmails, spamByEmail, spamByDomain } = await upsertEmails(transformed);
+    const { validEmails, spamByEmail, spamByDomain, newsFastmailIds } = await upsertEmails(transformed);
 
     // Stamp all synced emails with $crm_done keyword to prevent re-sync
     const allFastmailIds = uniqueEmails.map(e => e.id).filter(Boolean);
@@ -253,6 +271,18 @@ async function autoSync() {
       }
     }
 
+    // Move news emails to News folder in Fastmail
+    if (newsFastmailIds?.length > 0) {
+      console.log(`  Moving ${newsFastmailIds.length} news emails to News folder...`);
+      try {
+        const newsFolderId = await jmap.getNewsFolderId();
+        const newsResult = await jmap.moveMultipleToFolder(newsFastmailIds, newsFolderId, true);
+        console.log(`  Moved ${newsResult.moved} emails to News`);
+      } catch (newsError) {
+        console.error(`  Error moving emails to News:`, newsError.message);
+      }
+    }
+
     // Update sync state separately for each mailbox type
     for (const [role, newestDate] of Object.entries(newestDates)) {
       if (newestDate > new Date(0)) {
@@ -267,7 +297,7 @@ async function autoSync() {
 
     // Classify potential spam with LLM (async, don't block sync)
     if (validEmails.length > 0) {
-      classifyPotentialSpam(validEmails).catch(err => {
+      classifyPotentialSpam(validEmails, jmap).catch(err => {
         console.error('[SpamClassifier] Background error:', err.message);
       });
 

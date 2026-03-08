@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
 const GATEWAY_URL = 'wss://gw.angelinvesting.it';
-const GATEWAY_TOKEN = '7715c0390967f22d6262c93f067b06a84228d174cea01a2c';
+const GATEWAY_TOKEN = '1f8ec4f3ea80632d483deab6d294ea8510684868affdea60';
 
 const AGENTS = [
-  { id: 'pa', name: 'PA', emoji: '🤖', color: '#8B5CF6' },
+  { id: 'receptionist', name: 'Receptionist', emoji: '🛎️', color: '#10B981' },
 ];
 
 // Slash command definitions
@@ -98,7 +98,7 @@ function parseSlashCommand(text) {
 // Build dynamic session key based on active tab
 function buildSessionKey(activeTab) {
   const tab = activeTab || 'general';
-  return `agent:pa:${tab}`;
+  return `agent:receptionist:${tab}`;
 }
 
 const useAgentChat = (activeTab) => {
@@ -233,7 +233,7 @@ const useAgentChat = (activeTab) => {
             contextId: context.id || null,
             metadata: context.metadata || {},
           },
-          assigned_to: 'pa',
+          assigned_to: 'receptionist',
           status: 'pending',
         })
         .select('id')

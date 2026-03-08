@@ -123,6 +123,7 @@ export async function upsertEmailsWithSpamFilter(emails) {
   const validEmails = [];
   const spamByEmail = []; // Fastmail IDs blocked by email address -> Skip_Email
   const spamByDomain = []; // Fastmail IDs blocked by domain -> Skip_Domain
+  const newsFastmailIds = []; // Fastmail IDs tagged as news -> News folder
   const myEmail = process.env.FASTMAIL_USERNAME?.toLowerCase();
   let newsCount = 0;
 
@@ -166,6 +167,7 @@ export async function upsertEmailsWithSpamFilter(emails) {
       console.log(`  [NEWS] Email: ${fromEmail}`);
       email.status = 'news';
       validEmails.push(email);
+      newsFastmailIds.push(email.fastmail_id);
       newsCount++;
       continue;
     }
@@ -175,6 +177,7 @@ export async function upsertEmailsWithSpamFilter(emails) {
       console.log(`  [NEWS] Domain: ${domain}`);
       email.status = 'news';
       validEmails.push(email);
+      newsFastmailIds.push(email.fastmail_id);
       newsCount++;
       continue;
     }
@@ -208,7 +211,7 @@ export async function upsertEmailsWithSpamFilter(emails) {
     insertedData = data;
   }
 
-  return { validEmails: insertedData, spamByEmail, spamByDomain };
+  return { validEmails: insertedData, spamByEmail, spamByDomain, newsFastmailIds };
 }
 
 // Legacy function (without spam filter)

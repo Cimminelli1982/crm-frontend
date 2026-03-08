@@ -23,6 +23,7 @@ import WhatsAppTab from '../WhatsAppTab';
 import NotesCenterContent from '../center-panel/NotesCenterContent';
 import ListsTab from '../ListsTab';
 import TasksFullTab from '../TasksFullTab';
+import DataQualityCenterContent from '../center-panel/DataQualityCenterContent';
 
 const DesktopCenterPanel = ({
   theme,
@@ -42,6 +43,7 @@ const DesktopCenterPanel = ({
   profileImageModal,
   modalState,
   notesHook,
+  dataQualityHook,
 }) => {
   // Destructure emailThreads
   const { emails, threads, selectedThread } = emailThreads;
@@ -3039,6 +3041,11 @@ const DesktopCenterPanel = ({
             <NotesCenterContent
               theme={theme}
               notesHook={notesHook}
+            />
+          ) : activeTab === 'dataquality' ? (
+            <DataQualityCenterContent
+              theme={theme}
+              dataQualityHook={dataQualityHook}
             />
           ) : activeTab === 'lists' ? (
             <ListsTab

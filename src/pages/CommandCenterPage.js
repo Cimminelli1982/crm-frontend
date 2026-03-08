@@ -92,7 +92,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarAlt, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList, FaSyncAlt, FaSpinner } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarAlt, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList, FaSyncAlt, FaSpinner, FaUserCog } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -164,6 +164,7 @@ import useWhatsAppData from '../hooks/command-center/useWhatsAppData';
 import useDataIntegrity from '../hooks/command-center/useDataIntegrity';
 import useEmailActions from '../hooks/command-center/useEmailActions';
 import useRightPanelState from '../hooks/command-center/useRightPanelState';
+import useDataQualityData from '../hooks/command-center/useDataQualityData';
 import useNotesData from '../hooks/command-center/useNotesData';
 import useAgentChat from '../hooks/command-center/useAgentChat';
 import { CommandCenterMobile } from '../components/mobile/command-center';
@@ -674,12 +675,16 @@ const CommandCenterPage = ({ theme }) => {
     }
   }, [activeTab, selectedKeepInTouchContact?.contact_id]);
 
+  // Data Quality hook
+  const dataQualityHook = useDataQualityData(activeTab);
+
   // Right panel state hook (must be after useContextContacts so emailContacts is available)
   const rightPanelHook = useRightPanelState({
     activeTab, emailContacts,
     selectedIntroductionItem, selectedKeepInTouchContact,
     keepInTouchContactDetails, archivedWhatsappContact,
     onKeepInTouchUpdated,
+    selectedDqContact: dataQualityHook.selectedDqContact,
   });
   const {
     activeActionTab, setActiveActionTab,
@@ -2421,6 +2426,7 @@ const CommandCenterPage = ({ theme }) => {
     { id: 'introductions', label: 'Introductions', icon: FaHandshake, count: filterIntroductionsBySection(introductionsList, 'inbox').length, hasUnread: filterIntroductionsBySection(introductionsList, 'inbox').length > 0 },
     { id: 'notes', label: 'Notes', icon: FaStickyNote, count: 0, hasUnread: false },
     { id: 'lists', label: 'Lists', icon: FaList, count: 0, hasUnread: false },
+    { id: 'dataquality', label: 'Data Quality', icon: FaUserCog, count: dataQualityHook.dqContacts.length, hasUnread: dataQualityHook.dqContacts.length > 0 },
   ];
 
   // Mobile: Render mobile-optimized version (but continue to render modals below)
@@ -2569,6 +2575,7 @@ const CommandCenterPage = ({ theme }) => {
       rightPanelHook={rightPanelHook}
       contextContactsHook={contextContactsHook}
       notesHook={notesHook}
+      dataQualityHook={dataQualityHook}
       agentChatHook={agentChatHook}
       todoistHook={todoistHook}
       chatHook={chatHook}
