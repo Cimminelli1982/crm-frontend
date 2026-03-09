@@ -44,6 +44,7 @@ const DesktopRightPanel = ({
   kitHook,
   introductionsHook,
   dataIntegrityHook,
+  emailActionsHook,
   rightPanelHook,
   chatHook,
   agentChatHook,
@@ -182,7 +183,8 @@ const DesktopRightPanel = ({
   // Destructure modalState
   const {
     setCompanyTagsModalOpen, setCompanyCityModalOpen, setSelectedCompanyForModal,
-    setCreateContactModalOpen, setManageEmailsModalOpen,
+    setCreateContactModalOpen, setCreateContactEmail,
+    setManageEmailsModalOpen,
     setManageMobilesModalOpen, setContactForManageModal,
   } = modalState;
 
@@ -1413,6 +1415,9 @@ const DesktopRightPanel = ({
                   whatsappChat={activeTab === 'whatsapp' ? (selectedWhatsappChat?.contact_name || selectedWhatsappChat?.chat_name || null) : null}
                   calendarEvent={activeTab === 'calendar' ? (selectedCalendarEvent?.summary || selectedCalendarEvent?.title || null) : null}
                   dealName={activeTab === 'deals' ? (selectedPipelineDeal?.deal_name || selectedPipelineDeal?.name || null) : null}
+                  onDraftSent={activeTab === 'email' ? emailActionsHook?.saveAndArchiveAsync : null}
+                  onUpdateItemStatus={activeTab === 'email' ? emailActionsHook?.updateItemStatus : null}
+                  onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
                 />
               )}
 
@@ -1819,6 +1824,8 @@ const DesktopRightPanel = ({
               contactId={null}
               contactName={null}
               emailSubject={null}
+              onDraftSent={null}
+              onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
             />
           )}
             </div>

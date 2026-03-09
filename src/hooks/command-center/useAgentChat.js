@@ -8,17 +8,12 @@ const AGENTS = [
   { id: 'receptionist', name: 'Receptionist', emoji: '🛎️', color: '#10B981' },
 ];
 
-// Slash command definitions
+// Slash command definitions — re-enable one at a time as we rethink each
 const SLASH_COMMANDS = {
-  '/task': 'task',
-  '/calendar': 'calendar',
-  '/note': 'note',
-  '/email': 'email',
-  '/intro': 'intro',
-  '/whatsapp': 'whatsapp',
-  '/deal': 'deal',
-  '/crm': 'crm',
-  '/decision': 'decision',
+  '/reply-all-draft': 'reply-all-draft',
+  '/reply-to-draft': 'reply-to-draft',
+  '/reply-all-send': 'reply-all-send',
+  '/reply-to-send': 'reply-to-send',
 };
 
 function uuid() {
@@ -145,6 +140,7 @@ const useAgentChat = (activeTab) => {
   const mountedRef = useRef(false);
   const activeTabRef = useRef(activeTab);
   const currentRequestIdRef = useRef(null);
+  const draftModeRef = useRef(false);
 
   useEffect(() => { selectedAgentRef.current = selectedAgent; }, [selectedAgent]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
@@ -329,7 +325,6 @@ const useAgentChat = (activeTab) => {
             setStreamText(prev => (!prev || text.length >= prev.length) ? text : prev);
           }
         } else if (p.state === 'final') {
-          // Update agent_request with result
           const finalText = extractText(p.message?.content || p.message);
           if (currentRequestIdRef.current) {
             updateAgentRequest(currentRequestIdRef.current, 'completed', finalText || '');
@@ -338,7 +333,29 @@ const useAgentChat = (activeTab) => {
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
-          loadHistory();
+          if (draftModeRef.current === 'post-send') {
+            draftModeRef.current = false;
+            setMessages(prev => [...prev, {
+              id: uuid(),
+              role: 'assistant',
+              content: finalText,
+              created_at: new Date().toISOString(),
+              isPostSend: true,
+            }]);
+          } else if (draftModeRef.current) {
+            const draftType = draftModeRef.current; // 'reply-all' or 'reply-to'
+            draftModeRef.current = false;
+            setMessages(prev => [...prev, {
+              id: uuid(),
+              role: 'assistant',
+              content: finalText,
+              created_at: new Date().toISOString(),
+              isDraft: true,
+              draftType,
+            }]);
+          } else {
+            loadHistory();
+          }
         } else if (p.state === 'aborted' || p.state === 'error') {
           // Update agent_request with failure
           if (currentRequestIdRef.current) {
@@ -444,7 +461,7 @@ const useAgentChat = (activeTab) => {
   }, [messages]);
 
   // --- Send message ---
-  const sendMessage = useCallback(async (content, context = {}) => {
+  const sendMessage = useCallback(async (content, context = {}, displayText = null) => {
     if (!content.trim()) return;
     const sessionKey = buildSessionKey(activeTabRef.current);
     if (!connectedRef.current) {
@@ -457,6 +474,14 @@ const useAgentChat = (activeTab) => {
     // Parse slash command for request type
     const { type: requestType } = parseSlashCommand(content);
 
+    if (requestType === 'reply-all-draft') {
+      draftModeRef.current = 'reply-all';
+    } else if (requestType === 'reply-to-draft') {
+      draftModeRef.current = 'reply-to';
+    } else if (requestType === 'reply-all-send' || requestType === 'reply-to-send') {
+      draftModeRef.current = 'post-send';
+    }
+
     let fullMessage = content.trim();
     const ctxParts = [];
     if (context.type) ctxParts.push(`Tab: ${context.type}`);
@@ -464,6 +489,7 @@ const useAgentChat = (activeTab) => {
     if (context.contactId) ctxParts.push(`Contact ID: ${context.contactId}`);
     // Tab-specific context
     if (context.metadata?.emailSubject) ctxParts.push(`Email: "${context.metadata.emailSubject}"`);
+    if (context.metadata?.emailInboxId) ctxParts.push(`Email Inbox ID: ${context.metadata.emailInboxId}`);
     if (context.metadata?.whatsappChat) ctxParts.push(`WhatsApp: ${context.metadata.whatsappChat}`);
     if (context.metadata?.calendarEvent) ctxParts.push(`Event: "${context.metadata.calendarEvent}"`);
     if (context.metadata?.dealName) ctxParts.push(`Deal: "${context.metadata.dealName}"`);
@@ -474,7 +500,7 @@ const useAgentChat = (activeTab) => {
     setMessages(prev => [...prev, {
       id: idempotencyKey,
       role: 'user',
-      content: content.trim(),
+      content: displayText || content.trim(),
       created_at: new Date().toISOString(),
     }]);
     setInput('');
@@ -532,6 +558,18 @@ const useAgentChat = (activeTab) => {
     }
   }, []);
 
+  const markDraftSent = useCallback((messageId) => {
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, isDraft: false, draftSent: true } : m
+    ));
+  }, []);
+
+  const markPostSendAction = useCallback((messageId, action) => {
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, isPostSend: false, postSendAction: action } : m
+    ));
+  }, []);
+
   return {
     agents: AGENTS,
     selectedAgent,
@@ -550,6 +588,8 @@ const useAgentChat = (activeTab) => {
     chatContainerRef,
     fetchMessages: loadHistory,
     activeTab,
+    markDraftSent,
+    markPostSendAction,
   };
 };
 

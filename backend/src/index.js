@@ -313,6 +313,57 @@ async function autoSync() {
   }
 }
 
+// Process auto-archiving emails (sent replies flagged by Supabase trigger)
+async function processAutoArchiving() {
+  try {
+    const { data: emails, error } = await supabase
+      .from('command_center_inbox')
+      .select('id, fastmail_id, thread_id, subject')
+      .eq('status', 'auto_archiving');
+
+    if (error || !emails || emails.length === 0) return;
+
+    console.log(`[AutoArchive] Processing ${emails.length} auto-archiving emails`);
+
+    const jmap = new JMAPClient(
+      process.env.FASTMAIL_USERNAME,
+      process.env.FASTMAIL_API_TOKEN
+    );
+    await jmap.init();
+
+    for (const email of emails) {
+      try {
+        // Archive in Fastmail
+        if (email.fastmail_id) {
+          await jmap.archiveEmail(email.fastmail_id);
+        }
+        // Remove from inbox
+        await supabase
+          .from('command_center_inbox')
+          .delete()
+          .eq('id', email.id);
+        console.log(`[AutoArchive] Archived: ${email.subject}`);
+      } catch (err) {
+        console.error(`[AutoArchive] Failed for ${email.id}:`, err.message);
+        // Mark as failed so we don't retry forever
+        await supabase
+          .from('command_center_inbox')
+          .update({ status: 'auto_archive_failed' })
+          .eq('id', email.id);
+      }
+    }
+
+    // Cleanup expired entries from auto_archive_threads
+    await supabase
+      .from('auto_archive_threads')
+      .delete()
+      .lt('expires_at', new Date().toISOString());
+
+  } catch (err) {
+    console.error('[AutoArchive] Error:', err.message);
+  }
+}
+
 // Calendar sync via CalDAV (with ctag change detection)
 async function syncCalendar() {
   const username = process.env.FASTMAIL_USERNAME;
@@ -521,6 +572,7 @@ function startPolling() {
 
   // Then every 60 seconds for email/calendar
   setInterval(autoSync, SYNC_INTERVAL);
+  setInterval(processAutoArchiving, SYNC_INTERVAL); // Process auto-archive flagged emails
   // setInterval(syncCalendar, SYNC_INTERVAL); // DISABLED - using Google Calendar instead of CalDAV
   setInterval(syncGoogleCalendar, SYNC_INTERVAL);
 
@@ -742,6 +794,23 @@ app.post('/reply', async (req, res) => {
     );
     await jmap.init();
 
+    // Fetch the actual RFC5322 Message-ID from JMAP (fastmail_id is the JMAP internal ID, not the Message-ID header)
+    let messageIdHeader = null;
+    if (originalEmail.fastmail_id) {
+      try {
+        const emailGetResponse = await jmap.request([
+          ['Email/get', { accountId: jmap.accountId, ids: [originalEmail.fastmail_id], properties: ['messageId', 'references'] }, 'getmid'],
+        ]);
+        const jmapEmail = emailGetResponse?.[0]?.[1]?.list?.[0];
+        if (jmapEmail?.messageId?.[0]) {
+          messageIdHeader = jmapEmail.messageId[0];
+          console.log(`Original Message-ID: ${messageIdHeader}`);
+        }
+      } catch (err) {
+        console.warn('Could not fetch messageId from JMAP:', err.message);
+      }
+    }
+
     // Build recipients - check if I sent the original email
     const myEmail = process.env.FASTMAIL_USERNAME?.toLowerCase();
     const isSentByMe = originalEmail.from_email?.toLowerCase() === myEmail;
@@ -792,8 +861,8 @@ app.post('/reply', async (req, res) => {
       subject,
       textBody,
       htmlBody,
-      inReplyTo: originalEmail.fastmail_id,
-      references: originalEmail.fastmail_id,
+      inReplyTo: messageIdHeader || null,
+      references: messageIdHeader || null,
     });
 
     console.log('Reply sent successfully:', result);

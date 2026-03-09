@@ -482,45 +482,39 @@ const COMMAND_CATEGORIES = [
     icon: FaEnvelope,
     actions: [
       {
-        id: 'draft-email',
-        label: 'Bozza email',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Comporre bozza email', '',
-            `A: ${ctx.contactEmail || '[email destinatario]'}`,
-            'Oggetto: [specificare]',
-            'Contenuto: [specificare argomento/istruzioni]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto: ${ctx.contactName}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/draft-email.md',
-            '2. Componi la bozza email',
-            '3. Mostra la bozza per approvazione prima di inviare');
-          return lines.join('\n');
-        },
+        id: 'email-archive',
+        label: '✅ Archive',
+        directAction: 'archive',
       },
       {
-        id: 'search-email',
-        label: 'Cerca email',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Cercare email nel CRM', '',
-            'Cerca: [keyword, contatto o dominio]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          if (ctx.contactEmail) lines.push(`Email contatto: ${ctx.contactEmail}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/email.md',
-            '2. Cerca email per keyword/contatto/dominio',
-            '3. Mostra risultati con subject, data, partecipanti');
-          return lines.join('\n');
-        },
+        id: 'email-waitinginput',
+        label: '👀 Waiting Input',
+        directAction: 'waiting',
+      },
+      {
+        id: 'email-needactions',
+        label: '❗ Need Actions',
+        directAction: 'actions',
+      },
+      {
+        id: 'reply-all-draft',
+        label: 'Reply All (draft)',
+        buildPrompt: () => '/reply-all-draft ',
+      },
+      {
+        id: 'reply-all-send',
+        label: 'Reply All (send)',
+        buildPrompt: () => '/reply-all-send ',
+      },
+      {
+        id: 'reply-to-draft',
+        label: 'Reply (draft)',
+        buildPrompt: () => '/reply-to-draft ',
+      },
+      {
+        id: 'reply-to-send',
+        label: 'Reply (send)',
+        buildPrompt: () => '/reply-to-send ',
       },
     ],
   },
@@ -619,4 +613,6 @@ function buildContextParts(ctx) {
   return parts;
 }
 
-export default COMMAND_CATEGORIES;
+// Only show enabled categories — re-enable one at a time as we rethink each
+const ENABLED_CATEGORIES = ['email'];
+export default COMMAND_CATEGORIES.filter(c => ENABLED_CATEGORIES.includes(c.id));

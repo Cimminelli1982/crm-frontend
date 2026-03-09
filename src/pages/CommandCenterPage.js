@@ -1965,9 +1965,9 @@ const CommandCenterPage = ({ theme }) => {
       else if (code === 'KeyA') setActiveActionTab('chat');
       else if (code === 'KeyF') setActiveActionTab('files');
       else if (code === 'KeyR') setActiveActionTab('related');
-      else if (code === 'Digit1') updateItemStatus('need_actions');
+      else if (code === 'Digit1') handleDoneClick();
       else if (code === 'Digit2') updateItemStatus('waiting_input');
-      else if (code === 'Digit3') handleDoneClick();
+      else if (code === 'Digit3') updateItemStatus('need_actions');
     };
     window.addEventListener('emailIframeShortcut', handleIframeShortcut);
 

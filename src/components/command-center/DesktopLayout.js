@@ -91,6 +91,7 @@ const DesktopLayout = ({
           kitHook={kitHook}
           introductionsHook={introductionsHook}
           dataIntegrityHook={dataIntegrityHook}
+          emailActionsHook={emailActionsHook}
           rightPanelHook={rightPanelHook}
           chatHook={chatHook}
           agentChatHook={agentChatHook}

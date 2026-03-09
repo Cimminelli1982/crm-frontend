@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   EmailContentPanel,
   EmailSubjectFull,
@@ -169,6 +169,20 @@ const DesktopCenterPanel = ({
 
   // File preview state
   const [previewFile, setPreviewFile] = useState(null);
+
+  // Keyboard shortcuts 1/2/3 for email actions when email tab is active
+  useEffect(() => {
+    if (activeTab !== 'email' || !selectedThread || selectedThread.length === 0) return;
+    const handleKey = (e) => {
+      // Don't trigger if typing in an input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+      if (e.key === '1') { e.preventDefault(); handleDoneClick(); }
+      else if (e.key === '2') { e.preventDefault(); updateItemStatus('waiting_input'); }
+      else if (e.key === '3') { e.preventDefault(); updateItemStatus('need_actions'); }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [activeTab, selectedThread, handleDoneClick, updateItemStatus]);
 
   return (
         <EmailContentPanel theme={theme}>
@@ -3300,53 +3314,7 @@ const DesktopCenterPanel = ({
                     </button>
                   )}
 
-                  {/* Need Actions */}
-                  <button
-                    onClick={() => updateItemStatus('need_actions')}
-                    disabled={saving}
-                    title="Need Actions"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: theme === 'light' ? '#FEF3C7' : '#78350F',
-                      cursor: saving ? 'not-allowed' : 'pointer',
-                      transition: 'all 0.2s ease',
-                      opacity: saving ? 0.5 : 1,
-                      fontSize: '16px',
-                    }}
-                  >
-                    ❗
-                  </button>
-
-                  {/* Waiting Input */}
-                  <button
-                    onClick={() => updateItemStatus('waiting_input')}
-                    disabled={saving}
-                    title="Waiting Input"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: theme === 'light' ? '#DBEAFE' : '#1E3A8A',
-                      cursor: saving ? 'not-allowed' : 'pointer',
-                      transition: 'all 0.2s ease',
-                      opacity: saving ? 0.5 : 1,
-                      fontSize: '16px',
-                    }}
-                  >
-                    👀
-                  </button>
-
-                  {/* Done */}
+                  {/* Done / Archive */}
                   <button
                     onClick={handleDoneClick}
                     disabled={saving}
@@ -3382,6 +3350,52 @@ const DesktopCenterPanel = ({
                     ) : (
                       <FaCheck size={16} />
                     )}
+                  </button>
+
+                  {/* Waiting Input */}
+                  <button
+                    onClick={() => updateItemStatus('waiting_input')}
+                    disabled={saving}
+                    title="Waiting Input"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme === 'light' ? '#DBEAFE' : '#1E3A8A',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      opacity: saving ? 0.5 : 1,
+                      fontSize: '16px',
+                    }}
+                  >
+                    👀
+                  </button>
+
+                  {/* Need Actions */}
+                  <button
+                    onClick={() => updateItemStatus('need_actions')}
+                    disabled={saving}
+                    title="Need Actions"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      opacity: saving ? 0.5 : 1,
+                      fontSize: '16px',
+                    }}
+                  >
+                    ❗
                   </button>
                 </div>
               </div>
