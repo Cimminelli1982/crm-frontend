@@ -15,6 +15,10 @@ const SLASH_COMMANDS = {
   '/note': 'note',
   '/email': 'email',
   '/intro': 'intro',
+  '/whatsapp': 'whatsapp',
+  '/deal': 'deal',
+  '/crm': 'crm',
+  '/decision': 'decision',
 };
 
 function uuid() {
@@ -84,9 +88,26 @@ function extractCleanText(content, role) {
   return text;
 }
 
-// Parse slash command from message text
+// Parse slash command or structured prompt from message text
 function parseSlashCommand(text) {
   const trimmed = text.trim();
+
+  // Detect structured prompts (from command palette)
+  const requestMatch = trimmed.match(/Richiesta:\s*(.+)/m);
+  if (requestMatch) {
+    const req = requestMatch[1].toLowerCase();
+    if (req.includes('contatto') || req.includes('scheda')) return { type: 'crm', description: trimmed };
+    if (req.includes('intro')) return { type: 'intro', description: trimmed };
+    if (req.includes('deal')) return { type: 'deal', description: trimmed };
+    if (req.includes('evento') || req.includes('calendario')) return { type: 'calendar', description: trimmed };
+    if (req.includes('task')) return { type: 'task', description: trimmed };
+    if (req.includes('nota')) return { type: 'note', description: trimmed };
+    if (req.includes('email') || req.includes('bozza')) return { type: 'email', description: trimmed };
+    if (req.includes('whatsapp') || req.includes('telefono') || req.includes('numero')) return { type: 'whatsapp', description: trimmed };
+    if (req.includes('decisione')) return { type: 'decision', description: trimmed };
+  }
+
+  // Standard slash commands
   for (const [prefix, type] of Object.entries(SLASH_COMMANDS)) {
     if (trimmed.startsWith(prefix + ' ') || trimmed === prefix) {
       return { type, description: trimmed.slice(prefix.length).trim() || trimmed };

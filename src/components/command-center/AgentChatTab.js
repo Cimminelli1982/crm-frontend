@@ -1,13 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { FaPaperPlane, FaChevronDown, FaRobot, FaStop, FaTasks, FaCalendarAlt, FaStickyNote, FaEnvelope, FaHandshake } from 'react-icons/fa';
-
-const QUICK_ACTIONS = [
-  { label: 'Task', icon: FaTasks, command: '/task ', color: '#3B82F6' },
-  { label: 'Calendar', icon: FaCalendarAlt, command: '/calendar ', color: '#F59E0B' },
-  { label: 'Note', icon: FaStickyNote, command: '/note ', color: '#10B981' },
-  { label: 'Email', icon: FaEnvelope, command: '/email ', color: '#8B5CF6' },
-  { label: 'Intro', icon: FaHandshake, command: '/intro ', color: '#EC4899' },
-];
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { FaPaperPlane, FaRobot, FaStop } from 'react-icons/fa';
+import COMMAND_CATEGORIES from './commandDefinitions';
 
 // Build a context label for the badge
 function getContextLabel(contextType, emailSubject, whatsappChat, calendarEvent, dealName, contactName) {
@@ -38,9 +31,11 @@ const AgentChatTab = ({
   contactId,
   contactName,
   emailSubject,
+  emailInboxId,
   whatsappChat,
   calendarEvent,
   dealName,
+  rightPanelContactDetails,
 }) => {
   const {
     agents,
@@ -62,10 +57,12 @@ const AgentChatTab = ({
   } = agentChatHook;
 
   const [showAgentDropdown, setShowAgentDropdown] = useState(false);
+  const [openCategory, setOpenCategory] = useState(null);
   const dropdownRef = useRef(null);
+  const categoryMenuRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Close dropdown on click outside
+  // Close agent dropdown on click outside
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -75,6 +72,41 @@ const AgentChatTab = ({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  // Close category dropdown on click outside
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (categoryMenuRef.current && !categoryMenuRef.current.contains(e.target)) {
+        setOpenCategory(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // Build command context from props + rightPanelContactDetails
+  const commandContext = useMemo(() => {
+    const details = rightPanelContactDetails;
+    const primaryEmail = details?.emails?.find(e => e.is_primary)?.email || details?.emails?.[0]?.email || null;
+    const primaryPhone = details?.mobiles?.find(m => m.is_primary)?.mobile || details?.mobiles?.[0]?.mobile || null;
+    const primaryCompany = details?.companies?.[0]?.name || null;
+    const contact = details?.contact;
+    return {
+      contactName: contactName || null,
+      contactId: contactId || contact?.contact_id || null,
+      contextType: contextType || null,
+      emailSubject: emailSubject || null,
+      emailInboxId: emailInboxId || null,
+      whatsappChat: whatsappChat || null,
+      calendarEvent: calendarEvent || null,
+      dealName: dealName || null,
+      contactEmail: primaryEmail,
+      contactPhone: primaryPhone,
+      contactCompany: primaryCompany,
+      contactCategory: contact?.category || null,
+      contactJobRole: contact?.job_role || null,
+    };
+  }, [contactName, contactId, contextType, emailSubject, emailInboxId, whatsappChat, calendarEvent, dealName, rightPanelContactDetails]);
 
   const handleSend = () => {
     if (!input.trim() || sending) return;
@@ -100,10 +132,23 @@ const AgentChatTab = ({
     }
   };
 
-  const handleQuickAction = (command) => {
-    setInput(command);
-    // Focus input after setting command
-    setTimeout(() => inputRef.current?.focus(), 0);
+  const handleCommandSelect = (action) => {
+    const prompt = action.buildPrompt(commandContext);
+    setInput(prompt);
+    setOpenCategory(null);
+    // Focus and auto-resize textarea
+    setTimeout(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 300) + 'px';
+      }
+    }, 0);
+  };
+
+  const handleCategoryClick = (catId) => {
+    setOpenCategory(prev => prev === catId ? null : catId);
   };
 
   const isDark = theme === 'dark';
@@ -202,7 +247,7 @@ const AgentChatTab = ({
               Chat with {selectedAgent?.name}
             </span>
             <span style={{ fontSize: 12, opacity: 0.7 }}>
-              {connected ? 'Connected via OpenClaw — send a message or use a quick action' : 'Connecting to Gateway...'}
+              {connected ? 'Connected via OpenClaw — send a message or pick a command' : 'Connecting to Gateway...'}
             </span>
           </div>
         ) : (
@@ -320,48 +365,108 @@ const AgentChatTab = ({
         </div>
       )}
 
-      {/* Quick-action buttons */}
-      <div style={{
+      {/* Command category pills + dropdown */}
+      <div ref={categoryMenuRef} style={{
         padding: '6px 12px',
         borderTop: `1px solid ${borderColor}`,
-        display: 'flex',
-        gap: 4,
-        flexWrap: 'wrap',
+        position: 'relative',
       }}>
-        {QUICK_ACTIONS.map(action => {
-          const Icon = action.icon;
+        {/* Category dropdown — opens upward */}
+        {openCategory && (() => {
+          const cat = COMMAND_CATEGORIES.find(c => c.id === openCategory);
+          if (!cat) return null;
           return (
-            <button
-              key={action.label}
-              onClick={() => handleQuickAction(action.command)}
-              disabled={!connected}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                borderRadius: 6,
-                border: `1px solid ${isDark ? '#444' : '#ddd'}`,
-                background: isDark ? '#1e1e3a' : '#f8f8ff',
-                color: connected ? action.color : mutedColor,
+            <div style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: 12,
+              right: 12,
+              background: isDark ? '#1e1e3a' : '#ffffff',
+              border: `1px solid ${isDark ? '#444' : '#ddd'}`,
+              borderRadius: 8,
+              boxShadow: isDark ? '0 -4px 16px rgba(0,0,0,0.4)' : '0 -4px 16px rgba(0,0,0,0.1)',
+              zIndex: 10,
+              maxHeight: 200,
+              overflowY: 'auto',
+            }}>
+              <div style={{
+                padding: '6px 12px',
                 fontSize: 11,
-                fontWeight: 500,
-                cursor: connected ? 'pointer' : 'not-allowed',
-                opacity: connected ? 1 : 0.5,
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => {
-                if (connected) e.target.style.background = isDark ? '#2a2a4a' : '#efefff';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = isDark ? '#1e1e3a' : '#f8f8ff';
-              }}
-            >
-              <Icon size={10} />
-              {action.label}
-            </button>
+                fontWeight: 600,
+                color: cat.color,
+                borderBottom: `1px solid ${isDark ? '#333' : '#eee'}`,
+              }}>
+                {cat.label}
+              </div>
+              {cat.actions.map(action => (
+                <div
+                  key={action.id}
+                  onClick={() => handleCommandSelect(action)}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    color: textColor,
+                    cursor: 'pointer',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = isDark ? '#2a2a4a' : '#f0f0ff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  {action.label}
+                </div>
+              ))}
+            </div>
           );
-        })}
+        })()}
+
+        {/* Category pills */}
+        <div style={{
+          display: 'flex',
+          gap: 4,
+          flexWrap: 'wrap',
+        }}>
+          {COMMAND_CATEGORIES.map(cat => {
+            const Icon = cat.icon;
+            const isActive = openCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => handleCategoryClick(cat.id)}
+                disabled={!connected}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  border: `1px solid ${isActive ? cat.color : (isDark ? '#444' : '#ddd')}`,
+                  background: isActive
+                    ? (isDark ? `${cat.color}22` : `${cat.color}15`)
+                    : (isDark ? '#1e1e3a' : '#f8f8ff'),
+                  color: connected ? cat.color : mutedColor,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: connected ? 'pointer' : 'not-allowed',
+                  opacity: connected ? 1 : 0.5,
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  if (connected && !isActive) e.currentTarget.style.background = isDark ? '#2a2a4a' : '#efefff';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) e.currentTarget.style.background = isDark ? '#1e1e3a' : '#f8f8ff';
+                }}
+              >
+                <Icon size={10} />
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Input area */}
@@ -375,11 +480,16 @@ const AgentChatTab = ({
         <textarea
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            // Auto-resize
+            e.target.style.height = 'auto';
+            e.target.style.height = Math.min(e.target.scrollHeight, 300) + 'px';
+          }}
           onKeyDown={handleKeyDown}
-          placeholder={connected ? `Message ${selectedAgent?.name}... (or use /command)` : 'Connecting...'}
+          placeholder={connected ? `Message ${selectedAgent?.name}... (or pick a command)` : 'Connecting...'}
           disabled={!connected}
-          rows={1}
+          rows={3}
           style={{
             flex: 1,
             background: isDark ? '#16213e' : '#f5f5f5',
@@ -390,7 +500,8 @@ const AgentChatTab = ({
             fontSize: 13,
             resize: 'none',
             outline: 'none',
-            maxHeight: 100,
+            minHeight: 60,
+            maxHeight: 300,
             fontFamily: 'inherit',
             opacity: connected ? 1 : 0.5,
           }}

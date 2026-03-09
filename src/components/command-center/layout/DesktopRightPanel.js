@@ -1406,8 +1406,10 @@ const DesktopRightPanel = ({
                   contextType={activeTab}
                   contextId={selectedThread?.[0]?.email_id || selectedWhatsappChat?.chat_id || selectedCalendarEvent?.event_id || selectedPipelineDeal?.deal_id || null}
                   contactId={selectedRightPanelContactId}
-                  contactName={rightPanelContactDetails ? `${rightPanelContactDetails.first_name || ''} ${rightPanelContactDetails.last_name || ''}`.trim() : null}
+                  contactName={rightPanelContactDetails?.contact ? `${rightPanelContactDetails.contact.first_name || ''} ${rightPanelContactDetails.contact.last_name || ''}`.trim() : null}
+                  rightPanelContactDetails={rightPanelContactDetails}
                   emailSubject={activeTab === 'email' ? (selectedThread?.[0]?.subject || null) : null}
+                  emailInboxId={activeTab === 'email' ? (selectedThread?.[0]?.id || null) : null}
                   whatsappChat={activeTab === 'whatsapp' ? (selectedWhatsappChat?.contact_name || selectedWhatsappChat?.chat_name || null) : null}
                   calendarEvent={activeTab === 'calendar' ? (selectedCalendarEvent?.summary || selectedCalendarEvent?.title || null) : null}
                   dealName={activeTab === 'deals' ? (selectedPipelineDeal?.deal_name || selectedPipelineDeal?.name || null) : null}

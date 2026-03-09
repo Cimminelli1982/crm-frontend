@@ -61,7 +61,9 @@ async function classifyPotentialSpam(emails, jmap) {
   if (!emails || emails.length === 0) return;
 
   // Only classify emails without a status (inbox emails, not already news/spam)
-  const toClassify = emails.filter(e => !e.status && e.from_email);
+  // Skip own sent emails — they should never be classified as spam
+  const myEmail = process.env.FASTMAIL_USERNAME?.toLowerCase();
+  const toClassify = emails.filter(e => !e.status && e.from_email && e.from_email.toLowerCase() !== myEmail);
   if (toClassify.length === 0) return;
 
   console.log(`[SpamClassifier] Classifying ${toClassify.length} emails...`);
