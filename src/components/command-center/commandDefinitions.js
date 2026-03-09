@@ -312,16 +312,16 @@ const COMMAND_CATEGORIES = [
         id: 'what-in-calendar',
         label: 'What in my calendar',
         buildPrompt: (ctx) => {
+          const parsed = parseCalendarSubject(ctx.emailSubject);
           const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Cosa ho in calendario oggi/questa settimana?', '',
+            '/what-in-calendar',
           ];
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push(`Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/calendar.md',
-            '2. Cerca gli eventi di oggi e della settimana corrente nel Google Calendar',
-            '3. Mostra un riassunto chiaro degli impegni');
+          if (parsed.date) lines.push(`Event date: ${parsed.date}`);
+          if (parsed.title) lines.push(`Event: ${parsed.title}`);
+          if (parsed.startTime && parsed.endTime) lines.push(`Time: ${parsed.startTime} - ${parsed.endTime}`);
+          else if (parsed.startTime) lines.push(`Time: ${parsed.startTime}`);
+          if (ctx.emailInboxId) lines.push(`Email inbox ID: ${ctx.emailInboxId}`);
+          if (ctx.contactName) lines.push(`Contact: ${ctx.contactName}`);
           return lines.join('\n');
         },
       },
