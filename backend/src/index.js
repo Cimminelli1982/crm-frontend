@@ -61,9 +61,11 @@ async function classifyPotentialSpam(emails, jmap) {
   if (!emails || emails.length === 0) return;
 
   // Only classify emails without a status (inbox emails, not already news/spam)
-  // Skip own sent emails — they should never be classified as spam
+  // Skip own sent emails and whitelisted senders
   const myEmail = process.env.FASTMAIL_USERNAME?.toLowerCase();
-  const toClassify = emails.filter(e => !e.status && e.from_email && e.from_email.toLowerCase() !== myEmail);
+  const { data: wlData } = await supabase.from('emails_whitelist').select('email');
+  const whitelist = new Set((wlData || []).map(e => e.email?.toLowerCase()).filter(Boolean));
+  const toClassify = emails.filter(e => !e.status && e.from_email && e.from_email.toLowerCase() !== myEmail && !whitelist.has(e.from_email.toLowerCase()));
   if (toClassify.length === 0) return;
 
   console.log(`[SpamClassifier] Classifying ${toClassify.length} emails...`);
@@ -867,7 +869,35 @@ app.post('/reply', async (req, res) => {
 
     console.log('Reply sent successfully:', result);
 
-    setTimeout(() => autoSync(), 2000);
+    // Insert sent reply directly into command_center_inbox so it appears in the thread immediately
+    // Keep $crm_done stamp (default) so sync doesn't create a duplicate
+    try {
+      const { error: insertError } = await supabase
+        .from('command_center_inbox')
+        .insert({
+          type: 'email',
+          thread_id: originalEmail.thread_id,
+          subject,
+          from_email: myEmail,
+          from_name: 'Simone Cimminelli',
+          to_recipients: to,
+          cc_recipients: cc.length > 0 ? cc : null,
+          body_text: textBody,
+          body_html: htmlBody || null,
+          date: new Date().toISOString(),
+          is_read: true,
+          direction: 'sent',
+          status: originalEmail.status || null,
+          fastmail_id: result.emailId || null,
+        });
+      if (insertError) {
+        console.error('Failed to insert sent reply into inbox:', insertError);
+      } else {
+        console.log('Sent reply inserted into command_center_inbox');
+      }
+    } catch (err) {
+      console.error('Error inserting sent reply:', err.message);
+    }
 
     res.json({
       success: true,

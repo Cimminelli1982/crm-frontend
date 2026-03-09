@@ -26,13 +26,14 @@ function getDomain(email) {
   return parts.length === 2 ? parts[1].toLowerCase() : null;
 }
 
-// Load spam and news lists from DB
+// Load spam, news, and whitelist from DB
 async function loadSpamAndNewsLists() {
-  const [emailsResult, domainsResult, newsEmailsResult, newsDomainsResult] = await Promise.all([
+  const [emailsResult, domainsResult, newsEmailsResult, newsDomainsResult, whitelistResult] = await Promise.all([
     supabase.from('emails_spam').select('email'),
     supabase.from('domains_spam').select('domain'),
     supabase.from('emails_news').select('email'),
     supabase.from('domains_news').select('domain'),
+    supabase.from('emails_whitelist').select('email'),
   ]);
 
   if (emailsResult.error) {
@@ -60,8 +61,11 @@ async function loadSpamAndNewsLists() {
   const newsDomains = new Set(
     (newsDomainsResult.data || []).map(d => d.domain?.toLowerCase()).filter(Boolean)
   );
+  const whitelistedEmails = new Set(
+    (whitelistResult.data || []).map(e => e.email?.toLowerCase()).filter(Boolean)
+  );
 
-  return { spamEmails, spamDomains, newsEmails, newsDomains };
+  return { spamEmails, spamDomains, newsEmails, newsDomains, whitelistedEmails };
 }
 
 // Add email to spam list
@@ -118,7 +122,7 @@ async function incrementDomainSpamCounter(domain) {
 // Filter and upsert emails with spam detection
 // Returns { validEmails: [...], spamByEmail: [...], spamByDomain: [...] }
 export async function upsertEmailsWithSpamFilter(emails) {
-  const { spamEmails, spamDomains, newsEmails, newsDomains } = await loadSpamAndNewsLists();
+  const { spamEmails, spamDomains, newsEmails, newsDomains, whitelistedEmails } = await loadSpamAndNewsLists();
 
   const validEmails = [];
   const spamByEmail = []; // Fastmail IDs blocked by email address -> Skip_Email
@@ -134,6 +138,12 @@ export async function upsertEmailsWithSpamFilter(emails) {
 
     // Never filter my own sent emails
     if (fromEmail === myEmail) {
+      validEmails.push(email);
+      continue;
+    }
+
+    // Whitelisted emails skip all spam checks
+    if (fromEmail && whitelistedEmails.has(fromEmail)) {
       validEmails.push(email);
       continue;
     }

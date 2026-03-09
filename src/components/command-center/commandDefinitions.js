@@ -309,8 +309,25 @@ const COMMAND_CATEGORIES = [
     icon: FaCalendarAlt,
     actions: [
       {
+        id: 'what-in-calendar',
+        label: 'What in my calendar',
+        buildPrompt: (ctx) => {
+          const lines = [
+            'Nuova richiesta da Simone', '',
+            'Richiesta: Cosa ho in calendario oggi/questa settimana?', '',
+          ];
+          const ctxParts = buildContextParts(ctx);
+          if (ctxParts.length) lines.push(`Contesto CRM: ${ctxParts.join(' | ')}`);
+          lines.push('', 'ISTRUZIONI PER BARBARA:',
+            '1. Leggi skills/calendar.md',
+            '2. Cerca gli eventi di oggi e della settimana corrente nel Google Calendar',
+            '3. Mostra un riassunto chiaro degli impegni');
+          return lines.join('\n');
+        },
+      },
+      {
         id: 'create-event-no-guests',
-        label: 'Crea evento (no invite)',
+        label: 'Create event (no invite)',
         buildPrompt: (ctx) => {
           const parsed = parseCalendarSubject(ctx.emailSubject);
           const lines = [
@@ -352,7 +369,7 @@ const COMMAND_CATEGORIES = [
       },
       {
         id: 'create-event-with-guests',
-        label: 'Crea evento (+ invite)',
+        label: 'Create event (invite guests)',
         buildPrompt: (ctx) => {
           const parsed = parseCalendarSubject(ctx.emailSubject);
           const lines = [
@@ -395,21 +412,26 @@ const COMMAND_CATEGORIES = [
         },
       },
       {
-        id: 'edit-event',
-        label: 'Modifica evento',
+        id: 'free-slots',
+        label: 'Free slots for meeting',
         buildPrompt: (ctx) => {
           const lines = [
             'Nuova richiesta da Simone', '',
-            'Richiesta: Modificare evento nel calendario', '',
-            `Evento: ${ctx.calendarEvent || '[nome evento]'}`,
-            'Modifiche: [specificare cosa cambiare]',
+            'Richiesta: Trovare slot liberi per un meeting', '',
+            'Durata meeting: [specificare, default 30 min]',
+            'Periodo: [specificare, default prossimi 5 giorni lavorativi]',
+            'Orario preferito: 9:00-18:00',
           ];
+          if (ctx.contactName) lines.push(`Con: ${ctx.contactName}`);
+          if (ctx.contactEmail) lines.push(`Email: ${ctx.contactEmail}`);
           const ctxParts = buildContextParts(ctx);
           if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
           lines.push('', 'ISTRUZIONI PER BARBARA:',
             '1. Leggi skills/calendar.md',
-            '2. Trova e modifica l\'evento',
-            '3. VERIFICA: conferma modifica');
+            '2. Controlla il Google Calendar per i prossimi 5 giorni lavorativi',
+            '3. Trova gli slot liberi di almeno 30 min tra le 9:00 e le 18:00',
+            '4. Proponi 3-5 slot disponibili in formato chiaro',
+            '5. Se Simone specifica durata o periodo diverso, adatta la ricerca');
           return lines.join('\n');
         },
       },
@@ -614,5 +636,8 @@ function buildContextParts(ctx) {
 }
 
 // Only show enabled categories — re-enable one at a time as we rethink each
-const ENABLED_CATEGORIES = ['email'];
-export default COMMAND_CATEGORIES.filter(c => ENABLED_CATEGORIES.includes(c.id));
+const ENABLED_CATEGORIES = ['email', 'calendar'];
+const enabledSet = new Set(ENABLED_CATEGORIES);
+const filtered = COMMAND_CATEGORIES.filter(c => enabledSet.has(c.id));
+filtered.sort((a, b) => ENABLED_CATEGORIES.indexOf(a.id) - ENABLED_CATEGORIES.indexOf(b.id));
+export default filtered;

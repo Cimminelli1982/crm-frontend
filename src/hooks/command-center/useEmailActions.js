@@ -1232,7 +1232,7 @@ const useEmailActions = ({
     }
   };
 
-  // Move email back to inbox (clear status)
+  // Move email back to inbox (clear status) and whitelist sender
   const moveToInbox = async () => {
     const latestEmail = getLatestEmail();
     if (!latestEmail) return;
@@ -1255,6 +1255,14 @@ const useEmailActions = ({
         return;
       }
 
+      // Whitelist the sender so they don't get flagged again
+      const senderEmail = latestEmail.from_email?.toLowerCase();
+      if (senderEmail) {
+        await supabase
+          .from('emails_whitelist')
+          .upsert({ email: senderEmail }, { onConflict: 'email' });
+      }
+
       // Update local state
       setThreads(prev => prev.map(t =>
         t.threadId === threadId
@@ -1268,7 +1276,7 @@ const useEmailActions = ({
       ));
       setSelectedThread(prev => prev?.map(e => ({ ...e, status: null })) || null);
 
-      toast.success('Moved to inbox');
+      toast.success('Moved to inbox (sender whitelisted)');
     } catch (error) {
       console.error('Move to inbox error:', error);
       toast.error('Failed to move to inbox');

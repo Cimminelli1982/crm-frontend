@@ -70,6 +70,7 @@ const AgentChatTab = ({
   const [editingDraftId, setEditingDraftId] = useState(null);
   const [draftEditText, setDraftEditText] = useState('');
   const [addToCrmMessageId, setAddToCrmMessageId] = useState(null);
+  const addToCrmDataRef = useRef(null);
 
   // Close agent dropdown on click outside
   useEffect(() => {
@@ -182,6 +183,25 @@ const AgentChatTab = ({
 
   // Post-send action handlers
   const handlePostSendAction = async (messageId, action) => {
+    // Pre-fetch sender info BEFORE archiving (email may disappear after archive)
+    if (!contactId && onAddToCrm && emailInboxId) {
+      try {
+        const { data: inboxEmail } = await supabase
+          .from('command_center_inbox')
+          .select('from_email, from_name')
+          .eq('id', emailInboxId)
+          .single();
+        if (inboxEmail) {
+          addToCrmDataRef.current = {
+            email: inboxEmail.from_email || '',
+            name: inboxEmail.from_name || '',
+          };
+        }
+      } catch (err) {
+        console.error('[AgentChat] Failed to pre-fetch sender for Add to CRM:', err);
+      }
+    }
+
     // Mark the post-send bubble as actioned
     markPostSendAction(messageId, action);
 
@@ -220,24 +240,12 @@ const AgentChatTab = ({
     }
   };
 
-  // Handle "Add to CRM" - fetch sender info from inbox email
-  const handleAddToCrm = async () => {
+  // Handle "Add to CRM" - use pre-fetched sender info
+  const handleAddToCrm = () => {
     setAddToCrmMessageId(null);
-    if (!emailInboxId) return;
-    try {
-      const { data: inboxEmail } = await supabase
-        .from('command_center_inbox')
-        .select('from_email, from_name')
-        .eq('id', emailInboxId)
-        .single();
-      if (inboxEmail) {
-        onAddToCrm({
-          email: inboxEmail.from_email || '',
-          name: inboxEmail.from_name || '',
-        });
-      }
-    } catch (err) {
-      console.error('[AgentChat] Failed to fetch sender for Add to CRM:', err);
+    if (addToCrmDataRef.current) {
+      onAddToCrm(addToCrmDataRef.current);
+      addToCrmDataRef.current = null;
     }
   };
 
