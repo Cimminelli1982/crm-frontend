@@ -14,6 +14,9 @@ const SLASH_COMMANDS = {
   '/reply-to-draft': 'reply-to-draft',
   '/reply-all-send': 'reply-all-send',
   '/reply-to-send': 'reply-to-send',
+  '/what-in-calendar': 'what-in-calendar',
+  '/create-event': 'create-event',
+  '/create-event-invite': 'create-event-invite',
 };
 
 function uuid() {
@@ -111,13 +114,16 @@ function parseSlashCommand(text) {
   return { type: 'freeform', description: trimmed };
 }
 
-// Build dynamic session key based on active tab
-function buildSessionKey(activeTab) {
+// Build dynamic session key based on active tab + context item
+function buildSessionKey(activeTab, contextId) {
   const tab = activeTab || 'general';
+  if (contextId) return `agent:receptionist:${tab}:${contextId}`;
   return `agent:receptionist:${tab}`;
 }
 
-const useAgentChat = (activeTab) => {
+const MAX_RECENT_SESSIONS = 3;
+
+const useAgentChat = (activeTab, contextId, contextLabel) => {
   const [selectedAgent, setSelectedAgent] = useState(AGENTS[0]);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -139,11 +145,72 @@ const useAgentChat = (activeTab) => {
   const selectedAgentRef = useRef(selectedAgent);
   const mountedRef = useRef(false);
   const activeTabRef = useRef(activeTab);
+  const contextIdRef = useRef(contextId);
+  const contextLabelRef = useRef(contextLabel);
   const currentRequestIdRef = useRef(null);
   const draftModeRef = useRef(false);
 
+  // Navigator state: recent sessions and override
+  const [recentSessions, setRecentSessions] = useState([]);
+  const [navigatorOverride, setNavigatorOverride] = useState(null);
+  const navigatorIndexRef = useRef(-1); // -1 means "current item" (no override)
+  const prevContextRef = useRef({ tab: activeTab, contextId, contextLabel });
+
   useEffect(() => { selectedAgentRef.current = selectedAgent; }, [selectedAgent]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { contextIdRef.current = contextId; }, [contextId]);
+  useEffect(() => { contextLabelRef.current = contextLabel; }, [contextLabel]);
+
+  // Effective values: override takes priority over props
+  const effectiveTab = navigatorOverride?.tab ?? activeTab;
+  const effectiveContextId = navigatorOverride?.contextId ?? contextId;
+  const effectiveLabel = navigatorOverride?.label ?? contextLabel;
+
+  // --- Load recent sessions from Supabase, filtered by current tab ---
+  useEffect(() => {
+    if (!activeTab) return;
+    supabase
+      .from('agent_chat_sessions')
+      .select('*')
+      .eq('tab', activeTab)
+      .order('last_active', { ascending: false })
+      .limit(3)
+      .then(({ data }) => {
+        setRecentSessions((data || []).map(r => ({
+          tab: r.tab,
+          contextId: r.context_id,
+          label: r.label,
+          lastActive: new Date(r.last_active).getTime(),
+          sessionKey: r.session_key,
+        })));
+      });
+  }, [activeTab]);
+
+  // --- Helper: add/update a session in recentSessions + persist to Supabase ---
+  function trackSession(tab, ctxId, label) {
+    if (!ctxId) return;
+    const sessionKey = buildSessionKey(tab, ctxId);
+    const now = Date.now();
+    // Update local state — only keep sessions for the same tab
+    setRecentSessions(prev => {
+      const sameTab = prev.filter(s => s.tab === tab && !(s.contextId === ctxId));
+      const updated = [{ tab, contextId: ctxId, label: label || '', lastActive: now, sessionKey }, ...sameTab];
+      return updated.slice(0, 3);
+    });
+    // Upsert to Supabase (fire-and-forget)
+    supabase
+      .from('agent_chat_sessions')
+      .upsert({
+        session_key: sessionKey,
+        tab,
+        context_id: ctxId,
+        label: label || '',
+        last_active: new Date(now).toISOString(),
+      }, { onConflict: 'session_key' })
+      .then(({ error: err }) => {
+        if (err) console.error('[AgentChat] Failed to persist session:', err);
+      });
+  }
 
   // --- Low-level WS request ---
   function wsRequest(method, params) {
@@ -159,9 +226,11 @@ const useAgentChat = (activeTab) => {
   }
 
   // --- Load history ---
-  function loadHistory() {
+  function loadHistory(overrideTab, overrideContextId) {
     if (!connectedRef.current) return;
-    const sessionKey = buildSessionKey(activeTabRef.current);
+    const tab = overrideTab ?? activeTabRef.current;
+    const ctxId = overrideContextId ?? contextIdRef.current;
+    const sessionKey = buildSessionKey(tab, ctxId);
     setLoading(true);
     wsRequest('chat.history', { sessionKey, limit: 100 })
       .then(result => {
@@ -330,6 +399,12 @@ const useAgentChat = (activeTab) => {
             updateAgentRequest(currentRequestIdRef.current, 'completed', finalText || '');
             currentRequestIdRef.current = null;
           }
+          // Track session now — a real conversation happened
+          const effCtxId = navigatorOverride?.contextId ?? contextIdRef.current;
+          const effTab = navigatorOverride?.tab ?? activeTabRef.current;
+          if (effCtxId) {
+            trackSession(effTab, effCtxId, navigatorOverride?.label ?? contextLabelRef.current);
+          }
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
@@ -437,15 +512,23 @@ const useAgentChat = (activeTab) => {
     }
   }, [selectedAgent]);
 
-  // Reload history when activeTab changes (contextual sessions)
+  // Reload history when activeTab or contextId changes (contextual sessions)
   useEffect(() => {
     if (connectedRef.current) {
+      // Track the session we're LEAVING using prevContextRef (immune to effect ordering)
+      const prev = prevContextRef.current;
+      if (prev.contextId && (prev.tab !== activeTab || prev.contextId !== contextId)) {
+        trackSession(prev.tab, prev.contextId, prev.contextLabel);
+      }
+      setNavigatorOverride(null);
+      navigatorIndexRef.current = -1;
       setMessages([]);
       setStreamText(null);
       setError(null);
-      loadHistory();
+      loadHistory(activeTab, contextId);
     }
-  }, [activeTab]);
+    prevContextRef.current = { tab: activeTab, contextId, contextLabel };
+  }, [activeTab, contextId]);
 
   // Scroll to bottom — instant on load, smooth on new messages
   const chatContainerRef = useRef(null);
@@ -463,7 +546,10 @@ const useAgentChat = (activeTab) => {
   // --- Send message ---
   const sendMessage = useCallback(async (content, context = {}, displayText = null) => {
     if (!content.trim()) return;
-    const sessionKey = buildSessionKey(activeTabRef.current);
+    // Use effective (override-aware) session key
+    const effTab = navigatorOverride?.tab ?? activeTabRef.current;
+    const effCtxId = navigatorOverride?.contextId ?? contextIdRef.current;
+    const sessionKey = buildSessionKey(effTab, effCtxId);
     if (!connectedRef.current) {
       setError('Not connected');
       return;
@@ -547,7 +633,9 @@ const useAgentChat = (activeTab) => {
   // --- Abort ---
   const abort = useCallback(async () => {
     if (!connectedRef.current) return;
-    const sessionKey = buildSessionKey(activeTabRef.current);
+    const effTab = navigatorOverride?.tab ?? activeTabRef.current;
+    const effCtxId = navigatorOverride?.contextId ?? contextIdRef.current;
+    const sessionKey = buildSessionKey(effTab, effCtxId);
     try {
       await wsRequest('chat.abort', runIdRef.current
         ? { sessionKey, runId: runIdRef.current }
@@ -557,6 +645,27 @@ const useAgentChat = (activeTab) => {
       console.error('[AgentChat] Abort failed:', err);
     }
   }, []);
+
+  // --- Navigate to a specific recent session by index ---
+  const navigateToSession = useCallback((_, idx) => {
+    if (idx < 0 || idx >= recentSessions.length) return;
+    const session = recentSessions[idx];
+    navigatorIndexRef.current = idx;
+    setNavigatorOverride({ tab: session.tab, contextId: session.contextId, label: session.label });
+    setMessages([]);
+    setStreamText(null);
+    loadHistory(session.tab, session.contextId);
+  }, [recentSessions]);
+
+  // Reset navigator back to current item
+  const resetNavigator = useCallback(() => {
+    if (!navigatorOverride) return;
+    navigatorIndexRef.current = -1;
+    setNavigatorOverride(null);
+    setMessages([]);
+    setStreamText(null);
+    loadHistory(activeTabRef.current, contextIdRef.current);
+  }, [navigatorOverride]);
 
   const markDraftSent = useCallback((messageId) => {
     setMessages(prev => prev.map(m =>
@@ -590,6 +699,14 @@ const useAgentChat = (activeTab) => {
     activeTab,
     markDraftSent,
     markPostSendAction,
+    // Navigator
+    recentSessions,
+    navigatorOverride,
+    navigateToSession,
+    resetNavigator,
+    effectiveContextId,
+    effectiveTab,
+    effectiveLabel,
   };
 };
 

@@ -330,40 +330,14 @@ const COMMAND_CATEGORIES = [
         label: 'Create event (no invite)',
         buildPrompt: (ctx) => {
           const parsed = parseCalendarSubject(ctx.emailSubject);
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Creare evento nel calendario SENZA invitare partecipanti', '',
-            `Titolo: ${parsed.title || '[specificare]'}`,
-            `Data: ${parsed.date || '[specificare]'}`,
-            `Ora inizio: ${parsed.startTime || '[specificare]'}`,
-            `Ora fine: ${parsed.endTime || '[specificare]'}`,
-            'Location: [opzionale]',
-            'Note: [opzionale]',
-            '',
-            'IMPORTANTE: NON aggiungere attendees, NON inviare inviti. Solo evento nel mio calendario.',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          if (ctx.contactEmail) lines.push(`Email contatto: ${ctx.contactEmail}`);
+          const lines = ['/create-event'];
+          if (parsed.title) lines.push(`Event: ${parsed.title}`);
+          if (parsed.date) lines.push(`Date: ${parsed.date}`);
+          if (parsed.startTime && parsed.endTime) lines.push(`Time: ${parsed.startTime} - ${parsed.endTime}`);
+          else if (parsed.startTime) lines.push(`Time: ${parsed.startTime}`);
           if (ctx.emailInboxId) lines.push(`Email inbox ID: ${ctx.emailInboxId}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:');
-          if (ctx.emailInboxId) {
-            lines.push(
-              '1. Leggi la mail completa dal DB:',
-              `   SELECT subject, from_email, from_name, to_recipients, cc_recipients, body_text, body_html, date FROM command_center_inbox WHERE id = '${ctx.emailInboxId}'`,
-              '2. Dal body estrai dettagli: titolo, data/ora, link Zoom/Meet, location, descrizione',
-              '3. Controlla conflitti sul Google Calendar (vedi skills/calendar.md step 3)',
-              '4. Crea evento SENZA attendees (non passare il campo attendees nella request)',
-              '5. VERIFICA: conferma creazione evento',
-            );
-          } else {
-            lines.push(
-              '1. Leggi skills/calendar.md',
-              '2. Crea evento nel Google Calendar SENZA attendees',
-              '3. VERIFICA: conferma creazione evento',
-            );
-          }
+          if (ctx.contactName) lines.push(`Contact: ${ctx.contactName}`);
+          if (ctx.contactEmail) lines.push(`Contact email: ${ctx.contactEmail}`);
           return lines.join('\n');
         },
       },
@@ -372,42 +346,14 @@ const COMMAND_CATEGORIES = [
         label: 'Create event (invite guests)',
         buildPrompt: (ctx) => {
           const parsed = parseCalendarSubject(ctx.emailSubject);
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Creare evento nel calendario E invitare i partecipanti', '',
-            `Titolo: ${parsed.title || '[specificare]'}`,
-            `Data: ${parsed.date || '[specificare]'}`,
-            `Ora inizio: ${parsed.startTime || '[specificare]'}`,
-            `Ora fine: ${parsed.endTime || '[specificare]'}`,
-            'Location: [opzionale]',
-            'Partecipanti: [estrarre dalla mail o specificare]',
-            'Note: [opzionale]',
-            '',
-            'IMPORTANTE: AGGIUNGI tutti i partecipanti come attendees e usa sendUpdates: "all" per inviare gli inviti.',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          if (ctx.contactEmail) lines.push(`Email contatto: ${ctx.contactEmail}`);
+          const lines = ['/create-event-invite'];
+          if (parsed.title) lines.push(`Event: ${parsed.title}`);
+          if (parsed.date) lines.push(`Date: ${parsed.date}`);
+          if (parsed.startTime && parsed.endTime) lines.push(`Time: ${parsed.startTime} - ${parsed.endTime}`);
+          else if (parsed.startTime) lines.push(`Time: ${parsed.startTime}`);
           if (ctx.emailInboxId) lines.push(`Email inbox ID: ${ctx.emailInboxId}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:');
-          if (ctx.emailInboxId) {
-            lines.push(
-              '1. Leggi la mail completa dal DB:',
-              `   SELECT subject, from_email, from_name, to_recipients, cc_recipients, body_text, body_html, date FROM command_center_inbox WHERE id = '${ctx.emailInboxId}'`,
-              '2. Dal body estrai TUTTI i dettagli: titolo, data/ora, link Zoom/Meet, location, descrizione, partecipanti',
-              '3. Cerca i partecipanti nel CRM (contacts + contact_emails) per trovare le loro email',
-              '4. Controlla conflitti sul Google Calendar (vedi skills/calendar.md step 3)',
-              '5. Crea evento CON attendees e sendUpdates: "all" (vedi skills/calendar.md step 5)',
-              '6. VERIFICA: conferma creazione evento e inviti inviati',
-            );
-          } else {
-            lines.push(
-              '1. Leggi skills/calendar.md',
-              '2. Crea evento nel Google Calendar CON attendees e sendUpdates: "all"',
-              '3. VERIFICA: conferma creazione evento',
-            );
-          }
+          if (ctx.contactName) lines.push(`Contact: ${ctx.contactName}`);
+          if (ctx.contactEmail) lines.push(`Contact email: ${ctx.contactEmail}`);
           return lines.join('\n');
         },
       },

@@ -718,7 +718,33 @@ const CommandCenterPage = ({ theme }) => {
 
   // Notes hook
   const notesHook = useNotesData(activeTab);
-  const agentChatHook = useAgentChat(activeTab);
+
+  // Agent chat context: derive per-item contextId and label for isolated sessions
+  const agentContextId = useMemo(() => {
+    if (activeTab === 'email' && selectedThread?.length > 0)
+      return selectedThread[0].thread_id || selectedThread[0].id;
+    if (activeTab === 'whatsapp' && selectedWhatsappChat)
+      return selectedWhatsappChat.chat_id;
+    if (activeTab === 'calendar' && selectedCalendarEvent)
+      return selectedCalendarEvent.event_uid || selectedCalendarEvent.id;
+    if (activeTab === 'deals' && selectedPipelineDeal)
+      return selectedPipelineDeal.deal_id;
+    return null;
+  }, [activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent, selectedPipelineDeal]);
+
+  const agentContextLabel = useMemo(() => {
+    if (activeTab === 'email' && selectedThread?.length > 0)
+      return selectedThread[0].subject || 'Email';
+    if (activeTab === 'whatsapp' && selectedWhatsappChat)
+      return selectedWhatsappChat.chat_name || 'WhatsApp';
+    if (activeTab === 'calendar' && selectedCalendarEvent)
+      return selectedCalendarEvent.subject || 'Event';
+    if (activeTab === 'deals' && selectedPipelineDeal)
+      return selectedPipelineDeal.opportunity || selectedPipelineDeal.deal_name || 'Deal';
+    return null;
+  }, [activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent, selectedPipelineDeal]);
+
+  const agentChatHook = useAgentChat(activeTab, agentContextId, agentContextLabel);
 
   // Sync notes linked entities to right panel
   useEffect(() => {

@@ -3,26 +3,6 @@ import { FaPaperPlane, FaRobot, FaStop } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import COMMAND_CATEGORIES from './commandDefinitions';
 
-// Build a context label for the badge
-function getContextLabel(contextType, emailSubject, whatsappChat, calendarEvent, dealName, contactName) {
-  const parts = [];
-  if (contextType) {
-    const tabLabels = {
-      email: 'Email', whatsapp: 'WhatsApp', calendar: 'Calendar',
-      deals: 'Deals', tasks: 'Tasks', notes: 'Notes',
-      keepintouch: 'Keep in Touch', introductions: 'Introductions',
-      lists: 'Lists',
-    };
-    parts.push(tabLabels[contextType] || contextType);
-  }
-  if (emailSubject) parts.push(emailSubject);
-  else if (whatsappChat) parts.push(whatsappChat);
-  else if (calendarEvent) parts.push(calendarEvent);
-  else if (dealName) parts.push(dealName);
-  else if (contactName) parts.push(contactName);
-  return parts.join(': ');
-}
-
 const AgentChatTab = ({
   theme,
   agentChatHook,
@@ -60,6 +40,12 @@ const AgentChatTab = ({
     activeTab,
     markDraftSent,
     markPostSendAction,
+    recentSessions,
+    navigatorOverride,
+    navigateToSession,
+    resetNavigator,
+    effectiveContextId,
+    effectiveLabel,
   } = agentChatHook;
 
   const [showAgentDropdown, setShowAgentDropdown] = useState(false);
@@ -138,13 +124,15 @@ const AgentChatTab = ({
 
   const handleSend = () => {
     if (!input.trim() || sending) return;
+    // When navigatorOverride is active, use override context label but keep
+    // current props for contact info (best effort)
     const context = {
-      type: contextType,
+      type: navigatorOverride ? navigatorOverride.tab : contextType,
       id: contextId,
       contactId: contactId,
       metadata: {
         contactName: contactName || null,
-        emailSubject: emailSubject || null,
+        emailSubject: navigatorOverride ? (navigatorOverride.label || emailSubject) : (emailSubject || null),
         emailInboxId: emailInboxId || null,
         whatsappChat: whatsappChat || null,
         calendarEvent: calendarEvent || null,
@@ -318,8 +306,6 @@ const AgentChatTab = ({
   const mutedColor = isDark ? '#888' : '#999';
   const borderColor = isDark ? '#333' : '#e0e0e0';
 
-  const contextLabel = getContextLabel(contextType, emailSubject, whatsappChat, calendarEvent, dealName, contactName);
-
   return (
     <div style={{
       display: 'flex',
@@ -346,22 +332,20 @@ const AgentChatTab = ({
         }} />
         <span style={{ fontSize: 16 }}>{selectedAgent?.emoji}</span>
         <span style={{ fontSize: 14, fontWeight: 600, color: textColor }}>{selectedAgent?.name}</span>
-        {/* Context badge */}
-        {contextLabel && (
-          <span style={{
-            marginLeft: 'auto',
-            fontSize: 11,
-            color: isDark ? '#a78bfa' : '#7c3aed',
-            background: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.1)',
-            padding: '2px 8px',
-            borderRadius: 10,
-            maxWidth: 180,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {contextLabel}
-          </span>
+        {effectiveLabel && (
+          <>
+            <span style={{ color: mutedColor, fontSize: 12 }}>–</span>
+            <span style={{
+              fontSize: 12,
+              color: mutedColor,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              flex: 1,
+            }}>
+              {effectiveLabel}
+            </span>
+          </>
         )}
       </div>
 
@@ -693,27 +677,93 @@ const AgentChatTab = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Context bar */}
-      {(contactName || emailSubject || whatsappChat || calendarEvent || dealName) && (
-        <div style={{
-          padding: '4px 12px',
-          borderTop: `1px solid ${borderColor}`,
-          fontSize: 11,
-          color: mutedColor,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-        }}>
-          <FaRobot size={10} />
-          {[
-            contactName,
-            emailSubject && `📧 ${emailSubject}`,
-            whatsappChat && `💬 ${whatsappChat}`,
-            calendarEvent && `📅 ${calendarEvent}`,
-            dealName && `💰 ${dealName}`,
-          ].filter(Boolean).join(' • ')}
-        </div>
-      )}
+      {/* Recent sessions — 3 rows (excluding current) */}
+      {(() => {
+        const otherSessions = recentSessions.filter(s => s.contextId !== effectiveContextId);
+        const slots = [otherSessions[0] || null, otherSessions[1] || null, otherSessions[2] || null];
+        return (
+          <div style={{
+            borderTop: `1px solid ${borderColor}`,
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{
+              padding: '4px 10px 2px',
+              fontSize: 9,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              color: mutedColor,
+            }}>
+              Previous chats
+            </div>
+            {slots.map((session, i) => {
+              const isActive = navigatorOverride && session
+                && navigatorOverride.contextId === session.contextId;
+              const realIdx = session ? recentSessions.indexOf(session) : -1;
+              const timeStr = session?.lastActive
+                ? new Date(session.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '';
+              return (
+                <div
+                  key={i}
+                  onClick={() => {
+                    if (!session) return;
+                    if (isActive) {
+                      resetNavigator();
+                    } else {
+                      navigateToSession(null, realIdx);
+                    }
+                  }}
+                  style={{
+                    padding: '5px 10px',
+                    borderBottom: i < 2 ? `1px solid ${isDark ? '#222' : '#f0f0f0'}` : 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: session ? 'pointer' : 'default',
+                    background: isActive
+                      ? (isDark ? 'rgba(139, 92, 246, 0.12)' : 'rgba(139, 92, 246, 0.06)')
+                      : 'transparent',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { if (session && !isActive) e.currentTarget.style.background = isDark ? '#1e1e3a' : '#f8f8ff'; }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {session ? (
+                    <>
+                      <span style={{
+                        width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                        background: isActive ? (isDark ? '#a78bfa' : '#7c3aed') : (isDark ? '#555' : '#ccc'),
+                      }} />
+                      <span style={{
+                        flex: 1,
+                        fontSize: 11,
+                        fontWeight: isActive ? 600 : 400,
+                        color: isActive ? (isDark ? '#a78bfa' : '#7c3aed') : textColor,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {session.label || '...'}
+                      </span>
+                      <span style={{
+                        fontSize: 9,
+                        color: mutedColor,
+                        flexShrink: 0,
+                      }}>
+                        {timeStr}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 11, color: isDark ? '#333' : '#ddd' }}>–</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Command category pills + dropdown */}
       <div ref={categoryMenuRef} style={{
