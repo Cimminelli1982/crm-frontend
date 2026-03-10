@@ -22,6 +22,7 @@ const AgentChatTab = ({
   onUpdateItemStatus,
   onAddToCrm,
   onOpenFreeSlots,
+  onOpenIntroCompose,
 }) => {
   const {
     agents,
@@ -296,6 +297,7 @@ const AgentChatTab = ({
         'complete-task': '/complete-task',
         'register-decision': '/register-decision',
         'accept-invitation': '/accept-invitation',
+        'track-intro-promised': '/track-intro-promised',
       };
 
       if (slashActions[action.directAction]) {
@@ -309,26 +311,16 @@ const AgentChatTab = ({
         if (commandContext.dealName) lines.push(`Deal: ${commandContext.dealName}`);
         // Add email participants if available
         if (commandContext.emailContacts?.length > 0) {
-          const participants = commandContext.emailContacts.map(c =>
-            `${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.email ? ` (${c.email})` : '')
-          ).join(', ');
-          lines.push(`Participants: ${participants}`);
-        }
-        // Accept-invitation specific instructions
-        if (action.directAction === 'accept-invitation') {
-          lines.push('', 'Accept this calendar invitation. Steps:',
-            '1. RSVP "accepted" to the Google Calendar event using the respond-to-event tool (search for the event by subject, then respond with status "accepted")',
-            '2. Save the event in Supabase meetings table: INSERT into meetings (meeting_name, meeting_date, description, meeting_status="confirmed", google_meeting_id=event.id, event_uid=event.iCalUID)',
-            '3. For each attendee email, search contact_emails to find matching contact_id. For each found contact, INSERT into meeting_contacts (meeting_id, contact_id)',
-            '4. Archive the email: call /email/save-and-archive with the inbox ID',
-            '5. Confirm to Simone what was done');
-        }
-        // Decision-specific instructions
-        if (action.directAction === 'register-decision') {
-          lines.push('', 'Register a new decision. Ask Simone to describe the decision.',
-            'Required: detail (text), category (Investment|Team|Time|Money|Family), confidence (1-5)',
-            'Optional: notes, decision_date (default today)',
-            'After Simone replies: INSERT into decisions, link decision_contacts if contact_id available, link decision_deals if deal context available, then GET to verify and confirm.');
+          lines.push('Email contacts:');
+          commandContext.emailContacts.forEach(c => {
+            const name = c.name || `${c.contact?.first_name || ''} ${c.contact?.last_name || ''}`.trim();
+            const email = c.email || null;
+            const id = c.contact?.contact_id;
+            const parts = [name];
+            if (email) parts.push(email);
+            if (id) parts.push(id);
+            lines.push(`- ${parts.join(' | ')}`);
+          });
         }
         const context = {
           type: contextType,
@@ -366,6 +358,20 @@ const AgentChatTab = ({
 
   const handleCategoryClick = (catId) => {
     setOpenCategory(prev => prev === catId ? null : catId);
+  };
+
+  // Parse [INTRO_ACTION:{...}] markers from assistant messages
+  const parseIntroAction = (text) => {
+    if (!text) return { cleanText: text, introAction: null };
+    const match = text.match(/\[INTRO_ACTION:(.*?)\]/s);
+    if (!match) return { cleanText: text, introAction: null };
+    try {
+      const data = JSON.parse(match[1]);
+      const cleanText = text.replace(match[0], '').trim();
+      return { cleanText, introAction: data };
+    } catch {
+      return { cleanText: text, introAction: null };
+    }
   };
 
   const isDark = theme === 'dark';
@@ -467,6 +473,9 @@ const AgentChatTab = ({
           <>
             {messages.map(msg => {
               const isEditing = msg.isDraft && editingDraftId === msg.id;
+              const { cleanText: msgCleanText, introAction: msgIntroAction } = msg.role === 'assistant'
+                ? parseIntroAction(msg.displayText || msg.content)
+                : { cleanText: msg.displayText || msg.content, introAction: null };
               return (
                 <div
                   key={msg.id}
@@ -523,7 +532,7 @@ const AgentChatTab = ({
                         }}
                       />
                     ) : (
-                      msg.displayText || msg.content
+                      msgCleanText
                     )}
 
                     {msg.isDraft && (
@@ -681,6 +690,32 @@ const AgentChatTab = ({
                           }}
                         >
                           No
+                        </button>
+                      </div>
+                    )}
+
+                    {msgIntroAction && (
+                      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+                        <button
+                          onClick={() => onOpenIntroCompose?.(msgIntroAction)}
+                          style={{
+                            background: '#EC4899',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: '8px 20px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: '#fff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            transition: 'transform 0.1s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                          {msgIntroAction.tool === 'whatsapp' ? 'Make intro via WhatsApp' : 'Make intro via Email'}
                         </button>
                       </div>
                     )}

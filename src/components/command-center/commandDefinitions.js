@@ -138,94 +138,9 @@ const COMMAND_CATEGORIES = [
     icon: FaHandshake,
     actions: [
       {
-        id: 'new-intro',
-        label: 'Nuova intro',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Registrare nuova introduzione nel CRM', '',
-            'Introducer: [nome di chi fa l\'intro]',
-            'Introducee: [nome di chi viene introdotto]',
-            'Categoria: [Karma Points, Dealflow, Portfolio Company]',
-            'Tool: [email, whatsapp, in person, other]',
-            'Status: [Requested, Promised]',
-            'Note: [opzionale]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/introductions.md sezione 2',
-            '2. Crea introduzione e collega i contatti con ruoli corretti',
-            '3. VERIFICA: conferma creazione con GET');
-          return lines.join('\n');
-        },
-      },
-      {
-        id: 'intro-email',
-        label: 'Intro via email',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Fare introduzione via email', '',
-            'Introducer: [nome]',
-            'Introducee: [nome]',
-            'Oggetto email: [opzionale]',
-            'Note aggiuntive: [opzionale]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          if (ctx.contactEmail) lines.push(`Email contatto: ${ctx.contactEmail}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/introductions.md sezione 4 + workflow B',
-            '2. Trova le email dei contatti nel CRM',
-            '3. Componi email di introduzione e invia',
-            '4. Registra introduzione con status "Done, but need to monitor"');
-          return lines.join('\n');
-        },
-      },
-      {
-        id: 'intro-whatsapp',
-        label: 'Intro via WhatsApp',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Fare introduzione via WhatsApp', '',
-            'Introducer: [nome]',
-            'Introducee: [nome]',
-            'Note aggiuntive: [opzionale]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          if (ctx.contactPhone) lines.push(`Telefono contatto: ${ctx.contactPhone}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/introductions.md sezione 5 + workflow C',
-            '2. Trova i numeri di telefono dei contatti',
-            '3. Crea gruppo WhatsApp e invia messaggio',
-            '4. Registra introduzione con status appropriato');
-          return lines.join('\n');
-        },
-      },
-      {
-        id: 'update-intro-status',
-        label: 'Aggiorna status',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Aggiornare status introduzione', '',
-            'Introduzione: [descrizione o ID]',
-            'Nuovo status: [Requested, Promised, Done & Dust, Done but need to monitor, Aborted]',
-          ];
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/introductions.md sezione 3',
-            '2. Aggiorna status dell\'introduzione',
-            '3. VERIFICA: conferma aggiornamento');
-          return lines.join('\n');
-        },
+        id: 'track-intro-promised',
+        label: 'Track intro promised',
+        directAction: 'track-intro-promised',
       },
     ],
   },
@@ -530,7 +445,7 @@ function buildContextParts(ctx) {
 }
 
 // Only show enabled categories — re-enable one at a time as we rethink each
-const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'decision'];
+const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'decision', 'intro'];
 const enabledSet = new Set(ENABLED_CATEGORIES);
 const filtered = COMMAND_CATEGORIES.filter(c => enabledSet.has(c.id));
 filtered.sort((a, b) => ENABLED_CATEGORIES.indexOf(a.id) - ENABLED_CATEGORIES.indexOf(b.id));

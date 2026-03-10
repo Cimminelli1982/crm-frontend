@@ -907,14 +907,25 @@ app.post('/reply', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing textBody' });
     }
 
-    // Get original email from Supabase
-    const { data: originalEmail, error } = await supabase
+    // Get original email from Supabase (try by id first, then by fastmail_id)
+    let originalEmail = null;
+    const { data: byId } = await supabase
       .from('command_center_inbox')
       .select('*')
       .eq('id', emailId)
       .single();
+    if (byId) {
+      originalEmail = byId;
+    } else {
+      const { data: byFastmailId } = await supabase
+        .from('command_center_inbox')
+        .select('*')
+        .eq('fastmail_id', emailId)
+        .single();
+      originalEmail = byFastmailId;
+    }
 
-    if (error || !originalEmail) {
+    if (!originalEmail) {
       return res.status(404).json({ success: false, error: 'Email not found' });
     }
 
@@ -1052,14 +1063,25 @@ app.post('/forward', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing "to" recipients' });
     }
 
-    // Get original email from Supabase
-    const { data: originalEmail, error } = await supabase
+    // Get original email from Supabase (try by id first, then by fastmail_id)
+    let originalEmail = null;
+    const { data: byId } = await supabase
       .from('command_center_inbox')
       .select('*')
       .eq('id', emailId)
       .single();
+    if (byId) {
+      originalEmail = byId;
+    } else {
+      const { data: byFastmailId } = await supabase
+        .from('command_center_inbox')
+        .select('*')
+        .eq('fastmail_id', emailId)
+        .single();
+      originalEmail = byFastmailId;
+    }
 
-    if (error || !originalEmail) {
+    if (!originalEmail) {
       return res.status(404).json({ success: false, error: 'Email not found' });
     }
 
@@ -3677,6 +3699,101 @@ app.put('/google-calendar/update-event/:eventId', async (req, res) => {
     res.json({ success: true, event: result });
   } catch (error) {
     console.error('[GoogleCalendar] Update event error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Respond to a Google Calendar event invitation (accept/decline/tentative)
+app.post('/google-calendar/respond-to-event', async (req, res) => {
+  try {
+    const { eventId, calendarId, status = 'accepted' } = req.body;
+
+    if (!eventId) {
+      return res.status(400).json({ success: false, error: 'eventId is required' });
+    }
+
+    if (!['accepted', 'declined', 'tentative'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'status must be accepted, declined, or tentative' });
+    }
+
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    const gcal = getGoogleCalendarClient();
+    const userEmail = 'simone@cimminelli.com';
+
+    let event = null;
+    let foundCalendarId = calendarId || null;
+
+    if (calendarId) {
+      // Direct lookup on specified calendar
+      event = await gcal.request(`/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`);
+    } else {
+      // Search across all owned calendars
+      const calendars = await gcal.listCalendars();
+      const ownedCalendars = calendars.filter(c => c.accessRole === 'owner');
+
+      for (const cal of ownedCalendars) {
+        try {
+          event = await gcal.request(`/calendars/${encodeURIComponent(cal.id)}/events/${encodeURIComponent(eventId)}`);
+          foundCalendarId = cal.id;
+          break;
+        } catch (err) {
+          // Event not on this calendar, try next
+          continue;
+        }
+      }
+    }
+
+    if (!event) {
+      return res.status(404).json({ success: false, error: 'Event not found on any calendar' });
+    }
+
+    // Check if user is the organizer — no RSVP needed
+    if (event.organizer?.email?.toLowerCase() === userEmail && !event.organizer?.self === false) {
+      // If organizer and no attendees list or user not in attendees, just return success
+      const isAttendee = (event.attendees || []).some(a => a.email?.toLowerCase() === userEmail);
+      if (!isAttendee) {
+        return res.json({
+          success: true,
+          event: { id: event.id, status: 'organizer', htmlLink: event.htmlLink, calendarId: foundCalendarId },
+          message: 'You are the organizer — no RSVP needed',
+        });
+      }
+    }
+
+    // Find user in attendees
+    const attendees = event.attendees || [];
+    const userAttendee = attendees.find(a => a.email?.toLowerCase() === userEmail);
+
+    if (!userAttendee) {
+      return res.status(400).json({ success: false, error: 'User is not an attendee of this event' });
+    }
+
+    // Update response status
+    userAttendee.responseStatus = status;
+
+    // PATCH the event
+    const updated = await gcal.request(
+      `/calendars/${encodeURIComponent(foundCalendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+      'PATCH',
+      { attendees }
+    );
+
+    console.log(`[GoogleCalendar] Responded to event ${eventId}: ${status}`);
+
+    res.json({
+      success: true,
+      event: {
+        id: updated.id,
+        status,
+        htmlLink: updated.htmlLink,
+        calendarId: foundCalendarId,
+      },
+    });
+  } catch (error) {
+    console.error('[GoogleCalendar] Respond to event error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

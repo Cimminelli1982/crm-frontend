@@ -224,6 +224,13 @@ const DesktopRightPanel = ({
     return itWords.filter(w => lower.includes(w)).length >= 2 ? 'it' : 'en';
   };
 
+  // Intro compose triggered from agent chat "Make intro" button
+  const [pendingIntroCompose, setPendingIntroCompose] = useState(null);
+  const handleOpenIntroCompose = (introAction) => {
+    setPendingIntroCompose(introAction);
+    setActiveActionTab('introductions');
+  };
+
   const handleOpenFreeSlots = () => {
     const emailText = (selectedThread?.[0]?.subject || '') + ' ' + (selectedThread?.[0]?.snippet || '');
     setFreeSlotLanguage(detectEmailLanguage(emailText));
@@ -1437,6 +1444,7 @@ const DesktopRightPanel = ({
                   onUpdateItemStatus={activeTab === 'email' ? emailActionsHook?.updateItemStatus : null}
                   onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
                   onOpenFreeSlots={handleOpenFreeSlots}
+                  onOpenIntroCompose={handleOpenIntroCompose}
                 />
               )}
 
@@ -1751,6 +1759,8 @@ const DesktopRightPanel = ({
                   contactIntroductions={rightPanelContactDetails?.introductions || []}
                   setIntroductionModalOpen={setIntroductionModalOpen}
                   onEditIntroduction={handleEditIntroductionWithContacts}
+                  pendingIntroCompose={pendingIntroCompose}
+                  onPendingIntroConsumed={() => setPendingIntroCompose(null)}
                   onDeleteIntroduction={async (introductionId) => {
                     await handleDeleteIntroduction(introductionId);
                     // Refetch contact details to update introductions list
@@ -1846,6 +1856,7 @@ const DesktopRightPanel = ({
               onDraftSent={null}
               onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
               onOpenFreeSlots={handleOpenFreeSlots}
+              onOpenIntroCompose={handleOpenIntroCompose}
             />
           )}
             </div>

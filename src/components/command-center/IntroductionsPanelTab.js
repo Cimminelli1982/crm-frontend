@@ -630,6 +630,8 @@ const IntroductionsPanelTab = ({
   onIntroductionSelect, // Callback when intro is selected (for parent state)
   onRefresh, // Callback to refresh parent data after status changes
   currentChat, // Current WhatsApp chat being viewed (for linking)
+  pendingIntroCompose, // { tool, introductionId, contact1, contact2, category } from agent chat
+  onPendingIntroConsumed, // Callback to clear pendingIntroCompose after consuming
 }) => {
   const [activeSubTab, setActiveSubTab] = useState('list'); // 'list', 'email', 'whatsapp'
   const [selectedIntro, setSelectedIntro] = useState(null);
@@ -656,6 +658,35 @@ const IntroductionsPanelTab = ({
   const [allIntroductions, setAllIntroductions] = useState([]);
   const [selectedLinkIntro, setSelectedLinkIntro] = useState(null);
   const [linkSaving, setLinkSaving] = useState(false);
+
+  // Handle pending intro compose from agent chat
+  useEffect(() => {
+    if (!pendingIntroCompose) return;
+    const { tool, introductionId, contact1, contact2, category } = pendingIntroCompose;
+
+    // Find intro by ID and select it, then switch to the right sub-tab
+    const loadAndSelect = async () => {
+      if (introductionId) {
+        const { data: intro } = await supabase
+          .from('introductions')
+          .select('*')
+          .eq('introduction_id', introductionId)
+          .single();
+        if (intro) {
+          setSelectedIntro(intro);
+          setActiveSubTab(tool === 'whatsapp' ? 'whatsapp' : 'email');
+          onPendingIntroConsumed?.();
+          return;
+        }
+      }
+      // Fallback: open quick mode with contact names pre-searched
+      setQuickMode(true);
+      setQuickCategory(category || 'Karma Points');
+      setActiveSubTab(tool === 'whatsapp' ? 'whatsapp' : 'email');
+      onPendingIntroConsumed?.();
+    };
+    loadAndSelect();
+  }, [pendingIntroCompose]);
 
   // Search for introductions by contact name (after 3 chars)
   useEffect(() => {
