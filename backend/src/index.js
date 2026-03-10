@@ -681,86 +681,13 @@ app.get('/emails/:id', async (req, res) => {
 });
 
 // Get last sent emails from Fastmail Sent folder
-app.get('/email/debug-sent', async (req, res) => {
-  try {
-    const jmap = new JMAPClient(process.env.FASTMAIL_USERNAME, process.env.FASTMAIL_API_TOKEN);
-    await jmap.init();
-    const threadId = req.query.thread;
-    const sentId = await jmap.getSentId();
-
-    const searchSubject = req.query.subject;
-    // If thread ID or subject provided, search across ALL mailboxes
-    if (threadId || searchSubject) {
-      const filter = {};
-      if (threadId) filter.inThread = threadId;
-      if (searchSubject) filter.subject = searchSubject;
-      const queryResponses = await jmap.request([
-        ['Email/query', {
-          accountId: jmap.accountId,
-          filter,
-          sort: [{ property: 'receivedAt', isAscending: false }],
-          limit: 20,
-        }, 'query'],
-      ]);
-      const emailIds = queryResponses[0][1]?.ids || [];
-      if (emailIds.length === 0) return res.json({ success: true, thread: threadId, emails: [] });
-
-      // Also get all mailboxes for reference
-      const [getResponses, mbResponses] = await Promise.all([
-        jmap.request([
-          ['Email/get', {
-            accountId: jmap.accountId, ids: emailIds,
-            properties: ['id', 'threadId', 'subject', 'to', 'from', 'receivedAt', 'preview', 'keywords', 'mailboxIds'],
-          }, 'get'],
-        ]),
-        jmap.request([
-          ['Mailbox/get', { accountId: jmap.accountId, properties: ['id', 'name', 'role'] }, 'mb'],
-        ]),
-      ]);
-      const mbMap = {};
-      (mbResponses[0][1].list || []).forEach(m => { mbMap[m.id] = m.name + (m.role ? ` (${m.role})` : ''); });
-      const emails = getResponses[0][1].list.map(e => ({
-        id: e.id, subject: e.subject, to: e.to, from: e.from,
-        receivedAt: e.receivedAt, keywords: Object.keys(e.keywords || {}),
-        mailboxes: Object.keys(e.mailboxIds || {}).map(id => mbMap[id] || id),
-      }));
-      return res.json({ success: true, thread: threadId, count: emails.length, emails });
-    }
-
-    // Default: last 30 from Sent
-    const queryResponses = await jmap.request([
-      ['Email/query', {
-        accountId: jmap.accountId,
-        filter: { inMailbox: sentId },
-        sort: [{ property: 'receivedAt', isAscending: false }],
-        position: 0, limit: 30,
-      }, 'query'],
-    ]);
-    const emailIds = queryResponses[0][1]?.ids || [];
-    if (emailIds.length === 0) return res.json({ success: true, emails: [] });
-    const getResponses = await jmap.request([
-      ['Email/get', {
-        accountId: jmap.accountId, ids: emailIds,
-        properties: ['id', 'threadId', 'subject', 'to', 'from', 'receivedAt', 'preview', 'keywords', 'mailboxIds'],
-      }, 'get'],
-    ]);
-    const emails = getResponses[0][1].list.map(e => ({
-      id: e.id, subject: e.subject, to: e.to, from: e.from,
-      receivedAt: e.receivedAt, keywords: Object.keys(e.keywords || {}),
-      mailboxIds: e.mailboxIds,
-    }));
-    res.json({ success: true, sentMailboxId: sentId, count: emails.length, emails });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 app.get('/email/last-sent', async (req, res) => {
   try {
     // Source 1: DB (emails table) — sent emails that have been archived
+    // Get recent sent emails with first "to" participant name
     const { data: dbSent } = await supabase
       .from('emails')
-      .select('email_id, email_thread_id, thread_id, subject, body_plain, message_timestamp, to_email, to_name')
+      .select('email_id, email_thread_id, thread_id, subject, body_plain, message_timestamp, email_participants(contact_id, participant_type, contacts(first_name, last_name, contact_emails(email)))')
       .eq('direction', 'sent')
       .order('message_timestamp', { ascending: false })
       .limit(30);
@@ -773,6 +700,17 @@ app.get('/email/last-sent', async (req, res) => {
       .eq('direction', 'sent')
       .order('date', { ascending: false })
       .limit(15);
+
+    // Helper: get recipient name from email_participants join
+    const getRecipientName = (e) => {
+      const toParticipant = (e.email_participants || []).find(p => p.participant_type === 'to');
+      if (toParticipant?.contacts) {
+        const c = toParticipant.contacts;
+        if (c.first_name || c.last_name) return `${c.first_name || ''} ${c.last_name || ''}`.trim();
+        if (c.contact_emails?.[0]?.email) return c.contact_emails[0].email;
+      }
+      return '';
+    };
 
     // Merge and deduplicate by email_thread_id or thread_id
     const seen = new Set();
@@ -788,7 +726,7 @@ app.get('/email/last-sent', async (req, res) => {
         thread_id: e.thread_id,
         subject: e.subject || 'No Subject',
         snippet: (e.body_plain || '').substring(0, 100),
-        recipient_name: e.to_name || e.to_email || '',
+        recipient_name: getRecipientName(e),
         last_sent_at: e.message_timestamp,
       });
       if (unique.length >= 10) break;
@@ -849,9 +787,6 @@ app.post('/send', async (req, res) => {
     if (attachments?.length) {
       console.log(`Attachments: ${attachments.length} files`);
     }
-    if (skipCrmDoneStamp) {
-      console.log(`Skip CRM Done stamp: true (email will appear in inbox via sync)`);
-    }
 
     const jmap = new JMAPClient(
       process.env.FASTMAIL_USERNAME,
@@ -902,13 +837,52 @@ app.post('/send', async (req, res) => {
       inReplyTo: realMessageId,
       references: realReferences,
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
-      skipCrmDoneStamp: !!skipCrmDoneStamp,
     });
 
     console.log('Email sent successfully:', result);
 
-    // Trigger a sync to get the sent email into our database
-    setTimeout(() => autoSync(), 2000);
+    // For replies: insert sent email directly into command_center_inbox
+    // so it's part of the thread when saveAndArchive runs.
+    // (Same pattern as /reply endpoint)
+    if (inReplyTo) {
+      try {
+        // Look up thread_id from the original email in command_center_inbox
+        const { data: origEmail } = await supabase
+          .from('command_center_inbox')
+          .select('thread_id, status')
+          .eq('fastmail_id', inReplyTo)
+          .single();
+
+        if (origEmail?.thread_id) {
+          const myEmail = process.env.FASTMAIL_USERNAME?.toLowerCase();
+          const { error: insertError } = await supabase
+            .from('command_center_inbox')
+            .insert({
+              type: 'email',
+              thread_id: origEmail.thread_id,
+              subject,
+              from_email: myEmail,
+              from_name: 'Simone Cimminelli',
+              to_recipients: to,
+              cc_recipients: cc?.length > 0 ? cc : null,
+              body_text: textBody,
+              body_html: htmlBody || null,
+              date: new Date().toISOString(),
+              is_read: true,
+              direction: 'sent',
+              status: origEmail.status || null,
+              fastmail_id: result.emailId || null,
+            });
+          if (insertError) {
+            console.error('Failed to insert sent email into inbox:', insertError);
+          } else {
+            console.log('Sent email inserted into command_center_inbox');
+          }
+        }
+      } catch (err) {
+        console.error('Error inserting sent email:', err.message);
+      }
+    }
 
     res.json({
       success: true,

@@ -328,6 +328,11 @@ const COMMAND_CATEGORIES = [
         label: 'Free slots for meeting',
         directAction: 'free-slots',
       },
+      {
+        id: 'accept-invitation',
+        label: 'Accept invitation',
+        directAction: 'accept-invitation',
+      },
     ],
   },
   {

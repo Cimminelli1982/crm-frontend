@@ -621,10 +621,18 @@ export class JMAPClient {
       throw new Error(`Failed to send email: ${JSON.stringify(submitResult.notCreated.send)}`);
     }
 
-    // Don't stamp sent emails with $crm_done - let the sync pick them up
-    // so they flow through the normal pipeline (command_center_inbox → saveAndArchive → emails table)
     const sentEmailId = emailResult.created?.draft?.id;
-    console.log(`Sent email ${sentEmailId} - will be picked up by sync`);
+
+    // Stamp with $crm_done so the sync doesn't re-pick it up.
+    // The /send and /reply endpoints insert directly into command_center_inbox instead.
+    if (sentEmailId) {
+      try {
+        await this.addKeywordToMultiple([sentEmailId], '$crm_done');
+        console.log(`Sent email ${sentEmailId} - stamped $crm_done`);
+      } catch (stampErr) {
+        console.warn(`Could not stamp sent email ${sentEmailId}:`, stampErr.message);
+      }
+    }
 
     return {
       emailId: sentEmailId,

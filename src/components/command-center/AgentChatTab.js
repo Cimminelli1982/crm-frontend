@@ -295,6 +295,7 @@ const AgentChatTab = ({
         'list-tasks': '/list-tasks',
         'complete-task': '/complete-task',
         'register-decision': '/register-decision',
+        'accept-invitation': '/accept-invitation',
       };
 
       if (slashActions[action.directAction]) {
@@ -312,6 +313,15 @@ const AgentChatTab = ({
             `${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.email ? ` (${c.email})` : '')
           ).join(', ');
           lines.push(`Participants: ${participants}`);
+        }
+        // Accept-invitation specific instructions
+        if (action.directAction === 'accept-invitation') {
+          lines.push('', 'Accept this calendar invitation. Steps:',
+            '1. RSVP "accepted" to the Google Calendar event using the respond-to-event tool (search for the event by subject, then respond with status "accepted")',
+            '2. Save the event in Supabase meetings table: INSERT into meetings (meeting_name, meeting_date, description, meeting_status="confirmed", google_meeting_id=event.id, event_uid=event.iCalUID)',
+            '3. For each attendee email, search contact_emails to find matching contact_id. For each found contact, INSERT into meeting_contacts (meeting_id, contact_id)',
+            '4. Archive the email: call /email/save-and-archive with the inbox ID',
+            '5. Confirm to Simone what was done');
         }
         // Decision-specific instructions
         if (action.directAction === 'register-decision') {

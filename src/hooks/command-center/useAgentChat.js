@@ -22,6 +22,7 @@ const SLASH_COMMANDS = {
   '/list-tasks': 'list-tasks',
   '/complete-task': 'complete-task',
   '/register-decision': 'register-decision',
+  '/accept-invitation': 'accept-invitation',
 };
 
 function uuid() {

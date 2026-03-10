@@ -12,7 +12,7 @@ import {
   EmptyState,
 } from '../../../pages/CommandCenterPage.styles';
 import {
-  FaEnvelope, FaCalendar, FaCalendarPlus, FaChevronDown, FaUser, FaBuilding,
+  FaEnvelope, FaCalendar, FaChevronDown, FaUser, FaBuilding,
   FaDollarSign, FaTimes, FaTrash, FaLightbulb, FaHandshake, FaArchive, FaCrown,
   FaPaperclip, FaCheck, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaUserCheck,
   FaTag, FaUpload, FaFileAlt, FaMapMarkerAlt, FaVideo, FaNewspaper,
@@ -123,7 +123,7 @@ const DesktopCenterPanel = ({
     handleSearchMeetingContacts, handleAddMeetingContact, handleRemoveMeetingContact,
     editingCalendarTitle, setEditingCalendarTitle,
     calendarTitleInput, setCalendarTitleInput,
-    handleUpdateCalendarTitle, importingCalendar,
+    handleUpdateCalendarTitle,
     setCalendarTargetDate,
   } = calendarHook;
 
@@ -140,7 +140,6 @@ const DesktopCenterPanel = ({
   const {
     saving, setSaving, handleDoneClick, markAsSpam, markAsNews, moveToInbox, deleteEmail,
     handleDownloadAttachment, updateItemStatus,
-    handleImportCalendarInvitation, isCalendarInvitation,
     spamMenuOpen, setSpamMenuOpen,
     newsMenuOpen, setNewsMenuOpen,
   } = emailActionsHook;
@@ -3276,42 +3275,6 @@ const DesktopCenterPanel = ({
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Add to Calendar - only for invitation emails */}
-                  {isCalendarInvitation() && (
-                    <button
-                      onClick={handleImportCalendarInvitation}
-                      disabled={importingCalendar}
-                      title="Add to Living with Intention calendar"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: theme === 'light' ? '#8B5CF6' : '#7C3AED',
-                        color: 'white',
-                        cursor: importingCalendar ? 'wait' : 'pointer',
-                        transition: 'all 0.2s ease',
-                        opacity: importingCalendar ? 0.7 : 1,
-                      }}
-                    >
-                      {importingCalendar ? (
-                        <span style={{
-                          width: '14px',
-                          height: '14px',
-                          border: '2px solid currentColor',
-                          borderTopColor: 'transparent',
-                          borderRadius: '50%',
-                          animation: 'spin 1s linear infinite'
-                        }} />
-                      ) : (
-                        <FaCalendarPlus size={16} />
-                      )}
-                    </button>
                   )}
 
                   {/* Done / Archive */}
