@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { FaPaperPlane, FaRobot, FaStop } from 'react-icons/fa';
+import { FaPaperPlane, FaRobot, FaStop, FaArchive } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import COMMAND_CATEGORIES from './commandDefinitions';
 
@@ -23,6 +23,8 @@ const AgentChatTab = ({
   onAddToCrm,
   onOpenFreeSlots,
   onOpenIntroCompose,
+  calendarInboxId,
+  onCalendarArchive,
 }) => {
   const {
     agents,
@@ -116,6 +118,7 @@ const AgentChatTab = ({
       emailInboxId: emailInboxId || null,
       whatsappChat: whatsappChat || null,
       calendarEvent: calendarEvent || null,
+      calendarInboxId: calendarInboxId || null,
       dealName: dealName || null,
       contactEmail: primaryEmail,
       contactPhone: primaryPhone,
@@ -124,7 +127,7 @@ const AgentChatTab = ({
       contactJobRole: contact?.job_role || null,
       emailContacts: emailContacts || [],
     };
-  }, [contactName, contactId, contextType, emailSubject, emailInboxId, whatsappChat, calendarEvent, dealName, rightPanelContactDetails, emailContacts]);
+  }, [contactName, contactId, contextType, emailSubject, emailInboxId, whatsappChat, calendarEvent, calendarInboxId, dealName, rightPanelContactDetails, emailContacts]);
 
   const handleSend = () => {
     if (!input.trim() || sending) return;
@@ -232,6 +235,14 @@ const AgentChatTab = ({
     }
   };
 
+  // Post-accept (calendar) archive handler
+  const handlePostAcceptArchive = async (messageId) => {
+    markPostSendAction(messageId, 'archive');
+    if (onCalendarArchive && calendarInboxId) {
+      await onCalendarArchive(calendarInboxId);
+    }
+  };
+
   // Handle "Add to CRM" - use pre-fetched sender info
   const handleAddToCrm = () => {
     setAddToCrmMessageId(null);
@@ -308,6 +319,7 @@ const AgentChatTab = ({
         if (commandContext.emailInboxId) lines.push(`Email inbox ID: ${commandContext.emailInboxId}`);
         if (commandContext.whatsappChat) lines.push(`WhatsApp: ${commandContext.whatsappChat}`);
         if (commandContext.calendarEvent) lines.push(`Calendar: ${commandContext.calendarEvent}`);
+        if (commandContext.calendarInboxId) lines.push(`Calendar inbox ID: ${commandContext.calendarInboxId}`);
         if (commandContext.dealName) lines.push(`Deal: ${commandContext.dealName}`);
         // Add email participants if available
         if (commandContext.emailContacts?.length > 0) {
@@ -615,7 +627,28 @@ const AgentChatTab = ({
                       </div>
                     )}
 
-                    {msg.isPostSend && (
+                    {msg.isPostSend && msg.postActionType === 'calendar-accept' && (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 10, justifyContent: 'center' }}>
+                        <button
+                          onClick={() => handlePostAcceptArchive(msg.id)}
+                          title="Archive calendar event"
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: isDark ? '#2a3a2a' : '#E8F5E9',
+                            color: isDark ? '#81c784' : '#2e7d32',
+                            fontSize: 13, fontWeight: 600,
+                            transition: 'transform 0.1s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                          <FaArchive size={12} /> Archive
+                        </button>
+                      </div>
+                    )}
+
+                    {msg.isPostSend && !msg.postActionType && (
                       <div style={{ display: 'flex', gap: 6, marginTop: 10, justifyContent: 'center' }}>
                         <button
                           onClick={() => handlePostSendAction(msg.id, 'archive')}

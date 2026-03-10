@@ -82,7 +82,7 @@ const DesktopRightPanel = ({
     selectedCalendarEvent, calendarTargetDate, setCalendarTargetDate,
     calendarEventEdits, setCalendarEventEdits, calendarLoading,
     pendingCalendarEvent, setPendingCalendarEvent,
-    handleCalendarExtract, handleCreateCalendarEvent, updateCalendarEventField,
+    handleCalendarExtract, handleCreateCalendarEvent, handleArchiveCalendarEvent, updateCalendarEventField,
     addEventTrigger, weekViewTrigger,
     freeSlotsTrigger, setFreeSlotsTrigger, freeSlotLanguage, setFreeSlotLanguage,
   } = calendarHook;
@@ -1445,6 +1445,8 @@ const DesktopRightPanel = ({
                   onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
                   onOpenFreeSlots={handleOpenFreeSlots}
                   onOpenIntroCompose={handleOpenIntroCompose}
+                  calendarInboxId={activeTab === 'calendar' ? (selectedCalendarEvent?.id || null) : null}
+                  onCalendarArchive={handleArchiveCalendarEvent}
                 />
               )}
 

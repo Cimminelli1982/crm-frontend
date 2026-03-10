@@ -415,7 +415,17 @@ const useAgentChat = (activeTab, contextId, contextLabel) => {
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
-          if (draftModeRef.current === 'post-send') {
+          if (draftModeRef.current === 'post-accept') {
+            draftModeRef.current = false;
+            setMessages(prev => [...prev, {
+              id: uuid(),
+              role: 'assistant',
+              content: finalText,
+              created_at: new Date().toISOString(),
+              isPostSend: true,
+              postActionType: 'calendar-accept',
+            }]);
+          } else if (draftModeRef.current === 'post-send') {
             draftModeRef.current = false;
             setMessages(prev => [...prev, {
               id: uuid(),
@@ -444,6 +454,7 @@ const useAgentChat = (activeTab, contextId, contextLabel) => {
             updateAgentRequest(currentRequestIdRef.current, 'failed', p.errorMessage || 'Aborted');
             currentRequestIdRef.current = null;
           }
+          draftModeRef.current = false;
           setStreamText(null);
           runIdRef.current = null;
           setSending(false);
@@ -573,6 +584,8 @@ const useAgentChat = (activeTab, contextId, contextLabel) => {
       draftModeRef.current = 'reply-to';
     } else if (requestType === 'reply-all-send' || requestType === 'reply-to-send') {
       draftModeRef.current = 'post-send';
+    } else if (requestType === 'accept-invitation') {
+      draftModeRef.current = 'post-accept';
     }
 
     let fullMessage = content.trim();

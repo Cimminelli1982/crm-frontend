@@ -393,6 +393,47 @@ const useCalendarData = (activeTab) => {
     }
   };
 
+  // Archive calendar event from inbox (no confirmation dialog) — used by agent chat post-accept flow
+  const handleArchiveCalendarEvent = async (eventId) => {
+    if (!eventId) {
+      toast.error('No event selected');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${AGENT_SERVICE_URL}/calendar/delete-event`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: eventId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to dismiss event');
+      }
+
+      // Remove from local state
+      const currentIndex = calendarEvents.findIndex(e => e.id === eventId);
+      setCalendarEvents(prev => prev.filter(e => e.id !== eventId));
+
+      // Select next event or clear selection
+      if (calendarEvents.length > 1) {
+        const nextIndex = currentIndex >= calendarEvents.length - 1 ? currentIndex - 1 : currentIndex;
+        const nextEvent = calendarEvents.filter(e => e.id !== eventId)[nextIndex];
+        setSelectedCalendarEvent(nextEvent || null);
+      } else {
+        setSelectedCalendarEvent(null);
+      }
+
+      toast.success('Calendar event dismissed');
+    } catch (error) {
+      console.error('Error dismissing calendar event:', error);
+      toast.error('Failed to dismiss calendar event');
+    }
+  };
+
   // Update calendar event title
   const handleUpdateCalendarTitle = async (newTitle) => {
     if (!selectedCalendarEvent || !newTitle.trim()) {
@@ -973,6 +1014,7 @@ const useCalendarData = (activeTab) => {
     // Handlers
     handleCalendarExtract,
     handleDeleteCalendarEvent,
+    handleArchiveCalendarEvent,
     handleUpdateCalendarTitle,
     handleProcessCalendarEvent,
     handleDeleteProcessedMeeting,
