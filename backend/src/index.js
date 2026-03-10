@@ -17,6 +17,8 @@ import {
 import { mcpManager } from './mcp-client.js';
 import { CalDAVClient } from './caldav.js';
 import { getGoogleCalendarClient } from './google-calendar.js';
+import { generateAndSendBriefing, startBriefingScheduler } from './evening-briefing.js';
+import { registerTodayRoutes } from './today-page.js';
 import {
   initBaileys,
   getStatus as getBaileysStatus,
@@ -236,6 +238,8 @@ async function autoSync() {
         newestDates[role] = newestInBatch;
       }
 
+      // Tag emails with their mailbox role for direction detection
+      emails.forEach(e => { e._mailboxRole = role; });
       allEmails = allEmails.concat(emails);
     }
 
@@ -249,7 +253,12 @@ async function autoSync() {
     // Dedupe by id (in case same email in multiple folders)
     const uniqueEmails = [...new Map(allEmails.map(e => [e.id, e])).values()];
 
-    const transformed = uniqueEmails.map(transformEmail);
+    const transformed = uniqueEmails.map(e => {
+      const t = transformEmail(e);
+      // Set direction based on mailbox: sent folder → 'sent', otherwise 'received'
+      t.direction = e._mailboxRole === 'sent' ? 'sent' : 'received';
+      return t;
+    });
     const { validEmails, spamByEmail, spamByDomain, newsFastmailIds } = await upsertEmails(transformed);
 
     // Stamp all synced emails with $crm_done keyword to prevent re-sync
@@ -668,6 +677,153 @@ app.get('/emails/:id', async (req, res) => {
   } catch (error) {
     console.error('Get email error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get last sent emails from Fastmail Sent folder
+app.get('/email/debug-sent', async (req, res) => {
+  try {
+    const jmap = new JMAPClient(process.env.FASTMAIL_USERNAME, process.env.FASTMAIL_API_TOKEN);
+    await jmap.init();
+    const threadId = req.query.thread;
+    const sentId = await jmap.getSentId();
+
+    const searchSubject = req.query.subject;
+    // If thread ID or subject provided, search across ALL mailboxes
+    if (threadId || searchSubject) {
+      const filter = {};
+      if (threadId) filter.inThread = threadId;
+      if (searchSubject) filter.subject = searchSubject;
+      const queryResponses = await jmap.request([
+        ['Email/query', {
+          accountId: jmap.accountId,
+          filter,
+          sort: [{ property: 'receivedAt', isAscending: false }],
+          limit: 20,
+        }, 'query'],
+      ]);
+      const emailIds = queryResponses[0][1]?.ids || [];
+      if (emailIds.length === 0) return res.json({ success: true, thread: threadId, emails: [] });
+
+      // Also get all mailboxes for reference
+      const [getResponses, mbResponses] = await Promise.all([
+        jmap.request([
+          ['Email/get', {
+            accountId: jmap.accountId, ids: emailIds,
+            properties: ['id', 'threadId', 'subject', 'to', 'from', 'receivedAt', 'preview', 'keywords', 'mailboxIds'],
+          }, 'get'],
+        ]),
+        jmap.request([
+          ['Mailbox/get', { accountId: jmap.accountId, properties: ['id', 'name', 'role'] }, 'mb'],
+        ]),
+      ]);
+      const mbMap = {};
+      (mbResponses[0][1].list || []).forEach(m => { mbMap[m.id] = m.name + (m.role ? ` (${m.role})` : ''); });
+      const emails = getResponses[0][1].list.map(e => ({
+        id: e.id, subject: e.subject, to: e.to, from: e.from,
+        receivedAt: e.receivedAt, keywords: Object.keys(e.keywords || {}),
+        mailboxes: Object.keys(e.mailboxIds || {}).map(id => mbMap[id] || id),
+      }));
+      return res.json({ success: true, thread: threadId, count: emails.length, emails });
+    }
+
+    // Default: last 30 from Sent
+    const queryResponses = await jmap.request([
+      ['Email/query', {
+        accountId: jmap.accountId,
+        filter: { inMailbox: sentId },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        position: 0, limit: 30,
+      }, 'query'],
+    ]);
+    const emailIds = queryResponses[0][1]?.ids || [];
+    if (emailIds.length === 0) return res.json({ success: true, emails: [] });
+    const getResponses = await jmap.request([
+      ['Email/get', {
+        accountId: jmap.accountId, ids: emailIds,
+        properties: ['id', 'threadId', 'subject', 'to', 'from', 'receivedAt', 'preview', 'keywords', 'mailboxIds'],
+      }, 'get'],
+    ]);
+    const emails = getResponses[0][1].list.map(e => ({
+      id: e.id, subject: e.subject, to: e.to, from: e.from,
+      receivedAt: e.receivedAt, keywords: Object.keys(e.keywords || {}),
+      mailboxIds: e.mailboxIds,
+    }));
+    res.json({ success: true, sentMailboxId: sentId, count: emails.length, emails });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/email/last-sent', async (req, res) => {
+  try {
+    // Source 1: DB (emails table) — sent emails that have been archived
+    const { data: dbSent } = await supabase
+      .from('emails')
+      .select('email_id, email_thread_id, thread_id, subject, body_plain, message_timestamp, to_email, to_name')
+      .eq('direction', 'sent')
+      .order('message_timestamp', { ascending: false })
+      .limit(30);
+
+    // Source 2: command_center_inbox — sent emails not yet archived
+    const { data: inboxSent } = await supabase
+      .from('command_center_inbox')
+      .select('id, thread_id, subject, snippet, body_text, date, to_recipients, direction')
+      .eq('type', 'email')
+      .eq('direction', 'sent')
+      .order('date', { ascending: false })
+      .limit(15);
+
+    // Merge and deduplicate by email_thread_id or thread_id
+    const seen = new Set();
+    const unique = [];
+
+    // DB emails first (already archived = have email_thread_id)
+    for (const e of (dbSent || [])) {
+      const key = e.email_thread_id || e.thread_id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push({
+        email_thread_id: e.email_thread_id,
+        thread_id: e.thread_id,
+        subject: e.subject || 'No Subject',
+        snippet: (e.body_plain || '').substring(0, 100),
+        recipient_name: e.to_name || e.to_email || '',
+        last_sent_at: e.message_timestamp,
+      });
+      if (unique.length >= 10) break;
+    }
+
+    // Inbox sent emails (not yet archived)
+    for (const e of (inboxSent || [])) {
+      if (e.thread_id && seen.has(e.thread_id)) continue;
+      if (e.thread_id) seen.add(e.thread_id);
+      const toList = e.to_recipients || [];
+      const firstTo = Array.isArray(toList) ? toList[0] : null;
+      // Look up email_thread_id from DB if thread exists
+      let emailThreadId = null;
+      if (e.thread_id) {
+        const match = (dbSent || []).find(d => d.thread_id === e.thread_id);
+        if (match) emailThreadId = match.email_thread_id;
+      }
+      unique.push({
+        email_thread_id: emailThreadId,
+        thread_id: e.thread_id,
+        subject: e.subject || 'No Subject',
+        snippet: (e.snippet || e.body_text || '').substring(0, 100),
+        recipient_name: firstTo?.name || firstTo?.email || '',
+        last_sent_at: e.date,
+      });
+      if (unique.length >= 10) break;
+    }
+
+    // Sort by date descending
+    unique.sort((a, b) => new Date(b.last_sent_at) - new Date(a.last_sent_at));
+
+    res.json({ success: true, threads: unique.slice(0, 10) });
+  } catch (error) {
+    console.error('Last sent error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -3665,10 +3821,12 @@ app.get('/google-calendar/events/all', async (req, res) => {
 
     const allEvents = await gcal.getEventsMultiCalendar(ids, { timeMin, timeMax });
 
-    // Deduplicate by iCalUID (same event can appear on multiple calendars)
+    // Deduplicate by iCalUID + start time (same event can appear on multiple calendars,
+    // but recurring instances share iCalUID so we must include start to keep all instances)
     const seen = new Set();
     const events = allEvents.filter(e => {
-      const key = e.iCalUID || e.id;
+      const start = e.start?.dateTime || e.start?.date || '';
+      const key = (e.iCalUID || e.id) + '|' + start;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -4515,9 +4673,28 @@ app.post('/notes/sync', async (req, res) => {
 
 // ============ END NOTES ============
 
+// ============ EVENING BRIEFING ============
+
+// ============ TODAY PAGE ============
+registerTodayRoutes(app);
+
+app.post('/briefing/evening', async (req, res) => {
+  try {
+    const { date } = req.body || {};
+    const result = await generateAndSendBriefing(date || null);
+    res.json(result);
+  } catch (error) {
+    console.error('[Briefing] Endpoint error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);
   startPolling();
+
+  // Start evening briefing scheduler (19:00 UK daily)
+  startBriefingScheduler();
 
   // Initialize Baileys after server starts
   setTimeout(() => {

@@ -32,6 +32,7 @@ const DesktopLeftPanel = ({
     emailSearchQuery, setEmailSearchQuery, emailSearchResults, setEmailSearchResults,
     emailSearchLoading, isSearchingEmails, setIsSearchingEmails,
     statusSections, setStatusSections, toggleStatusSection, filterByStatus,
+    lastSentThreads,
   } = localState;
   const { handleSelectSearchResult, handleSelectThread, handleSelectCalendarSearchResult, getRelevantPerson } = localHandlers;
   const {
@@ -576,6 +577,7 @@ const DesktopLeftPanel = ({
           statusSections={statusSections}
           toggleStatusSection={toggleStatusSection}
           filterByStatus={filterByStatus}
+          lastSentThreads={lastSentThreads}
         />
       );
     }

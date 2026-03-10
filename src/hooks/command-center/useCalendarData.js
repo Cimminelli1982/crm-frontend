@@ -53,6 +53,8 @@ const useCalendarData = (activeTab) => {
   // Triggers for CalendarPanelTab (from left panel buttons)
   const [addEventTrigger, setAddEventTrigger] = useState(0);
   const [weekViewTrigger, setWeekViewTrigger] = useState(0);
+  const [freeSlotsTrigger, setFreeSlotsTrigger] = useState(0);
+  const [freeSlotLanguage, setFreeSlotLanguage] = useState('it');
 
   // Fetch Calendar events from Supabase (all events - upcoming and past)
   useEffect(() => {
@@ -989,6 +991,10 @@ const useCalendarData = (activeTab) => {
     setAddEventTrigger,
     weekViewTrigger,
     setWeekViewTrigger,
+    freeSlotsTrigger,
+    setFreeSlotsTrigger,
+    freeSlotLanguage,
+    setFreeSlotLanguage,
   };
 };
 

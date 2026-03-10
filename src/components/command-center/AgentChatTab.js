@@ -17,9 +17,11 @@ const AgentChatTab = ({
   calendarEvent,
   dealName,
   rightPanelContactDetails,
+  emailContacts,
   onDraftSent,
   onUpdateItemStatus,
   onAddToCrm,
+  onOpenFreeSlots,
 }) => {
   const {
     agents,
@@ -119,8 +121,9 @@ const AgentChatTab = ({
       contactCompany: primaryCompany,
       contactCategory: contact?.category || null,
       contactJobRole: contact?.job_role || null,
+      emailContacts: emailContacts || [],
     };
-  }, [contactName, contactId, contextType, emailSubject, emailInboxId, whatsappChat, calendarEvent, dealName, rightPanelContactDetails]);
+  }, [contactName, contactId, contextType, emailSubject, emailInboxId, whatsappChat, calendarEvent, dealName, rightPanelContactDetails, emailContacts]);
 
   const handleSend = () => {
     if (!input.trim() || sending) return;
@@ -275,8 +278,65 @@ const AgentChatTab = ({
   const handleCommandSelect = (action) => {
     setOpenCategory(null);
 
-    // Direct actions (archive, waiting, need actions) — execute immediately
+    // Direct actions — execute immediately
     if (action.directAction) {
+      if (action.directAction === 'free-slots') {
+        onOpenFreeSlots?.();
+        return;
+      }
+
+      // Slash-command direct actions: auto-send with hidden context
+      const slashActions = {
+        'what-in-calendar': '/what-in-calendar',
+        'create-event': '/create-event',
+        'create-event-invite': '/create-event-invite',
+        'create-task': '/create-task',
+        'associate-task': '/associate-task',
+        'list-tasks': '/list-tasks',
+        'complete-task': '/complete-task',
+        'register-decision': '/register-decision',
+      };
+
+      if (slashActions[action.directAction]) {
+        const lines = [slashActions[action.directAction]];
+        if (commandContext.contactName) lines.push(`Contact: ${commandContext.contactName}`);
+        if (commandContext.contactId) lines.push(`Contact ID: ${commandContext.contactId}`);
+        if (commandContext.emailSubject) lines.push(`Email: ${commandContext.emailSubject}`);
+        if (commandContext.emailInboxId) lines.push(`Email inbox ID: ${commandContext.emailInboxId}`);
+        if (commandContext.whatsappChat) lines.push(`WhatsApp: ${commandContext.whatsappChat}`);
+        if (commandContext.calendarEvent) lines.push(`Calendar: ${commandContext.calendarEvent}`);
+        if (commandContext.dealName) lines.push(`Deal: ${commandContext.dealName}`);
+        // Add email participants if available
+        if (commandContext.emailContacts?.length > 0) {
+          const participants = commandContext.emailContacts.map(c =>
+            `${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.email ? ` (${c.email})` : '')
+          ).join(', ');
+          lines.push(`Participants: ${participants}`);
+        }
+        // Decision-specific instructions
+        if (action.directAction === 'register-decision') {
+          lines.push('', 'Register a new decision. Ask Simone to describe the decision.',
+            'Required: detail (text), category (Investment|Team|Time|Money|Family), confidence (1-5)',
+            'Optional: notes, decision_date (default today)',
+            'After Simone replies: INSERT into decisions, link decision_contacts if contact_id available, link decision_deals if deal context available, then GET to verify and confirm.');
+        }
+        const context = {
+          type: contextType,
+          id: contextId,
+          contactId: contactId,
+          metadata: {
+            contactName: contactName || null,
+            emailSubject: emailSubject || null,
+            emailInboxId: emailInboxId || null,
+            whatsappChat: whatsappChat || null,
+            calendarEvent: calendarEvent || null,
+            dealName: dealName || null,
+          },
+        };
+        sendMessage(lines.join('\n'), context, action.label);
+        return;
+      }
+
       handleDirectEmailAction(action.directAction);
       return;
     }
@@ -453,7 +513,7 @@ const AgentChatTab = ({
                         }}
                       />
                     ) : (
-                      msg.content
+                      msg.displayText || msg.content
                     )}
 
                     {msg.isDraft && (

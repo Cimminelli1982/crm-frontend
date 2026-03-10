@@ -17,6 +17,11 @@ const SLASH_COMMANDS = {
   '/what-in-calendar': 'what-in-calendar',
   '/create-event': 'create-event',
   '/create-event-invite': 'create-event-invite',
+  '/create-task': 'create-task',
+  '/associate-task': 'associate-task',
+  '/list-tasks': 'list-tasks',
+  '/complete-task': 'complete-task',
+  '/register-decision': 'register-decision',
 };
 
 function uuid() {
@@ -586,7 +591,8 @@ const useAgentChat = (activeTab, contextId, contextLabel) => {
     setMessages(prev => [...prev, {
       id: idempotencyKey,
       role: 'user',
-      content: displayText || content.trim(),
+      content: content.trim(),
+      displayText: displayText || null,
       created_at: new Date().toISOString(),
     }]);
     setInput('');

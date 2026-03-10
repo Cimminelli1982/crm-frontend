@@ -311,75 +311,22 @@ const COMMAND_CATEGORIES = [
       {
         id: 'what-in-calendar',
         label: 'What in my calendar',
-        buildPrompt: (ctx) => {
-          const parsed = parseCalendarSubject(ctx.emailSubject);
-          const lines = [
-            '/what-in-calendar',
-          ];
-          if (parsed.date) lines.push(`Event date: ${parsed.date}`);
-          if (parsed.title) lines.push(`Event: ${parsed.title}`);
-          if (parsed.startTime && parsed.endTime) lines.push(`Time: ${parsed.startTime} - ${parsed.endTime}`);
-          else if (parsed.startTime) lines.push(`Time: ${parsed.startTime}`);
-          if (ctx.emailInboxId) lines.push(`Email inbox ID: ${ctx.emailInboxId}`);
-          if (ctx.contactName) lines.push(`Contact: ${ctx.contactName}`);
-          return lines.join('\n');
-        },
+        directAction: 'what-in-calendar',
       },
       {
         id: 'create-event-no-guests',
         label: 'Create event (no invite)',
-        buildPrompt: (ctx) => {
-          const parsed = parseCalendarSubject(ctx.emailSubject);
-          const lines = ['/create-event'];
-          if (parsed.title) lines.push(`Event: ${parsed.title}`);
-          if (parsed.date) lines.push(`Date: ${parsed.date}`);
-          if (parsed.startTime && parsed.endTime) lines.push(`Time: ${parsed.startTime} - ${parsed.endTime}`);
-          else if (parsed.startTime) lines.push(`Time: ${parsed.startTime}`);
-          if (ctx.emailInboxId) lines.push(`Email inbox ID: ${ctx.emailInboxId}`);
-          if (ctx.contactName) lines.push(`Contact: ${ctx.contactName}`);
-          if (ctx.contactEmail) lines.push(`Contact email: ${ctx.contactEmail}`);
-          return lines.join('\n');
-        },
+        directAction: 'create-event',
       },
       {
         id: 'create-event-with-guests',
         label: 'Create event (invite guests)',
-        buildPrompt: (ctx) => {
-          const parsed = parseCalendarSubject(ctx.emailSubject);
-          const lines = ['/create-event-invite'];
-          if (parsed.title) lines.push(`Event: ${parsed.title}`);
-          if (parsed.date) lines.push(`Date: ${parsed.date}`);
-          if (parsed.startTime && parsed.endTime) lines.push(`Time: ${parsed.startTime} - ${parsed.endTime}`);
-          else if (parsed.startTime) lines.push(`Time: ${parsed.startTime}`);
-          if (ctx.emailInboxId) lines.push(`Email inbox ID: ${ctx.emailInboxId}`);
-          if (ctx.contactName) lines.push(`Contact: ${ctx.contactName}`);
-          if (ctx.contactEmail) lines.push(`Contact email: ${ctx.contactEmail}`);
-          return lines.join('\n');
-        },
+        directAction: 'create-event-invite',
       },
       {
         id: 'free-slots',
         label: 'Free slots for meeting',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Trovare slot liberi per un meeting', '',
-            'Durata meeting: [specificare, default 30 min]',
-            'Periodo: [specificare, default prossimi 5 giorni lavorativi]',
-            'Orario preferito: 9:00-18:00',
-          ];
-          if (ctx.contactName) lines.push(`Con: ${ctx.contactName}`);
-          if (ctx.contactEmail) lines.push(`Email: ${ctx.contactEmail}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/calendar.md',
-            '2. Controlla il Google Calendar per i prossimi 5 giorni lavorativi',
-            '3. Trova gli slot liberi di almeno 30 min tra le 9:00 e le 18:00',
-            '4. Proponi 3-5 slot disponibili in formato chiaro',
-            '5. Se Simone specifica durata o periodo diverso, adatta la ricerca');
-          return lines.join('\n');
-        },
+        directAction: 'free-slots',
       },
     ],
   },
@@ -391,26 +338,23 @@ const COMMAND_CATEGORIES = [
     actions: [
       {
         id: 'create-task',
-        label: 'Crea task',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Creare nuova task', '',
-            'Titolo: [specificare]',
-            'Scadenza: [opzionale]',
-            'Priorita: [1=urgent, 2=high, 3=medium, 4=low]',
-            'Progetto: [Work, Personal, ...]',
-            'Descrizione: [opzionale]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto collegato: ${ctx.contactName}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/tasks.md',
-            '2. Crea la task in Todoist',
-            '3. VERIFICA: conferma creazione');
-          return lines.join('\n');
-        },
+        label: 'Create task',
+        directAction: 'create-task',
+      },
+      {
+        id: 'associate-task',
+        label: 'Associate task',
+        directAction: 'associate-task',
+      },
+      {
+        id: 'list-tasks',
+        label: 'List associated tasks',
+        directAction: 'list-tasks',
+      },
+      {
+        id: 'complete-task',
+        label: 'Complete task',
+        directAction: 'complete-task',
       },
     ],
   },
@@ -544,29 +488,28 @@ const COMMAND_CATEGORIES = [
       {
         id: 'register-decision',
         label: 'Registra decisione',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Registrare una decisione', '',
-            'Decisione: [descrizione dettagliata]',
-            'Categoria: [specificare]',
-            'Confidenza: [alta, media, bassa]',
-            'Contatti collegati: [opzionale]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/decisions.md',
-            '2. Registra la decisione con tutti i dettagli',
-            '3. Collega contatti se specificati',
-            '4. VERIFICA: conferma registrazione');
-          return lines.join('\n');
-        },
+        directAction: 'register-decision',
       },
     ],
   },
 ];
+
+// Helper to format email contacts list for prompts
+function formatEmailContacts(ctx) {
+  if (!ctx.emailContacts || ctx.emailContacts.length === 0) return null;
+  const entries = ctx.emailContacts
+    .map(c => {
+      const name = c.name || `${c.contact?.first_name || ''} ${c.contact?.last_name || ''}`.trim();
+      const id = c.contact?.contact_id;
+      const email = c.email || null;
+      const parts = [name];
+      if (email) parts.push(email);
+      if (id) parts.push(id);
+      return parts.join(' | ');
+    })
+    .filter(Boolean);
+  return entries.length > 0 ? `Email contacts:\n${entries.map(e => `- ${e}`).join('\n')}` : null;
+}
 
 // Helper to build context parts for prompts
 function buildContextParts(ctx) {
@@ -582,7 +525,7 @@ function buildContextParts(ctx) {
 }
 
 // Only show enabled categories — re-enable one at a time as we rethink each
-const ENABLED_CATEGORIES = ['email', 'calendar'];
+const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'decision'];
 const enabledSet = new Set(ENABLED_CATEGORIES);
 const filtered = COMMAND_CATEGORIES.filter(c => enabledSet.has(c.id));
 filtered.sort((a, b) => ENABLED_CATEGORIES.indexOf(a.id) - ENABLED_CATEGORIES.indexOf(b.id));

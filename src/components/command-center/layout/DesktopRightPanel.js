@@ -32,6 +32,7 @@ import DealsTab from '../DealsTab';
 import DataIntegrityTab from '../DataIntegrityTab';
 import AgentChatTab from '../AgentChatTab';
 import DecisionsPanelTab from '../DecisionsPanelTab';
+import FreeSlotPickerModal from '../FreeSlotPickerModal';
 
 const DesktopRightPanel = ({
   theme,
@@ -48,6 +49,7 @@ const DesktopRightPanel = ({
   rightPanelHook,
   chatHook,
   agentChatHook,
+  contextContactsHook,
   emailCompose,
   quickEditModal,
   profileImageModal,
@@ -82,6 +84,7 @@ const DesktopRightPanel = ({
     pendingCalendarEvent, setPendingCalendarEvent,
     handleCalendarExtract, handleCreateCalendarEvent, updateCalendarEventField,
     addEventTrigger, weekViewTrigger,
+    freeSlotsTrigger, setFreeSlotsTrigger, freeSlotLanguage, setFreeSlotLanguage,
   } = calendarHook;
 
   // Destructure dealsHook
@@ -211,6 +214,20 @@ const DesktopRightPanel = ({
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setDealsDragOver(true);
+  };
+
+  const detectEmailLanguage = (text) => {
+    const lower = (text || '').toLowerCase();
+    const itWords = ['disponibilita', 'libero', 'libera', 'riunione', 'incontro',
+      'quando', 'possiamo', 'puoi', 'chiamata', 'hai', 'buongiorno', 'ciao',
+      'salve', 'gentile', 'cordiali', 'saluto', 'grazie'];
+    return itWords.filter(w => lower.includes(w)).length >= 2 ? 'it' : 'en';
+  };
+
+  const handleOpenFreeSlots = () => {
+    const emailText = (selectedThread?.[0]?.subject || '') + ' ' + (selectedThread?.[0]?.snippet || '');
+    setFreeSlotLanguage(detectEmailLanguage(emailText));
+    setFreeSlotsTrigger(prev => prev + 1);
   };
 
   return (
@@ -1415,9 +1432,11 @@ const DesktopRightPanel = ({
                   whatsappChat={activeTab === 'whatsapp' ? (selectedWhatsappChat?.contact_name || selectedWhatsappChat?.chat_name || null) : null}
                   calendarEvent={activeTab === 'calendar' ? (selectedCalendarEvent?.summary || selectedCalendarEvent?.title || null) : null}
                   dealName={activeTab === 'deals' ? (selectedPipelineDeal?.deal_name || selectedPipelineDeal?.name || null) : null}
+                  emailContacts={contextContactsHook?.emailContacts || []}
                   onDraftSent={activeTab === 'email' ? emailActionsHook?.saveAndArchiveAsync : null}
                   onUpdateItemStatus={activeTab === 'email' ? emailActionsHook?.updateItemStatus : null}
                   onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
+                  onOpenFreeSlots={handleOpenFreeSlots}
                 />
               )}
 
@@ -1826,10 +1845,16 @@ const DesktopRightPanel = ({
               emailSubject={null}
               onDraftSent={null}
               onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
+              onOpenFreeSlots={handleOpenFreeSlots}
             />
           )}
             </div>
           </div>
+        <FreeSlotPickerModal
+          theme={theme}
+          trigger={freeSlotsTrigger}
+          language={freeSlotLanguage}
+        />
         </ActionsPanel>
   );
 };

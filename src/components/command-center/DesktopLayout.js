@@ -95,6 +95,7 @@ const DesktopLayout = ({
           rightPanelHook={rightPanelHook}
           chatHook={chatHook}
           agentChatHook={agentChatHook}
+          contextContactsHook={contextContactsHook}
           emailCompose={emailCompose}
           quickEditModal={quickEditModal}
           profileImageModal={profileImageModal}

@@ -46,6 +46,8 @@ const EmailLeftContent = ({
   statusSections,
   toggleStatusSection,
   filterByStatus,
+  // Last Sent
+  lastSentThreads,
 }) => {
   const isEmail = activeTab === 'email';
 
@@ -206,6 +208,42 @@ const EmailLeftContent = ({
           {renderSection('news', 'News', 'default', '#3B82F6')}
           {renderSection('potential_spam', 'Potential Spam', 'default', '#F59E0B')}
           {renderSection('archiving', 'Archiving', 'success', '#10b981')}
+          {isEmail && lastSentThreads?.length > 0 && (
+            <CollapsibleSection
+              theme={theme}
+              title="Last Sent"
+              count={lastSentThreads.length}
+              isOpen={statusSections.last_sent}
+              onToggle={() => toggleStatusSection('last_sent')}
+            >
+              {lastSentThreads.map((item, idx) => (
+                <EmailItem
+                  key={item.email_thread_id || item.thread_id || idx}
+                  theme={theme}
+                  $selected={
+                    (item.email_thread_id && selectedThread?.[0]?._email_thread_id === item.email_thread_id) ||
+                    (item.thread_id && selectedThread?.[0]?.thread_id === item.thread_id)
+                  }
+                  onClick={() => {
+                    if (item.email_thread_id) {
+                      handleSelectSearchResult({ email_thread_id: item.email_thread_id });
+                    } else if (item.thread_id) {
+                      const inboxThread = threads.find(t => t.threadId === item.thread_id);
+                      if (inboxThread) handleSelectThread(inboxThread.emails);
+                    }
+                  }}
+                >
+                  <EmailSender theme={theme}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.recipient_name || 'Me'}
+                    </span>
+                  </EmailSender>
+                  <EmailSubject theme={theme}>{item.subject}</EmailSubject>
+                  <EmailSnippet theme={theme}>{item.snippet}</EmailSnippet>
+                </EmailItem>
+              ))}
+            </CollapsibleSection>
+          )}
         </>
       )}
     </EmailList>

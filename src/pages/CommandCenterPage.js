@@ -521,8 +521,11 @@ const CommandCenterPage = ({ theme }) => {
     waiting_input: false,
     news: false,
     potential_spam: false,
-    archiving: false
+    archiving: false,
+    last_sent: false,
   });
+
+  const [lastSentThreads, setLastSentThreads] = useState([]);
 
   // Toggle section expansion
   const toggleStatusSection = (section) => {
@@ -827,6 +830,7 @@ const CommandCenterPage = ({ theme }) => {
     refreshThreads, activeTab,
     handleSend, getLatestEmail,
     selectedWhatsappChat, setWhatsappChats,
+    setStatusSections,
     importingCalendar, setImportingCalendar,
   });
   const {
@@ -2093,6 +2097,24 @@ const CommandCenterPage = ({ theme }) => {
     }
   }, []);
 
+  // Fetch last 10 sent email threads directly from Fastmail Sent folder
+  const fetchLastSentThreads = useCallback(async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/email/last-sent`);
+      const data = await response.json();
+      if (data.success && data.threads) {
+        setLastSentThreads(data.threads);
+      }
+    } catch (err) {
+      console.error('Error fetching last sent threads:', err);
+    }
+  }, []);
+
+  // Fetch last sent threads when email tab is active
+  useEffect(() => {
+    if (activeTab === 'email') fetchLastSentThreads();
+  }, [activeTab, fetchLastSentThreads]);
+
   // Handle selecting a search result - loads the full thread and displays it
   const handleSelectSearchResult = async (searchResult) => {
     try {
@@ -2359,6 +2381,7 @@ const CommandCenterPage = ({ theme }) => {
     emailSearchLoading, isSearchingEmails, setIsSearchingEmails,
     contactDeals, companyDeals, contactIntroductions, contactTasks,
     contactNotes, loadingNotes,
+    lastSentThreads,
     navigate,
   }), [
     activeTab, viewport, isMobile,
@@ -2367,6 +2390,7 @@ const CommandCenterPage = ({ theme }) => {
     emailSearchQuery, emailSearchResults, emailSearchLoading, isSearchingEmails,
     contactDeals, companyDeals, contactIntroductions, contactTasks,
     contactNotes, loadingNotes,
+    lastSentThreads,
     navigate,
   ]);
 

@@ -13,6 +13,8 @@ const useEmailActions = ({
   handleSend, getLatestEmail,
   // WhatsApp dependencies (for updateItemStatus)
   selectedWhatsappChat, setWhatsappChats,
+  // Status sections (for auto-expanding after status change)
+  setStatusSections,
   // Calendar dependencies (for handleImportCalendarInvitation)
   importingCalendar, setImportingCalendar,
   refreshInbox,
@@ -731,11 +733,30 @@ const useEmailActions = ({
   const saveAndArchiveAsync = async () => {
     if (!selectedThread || selectedThread.length === 0) return;
 
-    // Capture state at time of click (before any updates)
-    const threadToProcess = [...selectedThread];
+    // Capture state at time of click, including any sent replies added after thread was opened
+    let threadToProcess = [...selectedThread];
+    const currentThreadId = selectedThread[0]?.thread_id;
+
+    // Fetch sent replies from command_center_inbox that aren't in selectedThread
+    if (currentThreadId) {
+      const existingIds = new Set(threadToProcess.map(e => e.id));
+      const { data: sentReplies } = await supabase
+        .from('command_center_inbox')
+        .select('*')
+        .eq('thread_id', currentThreadId)
+        .eq('direction', 'sent')
+        .eq('type', 'email');
+      if (sentReplies?.length > 0) {
+        const newReplies = sentReplies.filter(r => !existingIds.has(r.id));
+        if (newReplies.length > 0) {
+          console.log(`[saveAndArchive] Found ${newReplies.length} sent replies to include`);
+          threadToProcess = [...threadToProcess, ...newReplies];
+        }
+      }
+    }
+
     const emailIds = threadToProcess.map(e => e.id);
     const keepStatus = pendingInboxStatusRef.current;
-    const currentThreadId = threadToProcess[0]?.thread_id;
     const currentThreadIndex = threads.findIndex(t => t.emails[0]?.thread_id === currentThreadId);
 
     // Get contacts to pass to backend (excluding me)
@@ -861,6 +882,21 @@ const useEmailActions = ({
         console.error('Error updating status:', error);
       } else {
         toast.success(`Moved to ${newStatus === 'need_actions' ? 'Need Actions' : 'Waiting Input'}`);
+        // Auto-expand the target section so the user can see the moved item
+        if (setStatusSections) {
+          setStatusSections(prev => ({ ...prev, [newStatus]: true }));
+        }
+        // Update local state immediately for instant UI feedback
+        setEmails(prev => prev.map(e =>
+          ids.includes(e.id) ? { ...e, status: newStatus } : e
+        ));
+        setThreads(prev => prev.map(t => ({
+          ...t,
+          emails: t.emails.map(e =>
+            ids.includes(e.id) ? { ...e, status: newStatus } : e
+          ),
+          status: t.emails.some(e => ids.includes(e.id)) ? newStatus : t.status
+        })));
         // Refresh threads to reflect new status
         refreshThreads();
       }
@@ -876,6 +912,10 @@ const useEmailActions = ({
         console.error('Error updating status:', error);
       } else {
         toast.success(`Moved to ${newStatus === 'need_actions' ? 'Need Actions' : 'Waiting Input'}`);
+        // Auto-expand the target section
+        if (setStatusSections) {
+          setStatusSections(prev => ({ ...prev, [newStatus]: true }));
+        }
         // Refresh WhatsApp chats
         setWhatsappChats(prev => prev.map(chat =>
           chat.chat_id === selectedWhatsappChat.chat_id

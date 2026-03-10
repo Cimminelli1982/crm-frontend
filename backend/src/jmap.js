@@ -150,6 +150,34 @@ export class JMAPClient {
     return getResponses[0][1].list;
   }
 
+  async getRecentSentEmails(limit = 15) {
+    const sentId = await this.getSentId();
+    if (!sentId) return [];
+
+    const queryResponses = await this.request([
+      ['Email/query', {
+        accountId: this.accountId,
+        filter: { inMailbox: sentId },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        position: 0,
+        limit,
+      }, 'query'],
+    ]);
+
+    const emailIds = queryResponses[0][1]?.ids || [];
+    if (emailIds.length === 0) return [];
+
+    const getResponses = await this.request([
+      ['Email/get', {
+        accountId: this.accountId,
+        ids: emailIds,
+        properties: ['id', 'threadId', 'subject', 'to', 'receivedAt', 'preview'],
+      }, 'get'],
+    ]);
+
+    return getResponses[0][1].list;
+  }
+
   async getEmailById(emailId) {
     const responses = await this.request([
       ['Email/get', {
@@ -593,18 +621,10 @@ export class JMAPClient {
       throw new Error(`Failed to send email: ${JSON.stringify(submitResult.notCreated.send)}`);
     }
 
-    // Stamp the sent email with $crm_done to prevent re-sync (unless skipCrmDoneStamp is true)
+    // Don't stamp sent emails with $crm_done - let the sync pick them up
+    // so they flow through the normal pipeline (command_center_inbox → saveAndArchive → emails table)
     const sentEmailId = emailResult.created?.draft?.id;
-    if (sentEmailId && !skipCrmDoneStamp) {
-      try {
-        await this.addKeyword(sentEmailId, '$crm_done');
-        console.log(`Stamped sent email ${sentEmailId} with $crm_done`);
-      } catch (stampError) {
-        console.error(`Failed to stamp sent email:`, stampError.message);
-      }
-    } else if (sentEmailId && skipCrmDoneStamp) {
-      console.log(`Skipping $crm_done stamp for email ${sentEmailId} (will appear in inbox via sync)`);
-    }
+    console.log(`Sent email ${sentEmailId} - will be picked up by sync`);
 
     return {
       emailId: sentEmailId,
