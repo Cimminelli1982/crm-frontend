@@ -238,14 +238,27 @@ export async function fetchEmailContactsFallback(dateStr) {
 
 export async function fetchWhatsAppContacts(dateStr) {
   // 1-to-1 from interactions
-  const { data: waInteractions } = await supabase.rpc('exec_sql', {
-    query: `SELECT DISTINCT c.first_name || ' ' || c.last_name AS name, cm.mobile
-            FROM interactions i
-            JOIN contacts c ON c.contact_id = i.contact_id
-            LEFT JOIN contact_mobiles cm ON cm.contact_id = c.contact_id AND cm.is_primary = true
-            WHERE i.interaction_type = 'whatsapp' AND i.interaction_date::date = '${dateStr}'
-            ORDER BY name`
-  }).catch(() => ({ data: null }));
+  let waInteractions = null;
+  try {
+    const { data } = await supabase
+      .from('interactions')
+      .select('contact_id, contacts(first_name, last_name, contact_mobiles(mobile, is_primary))')
+      .eq('interaction_type', 'whatsapp')
+      .gte('interaction_date', `${dateStr}T00:00:00`)
+      .lte('interaction_date', `${dateStr}T23:59:59`);
+
+    if (data) {
+      const seen = new Set();
+      waInteractions = data
+        .filter(i => i.contacts && !seen.has(i.contact_id) && seen.add(i.contact_id))
+        .map(i => ({
+          name: `${i.contacts.first_name || ''} ${i.contacts.last_name || ''}`.trim(),
+          mobile: i.contacts.contact_mobiles?.find(m => m.is_primary)?.mobile || null,
+        }));
+    }
+  } catch (e) {
+    console.error('[Briefing] WhatsApp interactions error:', e.message);
+  }
 
   // 1-to-1 from inbox
   const { data: waInbox } = await supabase

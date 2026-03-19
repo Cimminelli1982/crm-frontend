@@ -151,69 +151,24 @@ const COMMAND_CATEGORIES = [
     icon: FaDollarSign,
     actions: [
       {
-        id: 'new-deal',
-        label: 'Nuovo deal',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Creare nuovo deal nel CRM', '',
-            'Opportunity: [nome startup/opportunity]',
-            'Deal name: [opzionale]',
-            'Categoria: [Inbox, Startup, Investment, Fund, Partnership, Real Estate, Private Debt, Private Equity, Other]',
-            'Stage: [Lead, Evaluating, Qualified, Closing]',
-            'Source: [Not Set, Cold Contacting, Introduction]',
-            'Importo: [opzionale]',
-            'Valuta: [opzionale]',
-            'Descrizione: [opzionale]',
-            'Contatti collegati: [nomi e ruoli]',
-          ];
-          if (ctx.contactName) lines.push(`Contatto corrente: ${ctx.contactName}`);
-          if (ctx.dealName) lines.push(`Deal corrente: ${ctx.dealName}`);
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/deals.md',
-            '2. Crea il deal e collega i contatti',
-            '3. VERIFICA: conferma creazione con GET');
-          return lines.join('\n');
-        },
+        id: 'list-related-deals',
+        label: 'Related deals',
+        directAction: 'list-related-deals',
       },
       {
-        id: 'update-deal-stage',
-        label: 'Aggiorna stage',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Aggiornare stage del deal', '',
-            `Deal: ${ctx.dealName || '[nome deal]'}`,
-            'Nuovo stage: [Lead, Evaluating, Qualified, Closing, Negotiation, Invested, Closed Won, Monitoring, Closed Lost, Passed]',
-          ];
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/deals.md',
-            '2. Aggiorna stage del deal',
-            '3. VERIFICA: conferma aggiornamento');
-          return lines.join('\n');
-        },
+        id: 'change-deal-stage',
+        label: 'Change deal stage',
+        directAction: 'change-deal-stage',
       },
       {
-        id: 'extract-deal-pdf',
-        label: 'Estrai da PDF',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Estrarre informazioni deal da documento allegato', '',
-            'Documento: [nome file o link]',
-          ];
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/deal-extraction.md',
-            '2. Analizza il documento e estrai i dati del deal',
-            '3. Proponi la creazione del deal con i dati estratti');
-          return lines.join('\n');
-        },
+        id: 'create-deal-from-message',
+        label: 'Create deal from message',
+        directAction: 'create-deal-from-message',
+      },
+      {
+        id: 'create-deal-from-input',
+        label: 'Create deal from input',
+        directAction: 'create-deal-from-input',
       },
     ],
   },
@@ -412,6 +367,19 @@ const COMMAND_CATEGORIES = [
       },
     ],
   },
+  {
+    id: 'contact',
+    label: 'Contact',
+    color: '#3B82F6',
+    icon: FaUser,
+    actions: [
+      {
+        id: 'create-contact',
+        label: 'Create contact',
+        directAction: 'create-contact',
+      },
+    ],
+  },
 ];
 
 // Helper to format email contacts list for prompts
@@ -445,7 +413,7 @@ function buildContextParts(ctx) {
 }
 
 // Only show enabled categories — re-enable one at a time as we rethink each
-const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'decision', 'intro'];
+const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'deal', 'decision', 'intro', 'contact'];
 const enabledSet = new Set(ENABLED_CATEGORIES);
 const filtered = COMMAND_CATEGORIES.filter(c => enabledSet.has(c.id));
 filtered.sort((a, b) => ENABLED_CATEGORIES.indexOf(a.id) - ENABLED_CATEGORIES.indexOf(b.id));

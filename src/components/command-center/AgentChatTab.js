@@ -120,6 +120,7 @@ const AgentChatTab = ({
       calendarEvent: calendarEvent || null,
       calendarInboxId: calendarInboxId || null,
       dealName: dealName || null,
+      dealId: contextType === 'deals' ? contextId : null,
       contactEmail: primaryEmail,
       contactPhone: primaryPhone,
       contactCompany: primaryCompany,
@@ -127,7 +128,7 @@ const AgentChatTab = ({
       contactJobRole: contact?.job_role || null,
       emailContacts: emailContacts || [],
     };
-  }, [contactName, contactId, contextType, emailSubject, emailInboxId, whatsappChat, calendarEvent, calendarInboxId, dealName, rightPanelContactDetails, emailContacts]);
+  }, [contactName, contactId, contextType, contextId, emailSubject, emailInboxId, whatsappChat, calendarEvent, calendarInboxId, dealName, rightPanelContactDetails, emailContacts]);
 
   const handleSend = () => {
     if (!input.trim() || sending) return;
@@ -144,6 +145,7 @@ const AgentChatTab = ({
         whatsappChat: whatsappChat || null,
         calendarEvent: calendarEvent || null,
         dealName: dealName || null,
+        dealId: contextType === 'deals' ? contextId : null,
       },
     };
     sendMessage(input, context);
@@ -169,6 +171,7 @@ const AgentChatTab = ({
         whatsappChat: whatsappChat || null,
         calendarEvent: calendarEvent || null,
         dealName: dealName || null,
+        dealId: contextType === 'deals' ? contextId : null,
       },
     };
     const sendCmd = draftType === 'reply-to' ? '/reply-to-send' : '/reply-all-send';
@@ -309,6 +312,11 @@ const AgentChatTab = ({
         'register-decision': '/register-decision',
         'accept-invitation': '/accept-invitation',
         'track-intro-promised': '/track-intro-promised',
+        'list-related-deals': '/list-related-deals',
+        'change-deal-stage': '/change-deal-stage',
+        'create-deal-from-message': '/create-deal-from-message',
+        'create-deal-from-input': '/create-deal-from-input',
+        'create-contact': '/create-contact',
       };
 
       if (slashActions[action.directAction]) {
@@ -321,6 +329,7 @@ const AgentChatTab = ({
         if (commandContext.calendarEvent) lines.push(`Calendar: ${commandContext.calendarEvent}`);
         if (commandContext.calendarInboxId) lines.push(`Calendar inbox ID: ${commandContext.calendarInboxId}`);
         if (commandContext.dealName) lines.push(`Deal: ${commandContext.dealName}`);
+        if (commandContext.dealId) lines.push(`Deal ID: ${commandContext.dealId}`);
         // Add email participants if available
         if (commandContext.emailContacts?.length > 0) {
           lines.push('Email contacts:');
@@ -345,6 +354,7 @@ const AgentChatTab = ({
             whatsappChat: whatsappChat || null,
             calendarEvent: calendarEvent || null,
             dealName: dealName || null,
+            dealId: contextType === 'deals' ? contextId : null,
           },
         };
         sendMessage(lines.join('\n'), context, action.label);

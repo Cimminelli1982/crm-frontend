@@ -24,6 +24,11 @@ const SLASH_COMMANDS = {
   '/register-decision': 'register-decision',
   '/accept-invitation': 'accept-invitation',
   '/track-intro-promised': 'track-intro-promised',
+  '/list-related-deals': 'list-related-deals',
+  '/change-deal-stage': 'change-deal-stage',
+  '/create-deal-from-message': 'create-deal-from-message',
+  '/create-deal-from-input': 'create-deal-from-input',
+  '/create-contact': 'create-contact',
 };
 
 function uuid() {
@@ -599,6 +604,7 @@ const useAgentChat = (activeTab, contextId, contextLabel) => {
     if (context.metadata?.whatsappChat) ctxParts.push(`WhatsApp: ${context.metadata.whatsappChat}`);
     if (context.metadata?.calendarEvent) ctxParts.push(`Event: "${context.metadata.calendarEvent}"`);
     if (context.metadata?.dealName) ctxParts.push(`Deal: "${context.metadata.dealName}"`);
+    if (context.metadata?.dealId) ctxParts.push(`Deal ID: ${context.metadata.dealId}`);
     if (ctxParts.length > 0) {
       fullMessage = `[CRM Context: ${ctxParts.join(' | ')}]\n\n${fullMessage}`;
     }

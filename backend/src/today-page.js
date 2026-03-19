@@ -44,7 +44,7 @@ async function fetchCalendarEventsEnhanced(dateStr) {
   );
 
   const seen = new Set();
-  return events
+  const mapped = events
     .filter(e => e.status !== 'cancelled')
     .map(e => {
       const calName = e.organizer?.displayName || 'Agenda management';
@@ -57,6 +57,7 @@ async function fetchCalendarEventsEnhanced(dateStr) {
         end,
         location: e.location || null,
         calendar: calName,
+        calendarId: e.organizer?.email || PRIMARY_CALENDAR,
         attendees: (e.attendees || []).map(a => ({ email: a.email, name: a.displayName, status: a.responseStatus })),
         htmlLink: e.htmlLink,
       };
@@ -68,6 +69,23 @@ async function fetchCalendarEventsEnhanced(dateStr) {
       return true;
     })
     .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+  // Check which events are in command_center_inbox or calendar_dismissed
+  const eventUids = mapped.map(e => e.id);
+  const [{ data: inInbox }, { data: dismissed }] = await Promise.all([
+    supabase.from('command_center_inbox').select('event_uid').eq('type', 'calendar').in('event_uid', eventUids),
+    supabase.from('calendar_dismissed').select('event_uid').in('event_uid', eventUids),
+  ]);
+  const inboxSet = new Set((inInbox || []).map(r => r.event_uid));
+  const dismissedSet = new Set((dismissed || []).map(r => r.event_uid));
+
+  for (const e of mapped) {
+    if (inboxSet.has(e.id)) e.crmStatus = 'inbox';
+    else if (dismissedSet.has(e.id)) e.crmStatus = 'dismissed';
+    else e.crmStatus = 'none';
+  }
+
+  return mapped;
 }
 
 async function fetchPrioritiesEnhanced(dateStr) {
@@ -79,6 +97,15 @@ async function fetchPrioritiesEnhanced(dateStr) {
   return data || [];
 }
 
+async function fetchRecentWeight() {
+  const { data } = await supabase
+    .from('body_metrics')
+    .select('*')
+    .order('date', { ascending: false })
+    .limit(3);
+  return data || [];
+}
+
 async function fetchTodayTasks() {
   const tasks = await fetchTodoistFilter('today');
   return tasks.map(t => ({
@@ -86,11 +113,37 @@ async function fetchTodayTasks() {
     content: t.content,
     description: t.description || '',
     project_id: t.project_id,
+    section_id: t.section_id || null,
     project: TODOIST_PROJECTS[t.project_id] || 'Other',
     priority: t.priority,
     due: t.due,
     labels: t.labels || [],
   }));
+}
+
+async function fetchOverdueTasks() {
+  const tasks = await fetchTodoistFilter('overdue');
+  return tasks.map(t => ({
+    id: t.id,
+    content: t.content,
+    description: t.description || '',
+    project_id: t.project_id,
+    section_id: t.section_id || null,
+    project: TODOIST_PROJECTS[t.project_id] || 'Other',
+    priority: t.priority,
+    due: t.due,
+    labels: t.labels || [],
+  }));
+}
+
+async function fetchTodoistSections() {
+  const TODOIST_BASE = 'https://api.todoist.com/api/v1';
+  const res = await fetch(`${TODOIST_BASE}/sections`, {
+    headers: { Authorization: `Bearer ${process.env.TODOIST_API_TOKEN}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.results || data || []);
 }
 
 // ============ ROUTES ============
@@ -116,13 +169,26 @@ export function registerTodayRoutes(app) {
   app.get('/today/:date/data', authMiddleware, async (req, res) => {
     const { date } = req.params;
     try {
-      const [calendar, tasks, emailContacts, whatsapp, priorities] = await Promise.all([
+      const [calendar, tasks, overdue, emailContacts, whatsapp, priorities, weight, sections] = await Promise.all([
         fetchCalendarEventsEnhanced(date).catch(e => { console.error('[Today] Calendar error:', e.message); return []; }),
         fetchTodayTasks().catch(e => { console.error('[Today] Tasks error:', e.message); return []; }),
+        fetchOverdueTasks().catch(e => { console.error('[Today] Overdue error:', e.message); return []; }),
         fetchEmailContactsFallback(date).catch(e => { console.error('[Today] Email contacts error:', e.message); return []; }),
         fetchWhatsAppContacts(date).catch(e => { console.error('[Today] WhatsApp error:', e.message); return { contacts: [], groups: [] }; }),
         fetchPrioritiesEnhanced(date).catch(e => { console.error('[Today] Priorities error:', e.message); return []; }),
+        fetchRecentWeight().catch(e => { console.error('[Today] Weight error:', e.message); return []; }),
+        fetchTodoistSections().catch(e => { console.error('[Today] Sections error:', e.message); return []; }),
       ]);
+
+      // Build sections map grouped by project
+      const sectionsByProject = {};
+      for (const s of sections) {
+        if (!sectionsByProject[s.project_id]) sectionsByProject[s.project_id] = [];
+        sectionsByProject[s.project_id].push({ id: s.id, name: s.name, order: s.section_order || s.order || 0 });
+      }
+      for (const key of Object.keys(sectionsByProject)) {
+        sectionsByProject[key].sort((a, b) => a.order - b.order);
+      }
 
       // Split email contacts
       const inCrmComplete = emailContacts.filter(c => c.in_crm && c.is_complete);
@@ -133,11 +199,14 @@ export function registerTodayRoutes(app) {
         date,
         calendar,
         tasks,
+        overdue,
         people: {
           email: { inCrmComplete, inCrmIncomplete, notInCrm },
           whatsapp,
         },
         priorities,
+        weight,
+        sectionsByProject,
       });
     } catch (error) {
       console.error('[Today] Data error:', error);
@@ -160,6 +229,161 @@ export function registerTodayRoutes(app) {
       res.json({ success: true, priority: data });
     } catch (error) {
       console.error('[Today] Priority toggle error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add priority
+  app.post('/today/priorities', authMiddleware, async (req, res) => {
+    try {
+      const { title, scope_date } = req.body;
+      if (!title) {
+        return res.status(400).json({ error: 'title is required' });
+      }
+      const date = scope_date || new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+
+      // Get max sort_order for this date
+      const { data: existing } = await supabase
+        .from('priorities')
+        .select('sort_order')
+        .eq('scope_date', date)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+      const nextOrder = (existing?.[0]?.sort_order ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from('priorities')
+        .insert({ title, scope_date: date, sort_order: nextOrder })
+        .select()
+        .single();
+      if (error) throw error;
+      res.json({ success: true, priority: data });
+    } catch (error) {
+      console.error('[Today] Priority create error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add/update weight
+  app.post('/today/weight', authMiddleware, async (req, res) => {
+    try {
+      const { date, weight_kg, lean_mass_kg = 70.5 } = req.body;
+      if (!weight_kg) {
+        return res.status(400).json({ error: 'weight_kg is required' });
+      }
+      const scopeDate = date || new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+      const w = parseFloat(weight_kg);
+      const lm = parseFloat(lean_mass_kg);
+      const body_fat_kg = parseFloat((w - lm).toFixed(1));
+      const body_fat_pct = parseFloat(((body_fat_kg / w) * 100).toFixed(1));
+      const lean_pct = parseFloat(((lm / w) * 100).toFixed(1));
+
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .upsert({
+          date: scopeDate,
+          weight_kg: w,
+          lean_mass_kg: lm,
+          body_fat_kg,
+          body_fat_pct,
+          lean_pct,
+        }, { onConflict: 'date' })
+        .select()
+        .single();
+      if (error) throw error;
+      res.json({ success: true, metric: data });
+    } catch (error) {
+      console.error('[Today] Weight save error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get recent weight entries
+  app.get('/today/weight/recent', authMiddleware, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(3);
+      if (error) throw error;
+      res.json({ entries: data || [] });
+    } catch (error) {
+      console.error('[Today] Weight fetch error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add calendar event to command_center_inbox
+  app.post('/today/calendar/add-to-inbox', authMiddleware, async (req, res) => {
+    try {
+      const { event } = req.body;
+      if (!event?.id || !event?.summary) {
+        return res.status(400).json({ error: 'event with id and summary is required' });
+      }
+      // Check if already exists
+      const { data: existing } = await supabase
+        .from('command_center_inbox')
+        .select('id')
+        .eq('type', 'calendar')
+        .eq('event_uid', event.id)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        // Already in inbox, nothing to do
+        res.json({ success: true });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('command_center_inbox')
+        .insert({
+          type: 'calendar',
+          event_uid: event.id,
+          subject: event.summary,
+          date: event.start,
+          event_end: event.end,
+          event_location: event.location,
+          from_name: event.calendar,
+          from_email: event.calendarId,
+          to_recipients: event.attendees || [],
+          is_read: false,
+          is_all_day: event.start?.length <= 10,
+        });
+      if (error) throw error;
+
+      // Remove from calendar_dismissed if it was there
+      await supabase.from('calendar_dismissed').delete().eq('event_uid', event.id);
+
+      console.log(`[Today] Calendar event added to inbox: ${event.summary}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[Today] Calendar add-to-inbox error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Dismiss calendar event from command_center_inbox
+  app.post('/today/calendar/dismiss', authMiddleware, async (req, res) => {
+    try {
+      const { event_uid, subject } = req.body;
+      if (!event_uid) {
+        return res.status(400).json({ error: 'event_uid is required' });
+      }
+
+      // Remove from command_center_inbox
+      await supabase.from('command_center_inbox').delete().eq('type', 'calendar').eq('event_uid', event_uid);
+
+      // Add to calendar_dismissed
+      const { error } = await supabase
+        .from('calendar_dismissed')
+        .upsert({ event_uid, subject: subject || '', dismissed_at: new Date().toISOString() }, { onConflict: 'event_uid' });
+      if (error) throw error;
+
+      console.log(`[Today] Calendar event dismissed: ${subject || event_uid}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[Today] Calendar dismiss error:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -634,12 +858,12 @@ function buildTodayHTML(dateStr, token) {
   </div>
 </div>
 
-<!-- Bottom sheet for task move -->
-<div class="sheet-overlay" id="moveSheet">
+<!-- Generic bottom sheet -->
+<div class="sheet-overlay" id="actionSheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-title">Move to project</div>
-    <div id="moveSheetOptions"></div>
+    <div class="sheet-title" id="sheetTitle"></div>
+    <div id="sheetContent"></div>
   </div>
 </div>
 
@@ -653,7 +877,7 @@ const DATE = '${dateStr}';
 const PROJECTS = ${JSON.stringify(TODOIST_PROJECTS)};
 
 let data = null;
-let moveTaskId = null;
+let activeTaskId = null;
 
 // ============ API HELPERS ============
 
@@ -685,6 +909,7 @@ async function loadData() {
   try {
     data = await api('/today/' + DATE + '/data');
     render();
+    attachWeightListeners();
   } catch (e) {
     document.getElementById('app').innerHTML = '<div class="loading" style="color:var(--red);">Error loading data: ' + e.message + '</div>';
   }
@@ -694,15 +919,18 @@ async function loadData() {
 
 function render() {
   const app = document.getElementById('app');
-  app.innerHTML = renderPriorities() + renderCalendar() + renderTasks() + renderPeople();
+  app.innerHTML = renderPriorities() + renderWeight() + renderCalendar() + renderTasks() + renderPeople();
+  attachWeightListeners();
 }
 
 function renderPriorities() {
   const p = data.priorities;
   const done = p.filter(x => x.is_completed).length;
-  return section('priorities', '🎯 Priorities', p.length ? done + '/' + p.length : '0', p.length === 0
-    ? '<p style="color:var(--text2);padding:8px 0;">No priorities set</p>'
-    : p.map(item => \`
+  let body = '';
+  if (p.length === 0) {
+    body = '<p style="color:var(--text2);padding:8px 0;">No priorities set</p>';
+  } else {
+    body = p.map(item => \`
       <div class="item" id="priority-\${item.id}">
         <div class="checkbox \${item.is_completed ? 'checked' : ''}" onclick="togglePriority(\${item.id}, \${!item.is_completed})"></div>
         <div class="item-content">
@@ -710,22 +938,82 @@ function renderPriorities() {
           \${item.notes ? '<div class="item-sub">' + esc(item.notes) + '</div>' : ''}
         </div>
       </div>
-    \`).join('')
-  );
+    \`).join('');
+  }
+  body += \`
+    <div style="padding: 8px 0;">
+      <div id="add-priority-form" style="display:none;">
+        <input id="add-priority-input" placeholder="New priority..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15px;font-family:inherit;outline:none;margin-bottom:8px;">
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="addPriority()">Add</button>
+          <button class="btn" onclick="document.getElementById('add-priority-form').style.display='none'">Cancel</button>
+        </div>
+      </div>
+      <button class="btn btn-sm" id="add-priority-btn" onclick="document.getElementById('add-priority-form').style.display='block';document.getElementById('add-priority-btn').style.display='none';document.getElementById('add-priority-input').focus();">+ Add Priority</button>
+    </div>
+  \`;
+  return section('priorities', '🎯 Priorities', p.length ? done + '/' + p.length : '0', body);
+}
+
+function renderWeight() {
+  const w = data.weight || [];
+  const todayEntry = w.find(e => e.date === DATE);
+
+  let body = '';
+
+  // Input form
+  body += \`
+    <div style="padding: 8px 0;">
+      <div id="weight-form" style="\${todayEntry ? 'display:none;' : ''}">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <div style="flex:1;">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Weight (kg)</label>
+            <input id="weight-input" type="number" step="0.1" placeholder="e.g. 92.5" value="\${todayEntry ? todayEntry.weight_kg : ''}" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15px;font-family:inherit;outline:none;">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Lean mass (kg)</label>
+            <input id="lean-input" type="number" step="0.1" value="\${todayEntry ? todayEntry.lean_mass_kg : '70.5'}" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15px;font-family:inherit;outline:none;">
+          </div>
+        </div>
+        <div id="weight-preview" style="font-size:13px;color:var(--text2);margin-bottom:8px;"></div>
+        <button class="btn btn-primary" onclick="saveWeight()">Save</button>
+      </div>
+      \${todayEntry ? '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:15px;">Today: <strong>' + todayEntry.weight_kg + ' kg</strong> · BF ' + todayEntry.body_fat_pct + '% · Lean ' + todayEntry.lean_mass_kg + ' kg</span><button class="btn btn-sm" onclick="document.getElementById(\\'weight-form\\').style.display=\\'block\\'">Edit</button></div>' : ''}
+    </div>
+  \`;
+
+  // Recent entries table
+  if (w.length > 0) {
+    body += '<div style="margin-top:8px;">';
+    body += '<table style="width:100%;font-size:13px;border-collapse:collapse;">';
+    body += '<tr style="color:var(--text2);"><td style="padding:4px 0;">Date</td><td>Weight</td><td>BF%</td><td>Lean</td></tr>';
+    for (const entry of w) {
+      const isToday = entry.date === DATE;
+      const dateLabel = isToday ? 'Today' : new Date(entry.date + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      body += '<tr style="' + (isToday ? 'font-weight:600;' : '') + '"><td style="padding:4px 0;border-top:1px solid var(--border);">' + dateLabel + '</td><td style="border-top:1px solid var(--border);">' + entry.weight_kg + ' kg</td><td style="border-top:1px solid var(--border);">' + entry.body_fat_pct + '%</td><td style="border-top:1px solid var(--border);">' + entry.lean_mass_kg + ' kg</td></tr>';
+    }
+    body += '</table></div>';
+  }
+
+  return section('weight', '⚖️ Weight', todayEntry ? todayEntry.weight_kg + ' kg' : '—', body);
 }
 
 function renderCalendar() {
   const ev = data.calendar;
-  return section('calendar', '📅 Calendar', ev.length, ev.length === 0
+  const inCrm = ev.filter(e => e.crmStatus === 'inbox').length;
+  return section('calendar', '📅 Calendar', ev.length ? inCrm + '/' + ev.length + ' in CRM' : '0', ev.length === 0
     ? '<p style="color:var(--text2);padding:8px 0;">No events today</p>'
     : ev.map(e => \`
-      <div class="item">
+      <div class="item" id="cal-\${e.id}">
         <div class="event-time">\${fmtTime(e.start)} – \${fmtTime(e.end)}</div>
         <div class="item-content">
           <div class="item-title">\${esc(e.summary)}</div>
           \${e.location ? '<div class="item-sub">📍 ' + esc(e.location) + '</div>' : ''}
           <div class="item-sub">\${esc(e.calendar)}\${e.attendees.length ? ' · ' + e.attendees.length + ' attendees' : ''}</div>
           <div class="item-actions">
+            \${e.crmStatus === 'inbox'
+              ? '<button class="btn btn-sm" style="background:var(--green);border-color:var(--green);color:#fff;" onclick="dismissCalEvent(\\'' + e.id + '\\', \\'' + esc(e.summary).replace(/'/g, "\\\\'") + '\\')">✓ In CRM</button>'
+              : '<button class="btn btn-sm" onclick="addCalToInbox(\\'' + e.id + '\\')">+ Add to CRM</button>'}
             <button class="btn btn-sm" onclick="toggleForm('note-cal-\${e.id}')">📝 Note</button>
           </div>
           <div class="inline-form" id="note-cal-\${e.id}">
@@ -738,9 +1026,39 @@ function renderCalendar() {
   );
 }
 
+function renderTaskItem(t) {
+  return \`
+    <div class="item" id="task-\${t.id}">
+      <div class="checkbox" onclick="completeTask('\${t.id}')"></div>
+      <div class="item-content">
+        <div class="item-title">\${esc(t.content)}</div>
+        \${t.description ? '<div class="item-sub">' + esc(t.description).substring(0, 100) + '</div>' : ''}
+        <div class="item-actions">
+          <button class="btn btn-sm" onclick="openDueDateSheet('\${t.id}')">📅</button>
+          <button class="btn btn-sm" onclick="openMoveSheet('\${t.id}')">📁 Project</button>
+          <button class="btn btn-sm" onclick="openSectionSheet('\${t.id}', '\${t.project_id}')">📂 Section</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteTask('\${t.id}')">🗑</button>
+        </div>
+      </div>
+    </div>
+  \`;
+}
+
 function renderTasks() {
   const tasks = data.tasks;
-  // Group by project
+  const overdue = data.overdue || [];
+  const total = tasks.length + overdue.length;
+
+  let body = '';
+
+  // Overdue section
+  if (overdue.length > 0) {
+    body += '<div class="subgroup"><div class="subgroup-title danger">⚠️ Overdue (' + overdue.length + ')</div>';
+    body += overdue.map(t => renderTaskItem(t)).join('');
+    body += '</div>';
+  }
+
+  // Group today tasks by project
   const groups = {};
   for (const t of tasks) {
     const proj = t.project || 'Other';
@@ -748,30 +1066,17 @@ function renderTasks() {
     groups[proj].push(t);
   }
   const order = ['Inbox', 'Personal', 'Work', 'Team', 'Birthdays 🎂', 'Other'];
-  let body = '';
-  if (tasks.length === 0) {
+  if (tasks.length === 0 && overdue.length === 0) {
     body = '<p style="color:var(--text2);padding:8px 0;">All clear!</p>';
   } else {
     for (const proj of order) {
       if (!groups[proj]) continue;
       body += '<div class="subgroup"><div class="subgroup-title">' + esc(proj) + '</div>';
-      body += groups[proj].map(t => \`
-        <div class="item" id="task-\${t.id}">
-          <div class="checkbox" onclick="completeTask('\${t.id}')"></div>
-          <div class="item-content">
-            <div class="item-title">\${esc(t.content)}</div>
-            \${t.description ? '<div class="item-sub">' + esc(t.description).substring(0, 100) + '</div>' : ''}
-            <div class="item-actions">
-              <button class="btn btn-sm" onclick="openMoveSheet('\${t.id}')">📁 Move</button>
-              <button class="btn btn-sm btn-danger" onclick="deleteTask('\${t.id}')">🗑</button>
-            </div>
-          </div>
-        </div>
-      \`).join('');
+      body += groups[proj].map(t => renderTaskItem(t)).join('');
       body += '</div>';
     }
   }
-  return section('tasks', '⏳ Tasks Due', tasks.length, body);
+  return section('tasks', '⏳ Tasks', total, body);
 }
 
 function renderPeople() {
@@ -947,6 +1252,84 @@ async function togglePriority(id, newState) {
   }
 }
 
+function attachWeightListeners() {
+  const wi = document.getElementById('weight-input');
+  const li = document.getElementById('lean-input');
+  if (wi) wi.addEventListener('input', updateWeightPreview);
+  if (li) li.addEventListener('input', updateWeightPreview);
+  updateWeightPreview();
+}
+
+async function addCalToInbox(eventId) {
+  const event = data.calendar.find(e => e.id === eventId);
+  if (!event) return;
+  try {
+    await api('/today/calendar/add-to-inbox', { method: 'POST', body: { event } });
+    toast('Added to CRM');
+    event.crmStatus = 'inbox';
+    render();
+  } catch (e) {
+    toast('Failed to add: ' + e.message, 'error');
+  }
+}
+
+async function dismissCalEvent(eventUid, subject) {
+  try {
+    await api('/today/calendar/dismiss', { method: 'POST', body: { event_uid: eventUid, subject } });
+    toast('Dismissed from CRM');
+    const event = data.calendar.find(e => e.id === eventUid);
+    if (event) event.crmStatus = 'dismissed';
+    render();
+  } catch (e) {
+    toast('Failed to dismiss: ' + e.message, 'error');
+  }
+}
+
+async function saveWeight() {
+  const weightVal = parseFloat(document.getElementById('weight-input')?.value);
+  const leanVal = parseFloat(document.getElementById('lean-input')?.value || '70.5');
+  if (!weightVal || weightVal < 50 || weightVal > 200) { toast('Enter a valid weight', 'error'); return; }
+
+  try {
+    const result = await api('/today/weight', { method: 'POST', body: { date: DATE, weight_kg: weightVal, lean_mass_kg: leanVal } });
+    toast('Weight saved');
+    // Update data and re-render
+    const idx = data.weight.findIndex(e => e.date === DATE);
+    if (idx >= 0) data.weight[idx] = result.metric;
+    else data.weight.unshift(result.metric);
+    data.weight.sort((a, b) => b.date.localeCompare(a.date));
+    data.weight = data.weight.slice(0, 3);
+    render();
+  } catch (e) {
+    toast('Failed to save weight', 'error');
+  }
+}
+
+function updateWeightPreview() {
+  const w = parseFloat(document.getElementById('weight-input')?.value);
+  const lm = parseFloat(document.getElementById('lean-input')?.value || '70.5');
+  const el = document.getElementById('weight-preview');
+  if (!el || !w || w < 50) { if (el) el.textContent = ''; return; }
+  const bf = (w - lm).toFixed(1);
+  const bfPct = ((bf / w) * 100).toFixed(1);
+  el.textContent = 'Body fat: ' + bf + ' kg (' + bfPct + '%) · Lean: ' + ((lm / w) * 100).toFixed(1) + '%';
+}
+
+async function addPriority() {
+  const input = document.getElementById('add-priority-input');
+  const title = input?.value?.trim();
+  if (!title) { toast('Enter a priority', 'error'); return; }
+
+  try {
+    const result = await api('/today/priorities', { method: 'POST', body: { title, scope_date: DATE } });
+    toast('Priority added');
+    data.priorities.push(result.priority);
+    render();
+  } catch (e) {
+    toast('Failed to add priority', 'error');
+  }
+}
+
 async function completeTask(id) {
   const el = document.getElementById('task-' + id);
   if (!el) return;
@@ -958,11 +1341,9 @@ async function completeTask(id) {
   try {
     await api('/todoist/tasks/' + id + '/close', { method: 'POST' });
     toast('Task completed');
-    // Remove from data
     data.tasks = data.tasks.filter(t => t.id !== id);
-    // Update count
-    const countEl = document.querySelector('#sec-tasks .count');
-    if (countEl) countEl.textContent = data.tasks.length;
+    data.overdue = (data.overdue || []).filter(t => t.id !== id);
+    setTimeout(() => render(), 500);
   } catch (e) {
     el.classList.remove('done', 'removing');
     if (cb) cb.classList.remove('checked');
@@ -979,47 +1360,129 @@ async function deleteTask(id) {
     await api('/todoist/tasks/' + id, { method: 'DELETE' });
     toast('Task deleted');
     data.tasks = data.tasks.filter(t => t.id !== id);
-    const countEl = document.querySelector('#sec-tasks .count');
-    if (countEl) countEl.textContent = data.tasks.length;
+    data.overdue = (data.overdue || []).filter(t => t.id !== id);
+    setTimeout(() => render(), 500);
   } catch (e) {
     el.classList.remove('removing');
     toast('Failed to delete task', 'error');
   }
 }
 
-function openMoveSheet(taskId) {
-  moveTaskId = taskId;
-  const opts = document.getElementById('moveSheetOptions');
-  opts.innerHTML = Object.entries(PROJECTS).map(([pid, name]) =>
-    '<div class="sheet-option" onclick="moveTask(\\'' + pid + '\\')">' + esc(name) + '</div>'
-  ).join('');
-  document.getElementById('moveSheet').classList.add('open');
+function openSheet(title, contentHtml) {
+  document.getElementById('sheetTitle').textContent = title;
+  document.getElementById('sheetContent').innerHTML = contentHtml;
+  document.getElementById('actionSheet').classList.add('open');
 }
 
-function closeMoveSheet() {
-  document.getElementById('moveSheet').classList.remove('open');
-  moveTaskId = null;
+function closeSheet() {
+  document.getElementById('actionSheet').classList.remove('open');
+  activeTaskId = null;
+}
+
+function openMoveSheet(taskId) {
+  activeTaskId = taskId;
+  const opts = Object.entries(PROJECTS).map(([pid, name]) =>
+    '<div class="sheet-option" onclick="moveTask(\\'' + pid + '\\')">' + esc(name) + '</div>'
+  ).join('');
+  openSheet('Move to project', opts);
+}
+
+function openSectionSheet(taskId, projectId) {
+  activeTaskId = taskId;
+  const sections = data.sectionsByProject?.[projectId] || [];
+  if (sections.length === 0) {
+    toast('No sections in this project', 'error');
+    return;
+  }
+  let opts = '<div class="sheet-option" onclick="moveToSection(null)"><em>No section (project root)</em></div>';
+  opts += sections.map(s =>
+    '<div class="sheet-option" onclick="moveToSection(\\'' + s.id + '\\')">' + esc(s.name) + '</div>'
+  ).join('');
+  openSheet('Move to section', opts);
+}
+
+function openDueDateSheet(taskId) {
+  activeTaskId = taskId;
+  const opts = [
+    { label: 'Today', value: 'today' },
+    { label: 'Tomorrow', value: 'tomorrow' },
+    { label: 'Next Monday', value: 'next monday' },
+    { label: 'Next Week', value: 'next week' },
+    { label: 'No date', value: 'no date' },
+  ].map(o =>
+    '<div class="sheet-option" onclick="changeDueDate(\\'' + o.value + '\\')">' + o.label + '</div>'
+  ).join('');
+  const customInput = '<div style="padding:10px 0;border-top:1px solid var(--border);margin-top:4px;"><input type="date" id="custom-due-date" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15px;font-family:inherit;" onchange="changeDueDate(this.value)"></div>';
+  openSheet('Change due date', opts + customInput);
 }
 
 async function moveTask(projectId) {
-  closeMoveSheet();
-  if (!moveTaskId) return;
-  const id = moveTaskId;
+  const id = activeTaskId;
+  closeSheet();
+  if (!id) return;
   const projName = PROJECTS[projectId] || 'Other';
 
   try {
     await api('/todoist/tasks/' + id, { method: 'PATCH', body: { project_id: projectId } });
     toast('Moved to ' + projName);
-    // Update in data
-    const task = data.tasks.find(t => t.id === id);
+    const task = findTask(id);
     if (task) {
       task.project_id = projectId;
       task.project = projName;
+      task.section_id = null;
     }
     render();
   } catch (e) {
     toast('Failed to move task', 'error');
   }
+}
+
+async function moveToSection(sectionId) {
+  const id = activeTaskId;
+  closeSheet();
+  if (!id) return;
+
+  try {
+    const body = sectionId ? { section_id: sectionId } : { section_id: null };
+    await api('/todoist/tasks/' + id, { method: 'PATCH', body });
+    const sectionName = sectionId ? findSectionName(sectionId) : 'project root';
+    toast('Moved to ' + sectionName);
+    const task = findTask(id);
+    if (task) task.section_id = sectionId;
+    render();
+  } catch (e) {
+    toast('Failed to move to section', 'error');
+  }
+}
+
+async function changeDueDate(value) {
+  const id = activeTaskId;
+  closeSheet();
+  if (!id) return;
+
+  try {
+    const body = value === 'no date' ? { due_string: 'no date' } : { due_string: value };
+    await api('/todoist/tasks/' + id, { method: 'PATCH', body });
+    toast('Due date updated');
+    // Remove from current list since due date changed
+    data.tasks = data.tasks.filter(t => t.id !== id);
+    data.overdue = (data.overdue || []).filter(t => t.id !== id);
+    render();
+  } catch (e) {
+    toast('Failed to change due date', 'error');
+  }
+}
+
+function findTask(id) {
+  return data.tasks.find(t => t.id === id) || (data.overdue || []).find(t => t.id === id);
+}
+
+function findSectionName(sectionId) {
+  for (const sections of Object.values(data.sectionsByProject || {})) {
+    const s = sections.find(s => s.id === sectionId);
+    if (s) return s.name;
+  }
+  return 'section';
 }
 
 async function addToCrm(uid) {
@@ -1092,8 +1555,8 @@ async function agentRequest(type, desc, ctx) {
 }
 
 // Close sheet on overlay click
-document.getElementById('moveSheet').addEventListener('click', function(e) {
-  if (e.target === this) closeMoveSheet();
+document.getElementById('actionSheet').addEventListener('click', function(e) {
+  if (e.target === this) closeSheet();
 });
 
 // ============ INIT ============

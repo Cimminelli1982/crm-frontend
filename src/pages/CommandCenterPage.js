@@ -145,6 +145,7 @@ import NotesTab from '../components/command-center/NotesTab';
 import ListsTab from '../components/command-center/ListsTab';
 import TasksFullTab from '../components/command-center/TasksFullTab';
 import ComposeEmailModal from '../components/command-center/ComposeEmailModal';
+import SmartAddContactModal from '../components/modals/SmartAddContactModal';
 import WhatsAppTab, { WhatsAppChatList } from '../components/command-center/WhatsAppTab';
 import ContactSelector from '../components/command-center/ContactSelector';
 import DataIntegrityWarningBar from '../components/command-center/DataIntegrityWarningBar';
@@ -1162,6 +1163,10 @@ const CommandCenterPage = ({ theme }) => {
   // State for Create Contact Modal
   const [createContactModalOpen, setCreateContactModalOpen] = useState(false);
   const [createContactEmail, setCreateContactEmail] = useState(null);
+
+  // State for Smart Add Contact Modal
+  const [smartAddContactOpen, setSmartAddContactOpen] = useState(false);
+  const [smartAddContactPrefill, setSmartAddContactPrefill] = useState({ email: '', name: '' });
 
   // State for Add Company Modal
   const [addCompanyModalOpen, setAddCompanyModalOpen] = useState(false);
@@ -2702,6 +2707,15 @@ const CommandCenterPage = ({ theme }) => {
         updateCalendarEventField={updateCalendarEventField}
         calendarLoading={calendarLoading}
         handleCreateCalendarEvent={handleCreateCalendarEvent}
+        // Smart Add Contact
+        onOpenSmartAddContact={(composeTo) => {
+          const first = composeTo?.[0];
+          setSmartAddContactPrefill({
+            email: first?.email || '',
+            name: first?.name || '',
+          });
+          setSmartAddContactOpen(true);
+        }}
       />
 
       {/* Quick Edit Modal */}
@@ -3926,6 +3940,15 @@ const CommandCenterPage = ({ theme }) => {
           refetchContacts();
           toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
         }}
+      />
+
+      {/* Smart Add Contact Modal */}
+      <SmartAddContactModal
+        isOpen={smartAddContactOpen}
+        onClose={() => setSmartAddContactOpen(false)}
+        theme={theme}
+        prefillEmail={smartAddContactPrefill.email}
+        prefillName={smartAddContactPrefill.name}
       />
 
       {/* Add Company Modal (for CRM tab button) */}

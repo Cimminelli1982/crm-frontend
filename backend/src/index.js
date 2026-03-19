@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
+import { createHash } from 'crypto';
 import { JMAPClient, transformEmail } from './jmap.js';
 import {
   upsertEmails,
@@ -18,6 +19,7 @@ import { mcpManager } from './mcp-client.js';
 import { CalDAVClient } from './caldav.js';
 import { getGoogleCalendarClient } from './google-calendar.js';
 import { generateAndSendBriefing, startBriefingScheduler } from './evening-briefing.js';
+import { generateAndSendMorningBriefing, startMorningBriefingScheduler } from './morning-briefing.js';
 import { registerTodayRoutes } from './today-page.js';
 import {
   initBaileys,
@@ -2275,7 +2277,7 @@ app.patch('/todoist/tasks/:id', async (req, res) => {
 
     let task = null;
 
-    // Only update basic task properties if there are any (content, description, priority, due_string)
+    // Update basic task properties (content, description, priority, due_string, labels)
     if (Object.keys(updates).length > 0) {
       task = await todoistRequest(`/tasks/${id}`, {
         method: 'POST',
@@ -2283,31 +2285,17 @@ app.patch('/todoist/tasks/:id', async (req, res) => {
       });
     }
 
-    // If section_id or project_id changed, we need to move the task
-    // Todoist REST API requires a separate call for moving tasks
+    // Move task to different project/section via Sync API
     if (section_id !== undefined || project_id !== undefined) {
-      const movePayload = {};
-      if (section_id !== undefined) movePayload.section_id = section_id || null;
-      if (project_id !== undefined) movePayload.project_id = project_id;
-
-      // Use the Sync API for moving tasks (REST API doesn't support it directly)
-      // Important: Only ONE of section_id or project_id can be specified per move command
       const moveUuid = `move-${id}-${Date.now()}`;
-
-      // Determine move args - prioritize section_id if provided, else project_id
-      const moveArgs = { id: id };
+      const moveArgs = { id };
       if (section_id !== undefined && section_id) {
-        // Moving to a specific section (section_id implies the project)
         moveArgs.section_id = section_id;
-      } else if (section_id === '' || section_id === null) {
-        // Moving out of section to project root - need project_id
-        moveArgs.project_id = project_id;
       } else if (project_id !== undefined) {
-        // Moving to different project
         moveArgs.project_id = project_id;
       }
 
-      const syncResponse = await fetch('https://api.todoist.com/sync/v9/sync', {
+      const syncResponse = await fetch(`${TODOIST_API_URL}/sync`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${TODOIST_TOKEN}`,
@@ -2322,14 +2310,18 @@ app.patch('/todoist/tasks/:id', async (req, res) => {
         }),
       });
 
-      const syncResult = await syncResponse.json();
-      console.log(`[Todoist] Sync response:`, JSON.stringify(syncResult));
+      const syncText = await syncResponse.text();
+      console.log(`[Todoist] Sync move response (${syncResponse.status}):`, syncText);
 
-      if (syncResult.sync_status && syncResult.sync_status[moveUuid] === 'ok') {
-        console.log(`[Todoist] Moved task ${id} to section ${section_id || 'none'}`);
-      } else if (syncResult.sync_status) {
-        console.error(`[Todoist] Move failed:`, syncResult.sync_status[moveUuid]);
+      if (!syncResponse.ok) {
+        throw new Error(`Sync API error: ${syncResponse.status} - ${syncText}`);
       }
+
+      const syncResult = JSON.parse(syncText);
+      if (syncResult.sync_status?.[moveUuid] !== 'ok') {
+        throw new Error(`Move failed: ${JSON.stringify(syncResult.sync_status?.[moveUuid])}`);
+      }
+      console.log(`[Todoist] Moved task ${id} successfully`);
     }
 
     console.log(`[Todoist] Updated task ${id}`);
@@ -4769,6 +4761,17 @@ app.post('/notes/sync', async (req, res) => {
 // ============ TODAY PAGE ============
 registerTodayRoutes(app);
 
+app.post('/briefing/morning', async (req, res) => {
+  try {
+    const { date } = req.body || {};
+    const result = await generateAndSendMorningBriefing(date || null);
+    res.json(result);
+  } catch (error) {
+    console.error('[MorningBriefing] Endpoint error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/briefing/evening', async (req, res) => {
   try {
     const { date } = req.body || {};
@@ -4780,12 +4783,972 @@ app.post('/briefing/evening', async (req, res) => {
   }
 });
 
+// ===== Smart Add Contact — AI Agent Endpoint =====
+app.post('/contact/smart-create', async (req, res) => {
+  try {
+    const { first_name, last_name, email, category, score, keep_in_touch, christmas, easter } = req.body;
+
+    if (!first_name || !email || !category) {
+      return res.status(400).json({ success: false, error: 'Missing required fields: first_name, email, category' });
+    }
+
+    console.log(`[SmartCreate] Starting for ${first_name} ${last_name} <${email}>`);
+
+    // Respond early — we'll do the work and the frontend shows a toast
+    // Actually, we need to return the quality report, so we wait.
+
+    const emailDomain = email.split('@')[1]?.toLowerCase();
+    const isFreeDomain = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'live.com', 'me.com', 'protonmail.com', 'mail.com'].includes(emailDomain);
+
+    // Define tools for the agent
+    const agentTools = [
+      {
+        name: 'search_crm_communications',
+        description: 'Search ALL existing communications with a given email address. Searches command_center_inbox (staging), emails + email_participants (history), and interactions. Returns everything found.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            email: { type: 'string', description: 'Email address to search for' }
+          },
+          required: ['email']
+        }
+      },
+      {
+        name: 'enrich_contact_apollo',
+        description: 'Call Apollo enrichment API to get professional data about a person: job title, company, LinkedIn URL, photo, city, phone numbers, description. The primary source for professional enrichment.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            email: { type: 'string' },
+            first_name: { type: 'string' },
+            last_name: { type: 'string' }
+          },
+          required: ['email']
+        }
+      },
+      {
+        name: 'fetch_webpage',
+        description: 'Fetch a webpage URL and return its text content. Useful for reading company websites to get description/about, checking LinkedIn public profiles, or finding logo URLs. Returns first 5000 chars of text.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Full URL to fetch' }
+          },
+          required: ['url']
+        }
+      },
+      {
+        name: 'create_contact_record',
+        description: 'Create the contact in Supabase with all gathered fields. Call this ONCE with all fields you have collected.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            first_name: { type: 'string' },
+            last_name: { type: 'string' },
+            email: { type: 'string' },
+            category: { type: 'string' },
+            score: { type: 'number', description: '1-5 or null' },
+            job_role: { type: 'string' },
+            linkedin: { type: 'string' },
+            description: { type: 'string' },
+            birthday: { type: 'string', description: 'YYYY-MM-DD format' },
+            keep_in_touch: { type: 'string' },
+            christmas: { type: 'string' },
+            easter: { type: 'string' },
+          },
+          required: ['first_name', 'email', 'category']
+        }
+      },
+      {
+        name: 'find_or_create_company',
+        description: 'Search for a company by domain or name. If found, updates any empty fields (website, description, linkedin) with provided data. If not found, creates a new company. Also links it to the contact. ALWAYS pass website, description, and linkedin even if the company already exists — empty fields will be filled.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'Contact ID to link to' },
+            domain: { type: 'string', description: 'Company domain (e.g. acme.com)' },
+            name: { type: 'string', description: 'Company name' },
+            website: { type: 'string' },
+            description: { type: 'string' },
+            linkedin: { type: 'string' },
+            relationship: { type: 'string', description: 'employee, founder, advisor, manager, investor, other' },
+          },
+          required: ['contact_id']
+        }
+      },
+      {
+        name: 'add_contact_details',
+        description: 'Add phone numbers, cities, and tags to a contact. Call after contact is created.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' },
+            phones: { type: 'array', items: { type: 'string' }, description: 'Phone numbers to add' },
+            city: { type: 'string', description: 'City name to search and link' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Tag names to search and link' },
+          },
+          required: ['contact_id']
+        }
+      },
+      {
+        name: 'create_contact_note',
+        description: 'Create a contextual note for the contact. The note MUST be >500 characters. Follow the EXACT format of existing notes in the CRM.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' },
+            first_name: { type: 'string' },
+            last_name: { type: 'string' },
+            text: { type: 'string', description: 'Note body in markdown. MUST be >500 chars. Follow this EXACT structure:\n# First Last — Contact Notes\n\n## Overview\nFirst Last. Job Title at Company. Category: X · Score: X · Keep-in-touch: X. LinkedIn: url.\n\nTags: tag1, tag2\n\nCompanies:\n- **Company** — description...\n\n## Character & Relationship Dynamics\n(insights from communications)\n\n## Communication History\n(summary of email exchanges, topics discussed)' },
+          },
+          required: ['contact_id', 'first_name', 'last_name', 'text']
+        }
+      },
+      {
+        name: 'upload_contact_photo',
+        description: 'Download a photo from a URL and re-upload it to Supabase Storage so it persists. ALWAYS use this instead of saving external URLs directly (LinkedIn CDN URLs expire). Returns the permanent public URL.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' },
+            image_url: { type: 'string', description: 'URL of the image to download and re-host' },
+          },
+          required: ['contact_id', 'image_url']
+        }
+      },
+      {
+        name: 'upload_company_logo',
+        description: 'Download a company logo and upload to Supabase Storage. Try Clearbit first: https://logo.clearbit.com/{domain} (free, reliable). Falls back to any URL you provide. Creates attachment record + company_attachments link with is_logo=true.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            company_id: { type: 'string' },
+            logo_url: { type: 'string', description: 'URL of the logo. Try https://logo.clearbit.com/{domain} first.' },
+            domain: { type: 'string', description: 'Company domain — used for Clearbit fallback if logo_url fails' },
+          },
+          required: ['company_id']
+        }
+      },
+      {
+        name: 'run_quality_check',
+        description: 'Run the 5-dimension quality check on a contact. Returns the quality report with missing dimensions and details. Call this as the LAST step.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' }
+          },
+          required: ['contact_id']
+        }
+      },
+      {
+        name: 'brave_web_search',
+        description: 'Search the web using Brave Search API. Returns titles, URLs, and descriptions. Use for finding company info, team pages, LinkedIn profiles, or any information you cannot get from Apollo alone.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query, e.g. "Nic Newman Emerge VC" or "bikenergy company about"' },
+            count: { type: 'number', description: 'Number of results (default 5, max 20)' }
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'brave_image_search',
+        description: 'Search for images using Brave Image Search API. Use for finding profile photos (e.g. "Nic Newman Emerge VC photo") or company logos (e.g. "Emerge VC logo"). Returns image URLs you can then pass to upload_contact_photo or upload_company_logo.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Image search query' },
+            count: { type: 'number', description: 'Number of results (default 5)' }
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'add_company_tags',
+        description: 'Search existing tags by name and link them to a company. Only links tags that already exist in the tags table (case-insensitive match). Use relevant tags like industry, sector, geography, etc.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            company_id: { type: 'string' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Tag names to search and link, e.g. ["VC", "Fintech", "London"]' }
+          },
+          required: ['company_id', 'tags']
+        }
+      },
+      {
+        name: 'update_company',
+        description: 'Update any field on a company record directly. Use when you discover more info about a company after initial creation, or to fix/complete fields.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            company_id: { type: 'string' },
+            name: { type: 'string' },
+            website: { type: 'string' },
+            description: { type: 'string' },
+            linkedin: { type: 'string' },
+            category: { type: 'string', description: 'One of: Professional Investor, Startup, Corporation, SME, Corporate, Advisory, Institution, Media, Skip, Inbox, Not Set, Hold' }
+          },
+          required: ['company_id']
+        }
+      }
+    ];
+
+    // Tool handlers
+    const handleTool = async (toolName, input) => {
+      switch (toolName) {
+        case 'search_crm_communications': {
+          const emailLower = input.email.toLowerCase();
+          // Search inbox staging
+          const { data: inbox } = await supabase
+            .from('command_center_inbox')
+            .select('id, type, from_email, from_name, subject, snippet, body_text, date, direction')
+            .or(`from_email.ilike.${emailLower},to_recipients.cs.[{"email":"${emailLower}"}],cc_recipients.cs.[{"email":"${emailLower}"}]`)
+            .order('date', { ascending: false })
+            .limit(20);
+
+          // Search email history
+          const { data: participants } = await supabase
+            .from('email_participants')
+            .select('email_id, participant_type, emails(email_id, subject, body_text, date, direction, email_threads(subject))')
+            .ilike('email', emailLower)
+            .limit(20);
+
+          // Search interactions
+          const { data: contactEmails } = await supabase
+            .from('contact_emails')
+            .select('contact_id')
+            .ilike('email', emailLower)
+            .limit(1);
+
+          let interactions = [];
+          if (contactEmails?.[0]?.contact_id) {
+            const { data: ints } = await supabase
+              .from('interactions')
+              .select('interaction_type, direction, interaction_date, summary')
+              .eq('contact_id', contactEmails[0].contact_id)
+              .order('interaction_date', { ascending: false })
+              .limit(20);
+            interactions = ints || [];
+          }
+
+          return JSON.stringify({
+            inbox_messages: inbox || [],
+            email_history: (participants || []).map(p => ({
+              subject: p.emails?.subject || p.emails?.email_threads?.subject,
+              date: p.emails?.date,
+              direction: p.emails?.direction,
+              body_preview: (p.emails?.body_text || '').substring(0, 300),
+              role: p.participant_type,
+            })),
+            interactions,
+          });
+        }
+
+        case 'enrich_contact_apollo': {
+          try {
+            const apolloResponse = await fetch(
+              `${CRM_AGENT_URL}/suggest-contact-profile`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  from_email: input.email,
+                  from_name: `${input.first_name || ''} ${input.last_name || ''}`.trim(),
+                }),
+              }
+            );
+            const apolloData = await apolloResponse.json();
+            return JSON.stringify(apolloData);
+          } catch (err) {
+            return JSON.stringify({ error: err.message });
+          }
+        }
+
+        case 'fetch_webpage': {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            const resp = await fetch(input.url, {
+              signal: controller.signal,
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CRM-Agent/1.0)' },
+            });
+            clearTimeout(timeout);
+            const html = await resp.text();
+            // Strip HTML tags, return text only
+            const text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+              .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .substring(0, 5000);
+            return JSON.stringify({ url: input.url, text });
+          } catch (err) {
+            return JSON.stringify({ error: err.message });
+          }
+        }
+
+        case 'create_contact_record': {
+          // Create contact
+          const contactData = {
+            first_name: input.first_name,
+            last_name: input.last_name || null,
+            category: input.category,
+            score: input.score || null,
+            job_role: input.job_role || null,
+            linkedin: input.linkedin || null,
+            description: input.description || null,
+            birthday: input.birthday || null,
+            show_missing: true,
+            created_by: 'LLM',
+          };
+
+          const { data: contact, error: contactError } = await supabase
+            .from('contacts')
+            .insert(contactData)
+            .select()
+            .single();
+
+          if (contactError) return JSON.stringify({ error: contactError.message });
+
+          // Add email
+          await supabase.from('contact_emails').insert({
+            contact_id: contact.contact_id,
+            email: input.email.toLowerCase(),
+            is_primary: true,
+          });
+
+          // Add KIT
+          await supabase.from('keep_in_touch').insert({
+            contact_id: contact.contact_id,
+            frequency: input.keep_in_touch || 'Not Set',
+            christmas: input.christmas || 'no wishes set',
+            easter: input.easter || 'no wishes set',
+          });
+
+          return JSON.stringify({ contact_id: contact.contact_id, ...contact });
+        }
+
+        case 'find_or_create_company': {
+          let companyId = null;
+          let companyName = null;
+
+          // Search by domain first
+          if (input.domain) {
+            const { data: domainMatch } = await supabase
+              .from('company_domains')
+              .select('company_id, companies(company_id, name)')
+              .ilike('domain', input.domain)
+              .limit(1)
+              .maybeSingle();
+
+            if (domainMatch?.companies) {
+              companyId = domainMatch.companies.company_id;
+              companyName = domainMatch.companies.name;
+            }
+          }
+
+          // Search by name if no domain match
+          if (!companyId && input.name) {
+            const { data: nameMatch } = await supabase
+              .from('companies')
+              .select('company_id, name')
+              .ilike('name', input.name)
+              .limit(1)
+              .maybeSingle();
+
+            if (nameMatch) {
+              companyId = nameMatch.company_id;
+              companyName = nameMatch.name;
+            }
+          }
+
+          // Update existing company's empty fields with new data
+          if (companyId) {
+            const updates = {};
+            if (input.website) updates.website = input.website;
+            if (input.description) updates.description = input.description;
+            if (input.linkedin) updates.linkedin = input.linkedin;
+            if (Object.keys(updates).length > 0) {
+              // Only update fields that are currently empty
+              const { data: existing } = await supabase.from('companies').select('website, description, linkedin').eq('company_id', companyId).single();
+              const finalUpdates = {};
+              if (!existing?.website && updates.website) finalUpdates.website = updates.website;
+              if (!existing?.description && updates.description) finalUpdates.description = updates.description;
+              if (!existing?.linkedin && updates.linkedin) finalUpdates.linkedin = updates.linkedin;
+              if (Object.keys(finalUpdates).length > 0) {
+                await supabase.from('companies').update(finalUpdates).eq('company_id', companyId);
+              }
+            }
+          }
+
+          // Create company if not found
+          if (!companyId && (input.name || input.domain)) {
+            const newCompany = {
+              name: input.name || input.domain,
+              website: input.website || (input.domain ? `https://${input.domain}` : null),
+              description: input.description || null,
+              linkedin: input.linkedin || null,
+              category: 'Inbox',
+              created_by: 'LLM',
+            };
+
+            const { data: created, error: companyError } = await supabase
+              .from('companies')
+              .insert(newCompany)
+              .select()
+              .single();
+
+            if (companyError) return JSON.stringify({ error: companyError.message });
+            companyId = created.company_id;
+            companyName = created.name;
+
+            // Add domain
+            if (input.domain) {
+              await supabase.from('company_domains').insert({
+                company_id: companyId,
+                domain: input.domain.toLowerCase(),
+                is_primary: true,
+              });
+            }
+          }
+
+          // Link to contact
+          if (companyId && input.contact_id) {
+            await supabase.from('contact_companies').insert({
+              contact_id: input.contact_id,
+              company_id: companyId,
+              relationship: input.relationship || 'not_set',
+              is_primary: true,
+            });
+          }
+
+          return JSON.stringify({ company_id: companyId, name: companyName, created: !companyName });
+        }
+
+        case 'add_contact_details': {
+          const results = { phones: 0, city: null, tags: 0 };
+
+          // Phones
+          if (input.phones?.length) {
+            for (const phone of input.phones) {
+              await supabase.from('contact_mobiles').insert({
+                contact_id: input.contact_id,
+                mobile: phone,
+                is_primary: results.phones === 0,
+              });
+              results.phones++;
+            }
+          }
+
+          // City
+          if (input.city) {
+            const { data: cityMatch } = await supabase
+              .from('cities')
+              .select('city_id, name')
+              .ilike('name', `%${input.city}%`)
+              .limit(1)
+              .maybeSingle();
+
+            let cityId = cityMatch?.city_id;
+            if (!cityId) {
+              const { data: newCity } = await supabase
+                .from('cities')
+                .insert({ name: input.city })
+                .select()
+                .single();
+              cityId = newCity?.city_id;
+            }
+            if (cityId) {
+              await supabase.from('contact_cities').insert({
+                contact_id: input.contact_id,
+                city_id: cityId,
+              });
+              results.city = input.city;
+            }
+          }
+
+          // Tags
+          if (input.tags?.length) {
+            for (const tagName of input.tags) {
+              const { data: tagMatch } = await supabase
+                .from('tags')
+                .select('tag_id, name')
+                .ilike('name', tagName)
+                .limit(1)
+                .maybeSingle();
+
+              if (tagMatch) {
+                await supabase.from('contact_tags').insert({
+                  contact_id: input.contact_id,
+                  tag_id: tagMatch.tag_id,
+                });
+                results.tags++;
+              }
+            }
+          }
+
+          return JSON.stringify(results);
+        }
+
+        case 'create_contact_note': {
+          if (!input.text || input.text.length < 500) {
+            return JSON.stringify({ error: `Note must be >500 chars. Current: ${(input.text || '').length} chars. Please write a more detailed note.` });
+          }
+
+          const noteTitle = `${input.first_name} ${input.last_name || ''} — Contact Notes`.replace(/\s+/g, ' ').trim();
+          const { data: note, error: noteError } = await supabase
+            .from('notes')
+            .insert({
+              title: noteTitle,
+              text: input.text,
+              note_type: 'general',
+              obsidian_path: `Inbox/${noteTitle}.md`,
+              created_by: 'LLM',
+            })
+            .select()
+            .single();
+
+          if (noteError) return JSON.stringify({ error: noteError.message });
+
+          await supabase.from('notes_contacts').insert({
+            note_id: note.note_id,
+            contact_id: input.contact_id,
+          });
+
+          return JSON.stringify({ note_id: note.note_id, chars: input.text.length });
+        }
+
+        case 'upload_contact_photo': {
+          // Helper to download, upload to storage, and update contact
+          const uploadPhoto = async (url, source) => {
+            const ctrl = new AbortController();
+            const tm = setTimeout(() => ctrl.abort(), 15000);
+            const imgResp = await fetch(url, {
+              signal: ctrl.signal,
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CRM-Agent/1.0)' },
+              redirect: 'follow',
+            });
+            clearTimeout(tm);
+            if (!imgResp.ok) throw new Error(`${source}: HTTP ${imgResp.status}`);
+            const ct = imgResp.headers.get('content-type') || 'image/jpeg';
+            if (!ct.startsWith('image/')) throw new Error(`${source}: not an image (${ct})`);
+            const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
+            const buffer = Buffer.from(await imgResp.arrayBuffer());
+            if (buffer.length < 1000) throw new Error(`${source}: image too small (${buffer.length} bytes)`);
+            const filePath = `profile-images/${input.contact_id}_${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage.from('avatars').upload(filePath, buffer, { contentType: ct, cacheControl: '3600', upsert: true });
+            if (upErr) throw new Error(`Storage: ${upErr.message}`);
+            const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+            await supabase.from('contacts').update({ profile_image_url: publicUrl }).eq('contact_id', input.contact_id);
+            return { success: true, url: publicUrl, source };
+          };
+
+          // Try sources in order
+          const errors = [];
+
+          // 1. Provided URL
+          if (input.image_url) {
+            try { return JSON.stringify(await uploadPhoto(input.image_url, 'provided_url')); } catch (e) { errors.push(e.message); }
+          }
+
+          // 2. Gravatar (SHA256 of email)
+          try {
+            const { data: ce } = await supabase.from('contact_emails').select('email').eq('contact_id', input.contact_id).limit(1).maybeSingle();
+            if (ce?.email) {
+              const hash = createHash('sha256').update(ce.email.trim().toLowerCase()).digest('hex');
+              const gravatarUrl = `https://www.gravatar.com/avatar/${hash}?d=404&s=400`;
+              try { return JSON.stringify(await uploadPhoto(gravatarUrl, 'gravatar')); } catch (e) { errors.push(e.message); }
+            }
+          } catch (e) { errors.push(`Gravatar lookup: ${e.message}`); }
+
+          return JSON.stringify({ error: `All photo sources failed: ${errors.join('; ')}. Use brave_image_search to find an alternative photo URL and call upload_contact_photo again with that URL.` });
+        }
+
+        case 'upload_company_logo': {
+          // Helper to download logo, upload to storage, create attachment + link
+          const saveLogo = async (url, source) => {
+            const ctrl = new AbortController();
+            const tm = setTimeout(() => ctrl.abort(), 15000);
+            const resp = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CRM-Agent/1.0)' }, redirect: 'follow' });
+            clearTimeout(tm);
+            if (!resp.ok) throw new Error(`${source}: HTTP ${resp.status}`);
+            const ct = resp.headers.get('content-type') || 'image/png';
+            if (!ct.startsWith('image/')) throw new Error(`${source}: not an image (${ct})`);
+            const buffer = Buffer.from(await resp.arrayBuffer());
+            if (buffer.length < 5000) throw new Error(`${source}: too small (${buffer.length} bytes, need >5KB for a real logo)`);
+            const ext = ct.includes('svg') ? 'svg' : ct.includes('png') ? 'png' : 'jpg';
+            const filePath = `company_logos/${input.company_id}_${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage.from('attachments').upload(filePath, buffer, { contentType: ct, upsert: false });
+            if (upErr) throw new Error(`Storage: ${upErr.message}`);
+            const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
+            const { data: att } = await supabase.from('attachments').insert({
+              file_name: `${input.company_id}_logo.${ext}`, file_url: filePath, file_type: ct, permanent_url: publicUrl,
+            }).select().single();
+            await supabase.from('company_attachments').delete().eq('company_id', input.company_id).eq('is_logo', true);
+            await supabase.from('company_attachments').insert({ company_id: input.company_id, attachment_id: att.attachment_id, is_logo: true });
+            return { success: true, url: publicUrl, source };
+          };
+
+          const errors = [];
+          const domain = input.domain;
+
+          // 1. Provided URL
+          if (input.logo_url) {
+            try { return JSON.stringify(await saveLogo(input.logo_url, 'provided_url')); } catch (e) { errors.push(e.message); }
+          }
+
+          // 2. Clearbit
+          if (domain) {
+            try { return JSON.stringify(await saveLogo(`https://logo.clearbit.com/${domain}`, 'clearbit')); } catch (e) { errors.push(e.message); }
+          }
+
+          // 3. Brandfetch
+          if (domain) {
+            try { return JSON.stringify(await saveLogo(`https://cdn.brandfetch.io/${domain}/w/400/h/400?c=1id_MlnKYTT`, 'brandfetch')); } catch (e) { errors.push(e.message); }
+          }
+
+          return JSON.stringify({ error: `All logo sources failed: ${errors.join('; ')}. Use brave_image_search to find a logo URL and call upload_company_logo again with that URL.` });
+        }
+
+        case 'run_quality_check': {
+          const contactId = input.contact_id;
+          const missing = [];
+          const details = {};
+
+          // 1. Completeness
+          const { data: cc } = await supabase
+            .from('contact_completeness')
+            .select('*')
+            .eq('contact_id', contactId)
+            .maybeSingle();
+
+          if (!cc || cc.completeness_score < 100) {
+            missing.push('completeness');
+            const missingFields = [];
+            if (!cc?.category || ['Not Set', 'Inbox'].includes(cc?.category)) missingFields.push('category');
+            if (!cc?.score) missingFields.push('score');
+            if (!cc?.description) missingFields.push('description');
+            if (!cc?.job_role) missingFields.push('job_role');
+            if (!cc?.linkedin) missingFields.push('linkedin');
+            if (!cc?.birthday) missingFields.push('birthday');
+            if (!cc?.keep_in_touch_frequency || cc?.keep_in_touch_frequency === 'Not Set') missingFields.push('keep_in_touch');
+            if (cc?.email_count === 0) missingFields.push('email');
+            if (cc?.mobile_count === 0) missingFields.push('mobile');
+            if (cc?.city_count === 0) missingFields.push('city');
+            if (cc?.tag_count === 0) missingFields.push('tags');
+            details.completeness = { score: cc?.completeness_score || 0, missing_fields: missingFields };
+          }
+
+          // 2. Photo
+          const { data: contactPhoto } = await supabase
+            .from('contacts')
+            .select('profile_image_url')
+            .eq('contact_id', contactId)
+            .maybeSingle();
+          if (!contactPhoto?.profile_image_url) {
+            missing.push('photo');
+            details.photo = true;
+          }
+
+          // 3. Note (>500 chars)
+          const { data: notes } = await supabase
+            .from('notes_contacts')
+            .select('notes(note_id, text, deleted_at)')
+            .eq('contact_id', contactId);
+          const hasGoodNote = (notes || []).some(n => n.notes && !n.notes.deleted_at && (n.notes.text || '').length > 500);
+          if (!hasGoodNote) {
+            missing.push('note');
+            details.note = true;
+          }
+
+          // 4. Company linked
+          const { data: companies } = await supabase
+            .from('contact_companies')
+            .select('company_id, relationship')
+            .eq('contact_id', contactId)
+            .neq('relationship', 'suggestion');
+          if (!companies?.length) {
+            missing.push('company');
+            details.company = true;
+            missing.push('company_complete');
+            details.company_complete = true;
+          } else {
+            // 5. Company complete
+            const companyId = companies[0].company_id;
+            const { data: compComp } = await supabase
+              .from('company_completeness')
+              .select('*')
+              .eq('company_id', companyId)
+              .maybeSingle();
+            if (!compComp || compComp.completeness_score < 100) {
+              missing.push('company_complete');
+              const compMissing = [];
+              if (!compComp?.website) compMissing.push('website');
+              if (!compComp?.description) compMissing.push('description');
+              if (!compComp?.linkedin) compMissing.push('linkedin');
+              if (compComp?.domain_count === 0) compMissing.push('domains');
+              if (compComp?.tag_count === 0) compMissing.push('tags');
+              if (!compComp?.has_logo) compMissing.push('logo');
+              details.company_complete = {
+                company_name: compComp?.name || 'Unknown',
+                score: compComp?.completeness_score || 0,
+                missing_fields: compMissing,
+              };
+            }
+          }
+
+          // Determine bucket
+          let bucket = 'c';
+          if (missing.includes('completeness')) {
+            const mf = details.completeness?.missing_fields || [];
+            if (mf.includes('category') || mf.includes('score') || mf.includes('keep_in_touch')) {
+              bucket = 'b';
+            }
+          }
+
+          // Upsert into contacts_clarissa_processing (if there are gaps)
+          if (missing.length > 0) {
+            await supabase
+              .from('contacts_clarissa_processing')
+              .upsert({
+                contact_id: contactId,
+                bucket,
+                missing_dimensions: missing,
+                missing_details: details,
+                checked_at: new Date().toISOString(),
+                resolved_at: null,
+              }, { onConflict: 'contact_id' });
+          }
+
+          return JSON.stringify({
+            dimensions_total: 5,
+            dimensions_complete: 5 - missing.length,
+            missing_dimensions: missing,
+            missing_details: details,
+            bucket: missing.length > 0 ? bucket : 'a',
+          });
+        }
+
+        case 'brave_web_search': {
+          const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+          if (!braveKey) return JSON.stringify({ error: 'BRAVE_SEARCH_API_KEY not configured' });
+          try {
+            const count = Math.min(input.count || 5, 20);
+            const resp = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(input.query)}&count=${count}`, {
+              headers: { 'X-Subscription-Token': braveKey, 'Accept': 'application/json' },
+            });
+            if (!resp.ok) return JSON.stringify({ error: `Brave search failed: ${resp.status}` });
+            const data = await resp.json();
+            const results = (data.web?.results || []).map(r => ({
+              title: r.title, url: r.url, description: r.description,
+            }));
+            return JSON.stringify({ query: input.query, results });
+          } catch (err) {
+            return JSON.stringify({ error: err.message });
+          }
+        }
+
+        case 'brave_image_search': {
+          const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+          if (!braveKey) return JSON.stringify({ error: 'BRAVE_SEARCH_API_KEY not configured' });
+          try {
+            const count = Math.min(input.count || 5, 20);
+            const resp = await fetch(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(input.query)}&count=${count}`, {
+              headers: { 'X-Subscription-Token': braveKey, 'Accept': 'application/json' },
+            });
+            if (!resp.ok) return JSON.stringify({ error: `Brave image search failed: ${resp.status}` });
+            const data = await resp.json();
+            const results = (data.results || []).map(r => ({
+              title: r.title, url: r.properties?.url || r.url, thumbnail: r.thumbnail?.src,
+              width: r.properties?.width, height: r.properties?.height,
+            }));
+            return JSON.stringify({ query: input.query, results });
+          } catch (err) {
+            return JSON.stringify({ error: err.message });
+          }
+        }
+
+        case 'add_company_tags': {
+          let linked = 0;
+          for (const tagName of input.tags) {
+            const { data: tagMatch } = await supabase
+              .from('tags')
+              .select('tag_id, name')
+              .ilike('name', tagName)
+              .limit(1)
+              .maybeSingle();
+            if (tagMatch) {
+              const { error } = await supabase.from('company_tags').insert({
+                company_id: input.company_id,
+                tag_id: tagMatch.tag_id,
+              });
+              if (!error) linked++;
+            }
+          }
+          return JSON.stringify({ linked, total_requested: input.tags.length });
+        }
+
+        case 'update_company': {
+          const updates = {};
+          if (input.name) updates.name = input.name;
+          if (input.website) updates.website = input.website;
+          if (input.description) updates.description = input.description;
+          if (input.linkedin) updates.linkedin = input.linkedin;
+          if (input.category) updates.category = input.category;
+          if (Object.keys(updates).length === 0) return JSON.stringify({ error: 'No fields to update' });
+          const { error } = await supabase.from('companies').update(updates).eq('company_id', input.company_id);
+          if (error) return JSON.stringify({ error: error.message });
+          return JSON.stringify({ success: true, updated_fields: Object.keys(updates) });
+        }
+
+        default:
+          return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+      }
+    };
+
+    // System prompt for the agent
+    const systemPrompt = `You are an autonomous CRM analyst agent. You receive minimal input from the user (category, score, KIT preferences) and an email address. Your job is to create a COMPLETE contact profile achieving 100% on all 5 quality dimensions:
+
+1. COMPLETENESS — all contact fields filled (job_role, linkedin, description, birthday, city, tags, phones, etc.)
+2. PHOTO — profile_image_url must be set (downloaded and re-uploaded to our storage)
+3. NOTE — a contextual note >500 chars about who this person is and the relationship
+4. COMPANY — a company must be linked (not suggestion relationship)
+5. COMPANY_COMPLETE — the linked company must have website, description, linkedin, domains, tags, logo
+
+You have 14 tools. USE THEM ALL as needed:
+- search_crm_communications: search existing emails/communications with this person
+- enrich_contact_apollo: get professional data from Apollo (job, company, LinkedIn, photo, city, phone)
+- brave_web_search: search the web for ANY information (company pages, LinkedIn profiles, bios, team pages)
+- brave_image_search: search for profile photos or company logos by name
+- fetch_webpage: fetch and read any URL (company websites, team pages, about pages)
+- create_contact_record: create the contact in the CRM
+- upload_contact_photo: download a photo URL and re-upload to our storage. Tries Gravatar as fallback. If all fail, use brave_image_search to find a photo URL and call this tool again.
+- find_or_create_company: find or create company, link to contact. Always pass website, description, linkedin.
+- upload_company_logo: download logo and store. Tries Clearbit → Brandfetch → Google Favicon automatically. If all fail, use brave_image_search to find a logo and call again.
+- add_contact_details: add phones, city, tags to the contact
+- add_company_tags: add tags to the company (searches existing tags by name)
+- update_company: update any company field (description, website, linkedin, category, name)
+- create_contact_note: create contextual note (>500 chars, auto-titled "First Last — Contact Notes")
+- run_quality_check: check 5 dimensions, report gaps
+
+WORKFLOW:
+1. search_crm_communications — find all existing communications
+2. enrich_contact_apollo — get professional data
+3. brave_web_search — search for more info if Apollo is incomplete (e.g. "${first_name} ${last_name || ''} ${emailDomain}")
+4. fetch_webpage — read the company website for description, team info
+5. create_contact_record — create contact with ALL gathered fields
+6. upload_contact_photo — upload photo from Apollo. If it fails, use brave_image_search("${first_name} ${last_name || ''} photo") to find an alternative URL
+7. find_or_create_company — pass website, description, linkedin. Use info from web/Apollo.
+8. upload_company_logo — auto-tries Clearbit/Brandfetch/Favicon. If all fail, use brave_image_search("${emailDomain} logo") to find a logo URL
+9. add_contact_details — phones, city, tags from Apollo/web
+10. add_company_tags — add relevant tags to the company (industry, sector, etc.)
+11. update_company — fill any remaining empty company fields
+12. create_contact_note — detailed note with this EXACT markdown structure:
+    # First Last — Contact Notes
+    ## Overview
+    First Last. Job Title at Company. Category: X · Score: X · Keep-in-touch: X. LinkedIn: url.
+    Tags: tag1, tag2
+    Companies:
+    - **Company** — description...
+    ## Character & Relationship Dynamics
+    (insights from communications and web research)
+    ## Communication History
+    (summary of email exchanges, topics discussed)
+13. run_quality_check — check dimensions. If ANY are missing, FIX THEM:
+    - Missing photo? → brave_image_search + upload_contact_photo
+    - Missing logo? → brave_image_search + upload_company_logo
+    - Missing company tags? → add_company_tags
+    - Missing company fields? → update_company
+    Then run_quality_check again.
+
+CRITICAL RULES:
+- Your goal is 5/5 dimensions. NEVER accept failures silently.
+- If a tool fails, try alternative approaches with other tools.
+- NEVER save external URLs directly as profile_image_url — always download and re-upload.
+- brave_web_search and brave_image_search are your secret weapons. Use them when other sources fail.
+- The email domain "${emailDomain}" ${isFreeDomain ? 'is a free provider — company info may need to come from Apollo, web search, or communications context' : 'is a company domain — fetch the website for info'}.
+
+User-provided inputs (use these exactly, do not override):
+- first_name: ${first_name}
+- last_name: ${last_name || '(not provided)'}
+- email: ${email}
+- category: ${category}
+- score: ${score || '(not set)'}
+- keep_in_touch: ${keep_in_touch || 'Not Set'}
+- christmas: ${christmas || 'no wishes set'}
+- easter: ${easter || 'no wishes set'}`;
+
+    // Run agentic loop
+    const messages = [{ role: 'user', content: `Create a complete profile for ${first_name} ${last_name || ''} <${email}>. Category: ${category}. Go.` }];
+
+    const requestParams = {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages,
+      tools: agentTools,
+    };
+
+    let response = await anthropic.messages.create(requestParams);
+    let loopCount = 0;
+    const maxLoops = 25;
+    let qualityReport = null;
+
+    while (response.stop_reason === 'tool_use' && loopCount < maxLoops) {
+      loopCount++;
+      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+
+      const toolResults = [];
+      for (const toolUse of toolUseBlocks) {
+        console.log(`[SmartCreate] Tool ${loopCount}: ${toolUse.name}`);
+        try {
+          const result = await handleTool(toolUse.name, toolUse.input);
+          // Capture quality report from final tool
+          if (toolUse.name === 'run_quality_check') {
+            try { qualityReport = JSON.parse(result); } catch {}
+          }
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolUse.id,
+            content: result,
+          });
+        } catch (toolError) {
+          console.error(`[SmartCreate] Tool error (${toolUse.name}):`, toolError.message);
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolUse.id,
+            content: `Error: ${toolError.message}`,
+            is_error: true,
+          });
+        }
+      }
+
+      requestParams.messages.push({ role: 'assistant', content: response.content });
+      requestParams.messages.push({ role: 'user', content: toolResults });
+      response = await anthropic.messages.create(requestParams);
+    }
+
+    console.log(`[SmartCreate] Done in ${loopCount} tool loops. Quality: ${qualityReport?.dimensions_complete || '?'}/5`);
+
+    res.json({
+      success: true,
+      quality_report: qualityReport || { missing_dimensions: [], dimensions_complete: 0 },
+    });
+
+  } catch (error) {
+    console.error('[SmartCreate] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);
   startPolling();
 
-  // Start evening briefing scheduler (19:00 UK daily)
-  startBriefingScheduler();
+  // Start briefing schedulers
+  startBriefingScheduler();        // 19:15 UK
+  startMorningBriefingScheduler(); // 06:00 UK
 
   // Initialize Baileys after server starts
   setTimeout(() => {
