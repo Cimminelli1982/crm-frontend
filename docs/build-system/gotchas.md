@@ -50,3 +50,12 @@ These live in CommandCenterPage and should NOT be moved to hooks:
 - Se manca company, anche `company_complete` fallisce automaticamente.
 - Bucket b = servono decisioni umane (category/score/KIT mancanti), bucket c = fixable dall'agente.
 - `contacts_clarissa_processing` ha `ON CONFLICT (contact_id)` — upsert, non insert.
+
+## Smart Enrich
+- NON refactorare `smart-create` quando aggiungi `smart-enrich`. Aggiungi codice nuovo accanto all'esistente.
+- `enrichment-tools.js` contiene funzioni standalone — importale, non duplicare la logica.
+- `updateContactFields` ha protezione code-level: legge valori attuali e aggiorna solo campi NULL/vuoti.
+- `/contact/smart-enrich` accetta parametro opzionale `dimensions` (array) per fixare dimensioni specifiche.
+- La Data Quality tab è in `DataQualityCenterContent.js` + `useDataQualityData.js`, NON in DataIntegrityTab.
+- I campi che servono input umano (category, score, birthday, KIT, christmas, easter) vanno editabili inline, NON mandare al right panel.
+- `keep_in_touch` ha campo `frequency` (NON `kit_frequency`) — il hook mappa `kit_frequency` → `frequency` per il DB.

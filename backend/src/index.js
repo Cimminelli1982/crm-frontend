@@ -5744,6 +5744,402 @@ User-provided inputs (use these exactly, do not override):
   }
 });
 
+// ===== Smart Enrich Contact — Targeted AI Enrichment =====
+// Reads what's missing from clarissa, then fixes ONLY those dimensions
+import {
+  runQualityCheck,
+  enrichWithApollo,
+  searchCrmCommunications,
+  fetchWebpage,
+  updateContactFields,
+  findOrCreateCompany,
+  addContactDetails,
+  createContactNote,
+  uploadContactPhoto,
+  uploadCompanyLogo,
+  addCompanyTags,
+  updateCompany,
+  braveWebSearch,
+  loadContactData,
+} from './enrichment-tools.js';
+
+app.post('/contact/smart-enrich', async (req, res) => {
+  try {
+    const { contact_id, dimensions: requestedDimensions } = req.body;
+    if (!contact_id) {
+      return res.status(400).json({ success: false, error: 'Missing contact_id' });
+    }
+
+    console.log(`[SmartEnrich] Starting for ${contact_id}`);
+
+    // 1. Load existing contact data
+    const contactData = await loadContactData(contact_id);
+    if (!contactData) {
+      return res.status(404).json({ success: false, error: 'Contact not found' });
+    }
+
+    const { first_name, last_name, primaryEmail } = contactData;
+    console.log(`[SmartEnrich] Contact: ${first_name} ${last_name || ''} <${primaryEmail || 'no email'}>`);
+
+    // 2. Check clarissa — if not scanned yet, scan first
+    let { data: clarissa } = await supabase
+      .from('contacts_clarissa_processing')
+      .select('*')
+      .eq('contact_id', contact_id)
+      .maybeSingle();
+
+    if (!clarissa) {
+      console.log(`[SmartEnrich] Not in clarissa, running quality scan...`);
+      const scanResult = await runQualityCheck(contact_id);
+      if (scanResult.dimensions_complete === 5) {
+        return res.json({ success: true, quality_report: scanResult, message: 'Already complete (5/5)' });
+      }
+      // Re-read after scan
+      const { data: freshClarissa } = await supabase
+        .from('contacts_clarissa_processing')
+        .select('*')
+        .eq('contact_id', contact_id)
+        .maybeSingle();
+      clarissa = freshClarissa;
+    }
+
+    if (!clarissa || !clarissa.missing_dimensions?.length) {
+      return res.json({ success: true, quality_report: { dimensions_complete: 5 }, message: 'Nothing to fix' });
+    }
+
+    // If caller requested specific dimensions, filter to those; otherwise use all from clarissa
+    const allMissing = clarissa.missing_dimensions;
+    const missingDimensions = requestedDimensions?.length
+      ? allMissing.filter(d => requestedDimensions.includes(d))
+      : allMissing;
+    const missingDetails = clarissa.missing_details || {};
+    console.log(`[SmartEnrich] Missing: ${missingDimensions.join(', ')}${requestedDimensions ? ` (requested: ${requestedDimensions.join(', ')})` : ''}`);
+
+    // 3. Determine which tools the agent needs based on what's missing
+    const needsCompleteness = missingDimensions.includes('completeness');
+    const needsPhoto = missingDimensions.includes('photo');
+    const needsNote = missingDimensions.includes('note');
+    const needsCompany = missingDimensions.includes('company');
+    const needsCompanyComplete = missingDimensions.includes('company_complete');
+    const needsResearch = needsCompleteness || needsCompany || needsCompanyComplete;
+
+    // 4. Build tool set — only what's needed
+    const agentTools = [];
+    const toolHandlers = {};
+
+    // Always include quality check
+    agentTools.push({
+      name: 'run_quality_check',
+      description: 'Run the 5-dimension quality check. Call as the LAST step to verify fixes.',
+      input_schema: { type: 'object', properties: { contact_id: { type: 'string' } }, required: ['contact_id'] }
+    });
+    toolHandlers['run_quality_check'] = async (input) => JSON.stringify(await runQualityCheck(input.contact_id));
+
+    // Research tools (if needed for completeness/company)
+    if (needsResearch) {
+      if (primaryEmail) {
+        agentTools.push({
+          name: 'search_crm_communications',
+          description: 'Search existing communications with this email. Returns inbox messages, email history, interactions.',
+          input_schema: { type: 'object', properties: { email: { type: 'string' } }, required: ['email'] }
+        });
+        toolHandlers['search_crm_communications'] = async (input) => JSON.stringify(await searchCrmCommunications(input.email));
+
+        agentTools.push({
+          name: 'enrich_contact_apollo',
+          description: 'Call Apollo enrichment API for professional data: job title, company, LinkedIn, photo, city, phones, description.',
+          input_schema: { type: 'object', properties: { email: { type: 'string' }, first_name: { type: 'string' }, last_name: { type: 'string' } }, required: ['email'] }
+        });
+        toolHandlers['enrich_contact_apollo'] = async (input) => JSON.stringify(await enrichWithApollo(input.email, input.first_name, input.last_name));
+      }
+
+      agentTools.push({
+        name: 'brave_web_search',
+        description: 'Search the web. Use for finding company info, LinkedIn profiles, bios.',
+        input_schema: { type: 'object', properties: { query: { type: 'string' }, count: { type: 'number' } }, required: ['query'] }
+      });
+      toolHandlers['brave_web_search'] = async (input) => JSON.stringify(await braveWebSearch(input.query, input.count));
+
+      agentTools.push({
+        name: 'fetch_webpage',
+        description: 'Fetch a URL and return text content (first 5000 chars).',
+        input_schema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] }
+      });
+      toolHandlers['fetch_webpage'] = async (input) => JSON.stringify(await fetchWebpage(input.url));
+    }
+
+    // Completeness tools
+    if (needsCompleteness) {
+      agentTools.push({
+        name: 'update_contact_fields',
+        description: 'Update contact fields. ONLY updates fields that are currently NULL/empty — will NOT overwrite existing values. Safe to call with all gathered data.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' },
+            last_name: { type: 'string' },
+            job_role: { type: 'string' },
+            linkedin: { type: 'string' },
+            description: { type: 'string' },
+            birthday: { type: 'string', description: 'YYYY-MM-DD' },
+          },
+          required: ['contact_id']
+        }
+      });
+      toolHandlers['update_contact_fields'] = async (input) => {
+        const { contact_id: cid, ...fields } = input;
+        return JSON.stringify(await updateContactFields(cid, fields));
+      };
+
+      agentTools.push({
+        name: 'add_contact_details',
+        description: 'Add phones, city, tags. Skips duplicates automatically.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' },
+            phones: { type: 'array', items: { type: 'string' } },
+            city: { type: 'string' },
+            tags: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['contact_id']
+        }
+      });
+      toolHandlers['add_contact_details'] = async (input) => {
+        const { contact_id: cid, ...details } = input;
+        return JSON.stringify(await addContactDetails(cid, details));
+      };
+    }
+
+    // Photo tool
+    if (needsPhoto) {
+      agentTools.push({
+        name: 'upload_contact_photo',
+        description: 'Download photo and re-upload to storage. Tries Gravatar as fallback. ONLY use Apollo photo URL or Gravatar.',
+        input_schema: {
+          type: 'object',
+          properties: { contact_id: { type: 'string' }, image_url: { type: 'string' } },
+          required: ['contact_id', 'image_url']
+        }
+      });
+      toolHandlers['upload_contact_photo'] = async (input) => JSON.stringify(await uploadContactPhoto(input.contact_id, input.image_url));
+    }
+
+    // Note tool
+    if (needsNote) {
+      agentTools.push({
+        name: 'create_contact_note',
+        description: 'Create a contextual note (>500 chars). Auto-titled "First Last — Contact Notes".',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' },
+            first_name: { type: 'string' },
+            last_name: { type: 'string' },
+            text: { type: 'string', description: 'Markdown note >500 chars.' },
+          },
+          required: ['contact_id', 'first_name', 'last_name', 'text']
+        }
+      });
+      toolHandlers['create_contact_note'] = async (input) => JSON.stringify(await createContactNote(input.contact_id, { firstName: input.first_name, lastName: input.last_name, text: input.text }));
+    }
+
+    // Company tools
+    if (needsCompany) {
+      agentTools.push({
+        name: 'find_or_create_company',
+        description: 'Find existing company by domain/name or create new one. Links to contact. Pass website, description, linkedin.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string' },
+            domain: { type: 'string' },
+            name: { type: 'string' },
+            website: { type: 'string' },
+            description: { type: 'string' },
+            linkedin: { type: 'string' },
+            relationship: { type: 'string' },
+          },
+          required: ['contact_id']
+        }
+      });
+      toolHandlers['find_or_create_company'] = async (input) => {
+        const { contact_id: cid, ...rest } = input;
+        return JSON.stringify(await findOrCreateCompany(cid, rest));
+      };
+    }
+
+    // Company complete tools
+    if (needsCompanyComplete) {
+      if (!toolHandlers['find_or_create_company']) {
+        // Also need company tools even if company exists (to update it)
+        agentTools.push({
+          name: 'find_or_create_company',
+          description: 'Find company by domain/name. Updates empty fields on existing company.',
+          input_schema: {
+            type: 'object',
+            properties: { contact_id: { type: 'string' }, domain: { type: 'string' }, name: { type: 'string' }, website: { type: 'string' }, description: { type: 'string' }, linkedin: { type: 'string' }, relationship: { type: 'string' } },
+            required: ['contact_id']
+          }
+        });
+        toolHandlers['find_or_create_company'] = async (input) => {
+          const { contact_id: cid, ...rest } = input;
+          return JSON.stringify(await findOrCreateCompany(cid, rest));
+        };
+      }
+
+      agentTools.push({
+        name: 'update_company',
+        description: 'Update company fields (name, website, description, linkedin, category).',
+        input_schema: {
+          type: 'object',
+          properties: { company_id: { type: 'string' }, name: { type: 'string' }, website: { type: 'string' }, description: { type: 'string' }, linkedin: { type: 'string' }, category: { type: 'string' } },
+          required: ['company_id']
+        }
+      });
+      toolHandlers['update_company'] = async (input) => {
+        const { company_id: cid, ...fields } = input;
+        return JSON.stringify(await updateCompany(cid, fields));
+      };
+
+      agentTools.push({
+        name: 'add_company_tags',
+        description: 'Link existing tags to company (case-insensitive match).',
+        input_schema: {
+          type: 'object',
+          properties: { company_id: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } },
+          required: ['company_id', 'tags']
+        }
+      });
+      toolHandlers['add_company_tags'] = async (input) => JSON.stringify(await addCompanyTags(input.company_id, input.tags));
+
+      agentTools.push({
+        name: 'upload_company_logo',
+        description: 'Upload company logo. Tries Clearbit → Brandfetch automatically.',
+        input_schema: {
+          type: 'object',
+          properties: { company_id: { type: 'string' }, logo_url: { type: 'string' }, domain: { type: 'string' } },
+          required: ['company_id']
+        }
+      });
+      toolHandlers['upload_company_logo'] = async (input) => JSON.stringify(await uploadCompanyLogo(input.company_id, { logoUrl: input.logo_url, domain: input.domain }));
+    }
+
+    // 5. Build targeted system prompt
+    const emailDomain = primaryEmail?.split('@')[1]?.toLowerCase();
+    const isFreeDomain = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'live.com', 'me.com', 'protonmail.com', 'mail.com'].includes(emailDomain);
+
+    // Build context about what already exists
+    const existingContext = [];
+    if (contactData.first_name) existingContext.push(`first_name: ${contactData.first_name}`);
+    if (contactData.last_name) existingContext.push(`last_name: ${contactData.last_name}`);
+    if (contactData.job_role) existingContext.push(`job_role: ${contactData.job_role}`);
+    if (contactData.linkedin) existingContext.push(`linkedin: ${contactData.linkedin}`);
+    if (contactData.description) existingContext.push(`description: (already set)`);
+    if (contactData.category) existingContext.push(`category: ${contactData.category}`);
+    if (contactData.score) existingContext.push(`score: ${contactData.score}`);
+    if (contactData.cities.length) existingContext.push(`city: ${contactData.cities.join(', ')}`);
+    if (contactData.tags.length) existingContext.push(`tags: ${contactData.tags.join(', ')}`);
+    if (contactData.companies.length) existingContext.push(`company: ${contactData.companies.map(c => c.companies?.name).join(', ')}`);
+
+    // Build instructions per missing dimension
+    const fixInstructions = [];
+    if (needsCompleteness) {
+      const mf = missingDetails.completeness?.missing_fields || [];
+      // Filter out fields that need user input (category, score, KIT)
+      const agentFixable = mf.filter(f => !['category', 'score', 'keep_in_touch'].includes(f));
+      if (agentFixable.length) {
+        fixInstructions.push(`COMPLETENESS: Fill these empty fields: ${agentFixable.join(', ')}. Use Apollo + web search. Call update_contact_fields and/or add_contact_details.`);
+      }
+    }
+    if (needsPhoto) fixInstructions.push(`PHOTO: Upload a profile photo. Use ONLY the Apollo photo URL. If no Apollo photo, try Gravatar. Do NOT search the web for photos.`);
+    if (needsNote) fixInstructions.push(`NOTE: Create a note >500 chars with markdown structure: # Name — Contact Notes, ## Overview, ## Character & Relationship Dynamics, ## Communication History.`);
+    if (needsCompany) fixInstructions.push(`COMPANY: Find or create the company and link it. Search Apollo/web for company info. Pass website, description, linkedin.`);
+    if (needsCompanyComplete) {
+      const cm = missingDetails.company_complete?.missing_fields || [];
+      fixInstructions.push(`COMPANY_COMPLETE: Fix these company gaps: ${cm.join(', ')}. Use update_company, add_company_tags, upload_company_logo as needed.`);
+    }
+
+    const systemPrompt = `You are a CRM enrichment agent. An existing contact needs specific fixes. Do NOT touch fields that already have values.
+
+CONTACT: ${first_name} ${last_name || ''} <${primaryEmail || 'no email'}>
+CONTACT_ID: ${contact_id}
+${emailDomain ? `EMAIL DOMAIN: ${emailDomain} ${isFreeDomain ? '(free provider)' : '(company domain)'}` : ''}
+
+EXISTING DATA:
+${existingContext.join('\n')}
+
+FIX ONLY THESE DIMENSIONS:
+${fixInstructions.map((i, idx) => `${idx + 1}. ${i}`).join('\n')}
+
+WORKFLOW:
+${needsResearch && primaryEmail ? '1. enrich_contact_apollo — get professional data\n2. brave_web_search — supplement if Apollo incomplete' : ''}
+${needsResearch && primaryEmail ? '3. search_crm_communications — check existing comms for context' : ''}
+${fixInstructions.map((_, idx) => `${needsResearch && primaryEmail ? idx + 4 : idx + 1}. Fix dimension as instructed above`).join('\n')}
+LAST. run_quality_check — verify all fixes
+
+CRITICAL RULES:
+- Do NOT overwrite existing data. update_contact_fields protects against this at code level.
+- Do NOT search the web for profile photos — you cannot verify identity.
+- Do NOT use brave_image_search for logos — use Clearbit/Brandfetch via upload_company_logo.
+- If a dimension cannot be fixed (no data found), skip it — do not fabricate data.
+- Your goal: fix as many of the listed dimensions as possible with real data.`;
+
+    // 6. Run targeted agentic loop
+    const messages = [{ role: 'user', content: `Enrich contact ${first_name} ${last_name || ''} — fix dimensions: ${missingDimensions.join(', ')}. Go.` }];
+
+    const requestParams = {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages,
+      tools: agentTools,
+    };
+
+    let response = await anthropic.messages.create(requestParams);
+    let loopCount = 0;
+    const maxLoops = 20;
+    let qualityReport = null;
+
+    while (response.stop_reason === 'tool_use' && loopCount < maxLoops) {
+      loopCount++;
+      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+
+      const toolResults = [];
+      for (const toolUse of toolUseBlocks) {
+        console.log(`[SmartEnrich] Tool ${loopCount}: ${toolUse.name}`);
+        try {
+          const handler = toolHandlers[toolUse.name];
+          if (!handler) throw new Error(`Unknown tool: ${toolUse.name}`);
+          const result = await handler(toolUse.input);
+          if (toolUse.name === 'run_quality_check') {
+            try { qualityReport = JSON.parse(result); } catch {}
+          }
+          toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: result });
+        } catch (toolError) {
+          console.error(`[SmartEnrich] Tool error (${toolUse.name}):`, toolError.message);
+          toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: `Error: ${toolError.message}`, is_error: true });
+        }
+      }
+
+      requestParams.messages.push({ role: 'assistant', content: response.content });
+      requestParams.messages.push({ role: 'user', content: toolResults });
+      response = await anthropic.messages.create(requestParams);
+    }
+
+    console.log(`[SmartEnrich] Done in ${loopCount} loops. Quality: ${qualityReport?.dimensions_complete || '?'}/5`);
+
+    res.json({
+      success: true,
+      quality_report: qualityReport || { missing_dimensions: missingDimensions, dimensions_complete: 0 },
+    });
+
+  } catch (error) {
+    console.error('[SmartEnrich] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);
   startPolling();

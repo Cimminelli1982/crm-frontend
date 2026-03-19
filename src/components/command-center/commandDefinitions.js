@@ -231,6 +231,11 @@ const COMMAND_CATEGORIES = [
         label: 'Complete task',
         directAction: 'complete-task',
       },
+      {
+        id: 'pay',
+        label: 'Pay (Visa CLI)',
+        directAction: 'pay',
+      },
     ],
   },
   {

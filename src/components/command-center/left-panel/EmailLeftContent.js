@@ -205,8 +205,8 @@ const EmailLeftContent = ({
           {renderSection('inbox', 'Inbox')}
           {renderSection('need_actions', 'Need Actions')}
           {renderSection('waiting_input', 'Waiting Input')}
-          {renderSection('news', 'News', 'default', '#3B82F6')}
-          {renderSection('potential_spam', 'Potential Spam', 'default', '#F59E0B')}
+          {isEmail && renderSection('news', 'News', 'default', '#3B82F6')}
+          {isEmail && renderSection('potential_spam', 'Potential Spam', 'default', '#F59E0B')}
           {renderSection('archiving', 'Archiving', 'success', '#10b981')}
           {isEmail && lastSentThreads?.length > 0 && (
             <CollapsibleSection
