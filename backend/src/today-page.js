@@ -681,6 +681,36 @@ function buildTodayHTML(dateStr, token) {
     margin-top: 6px;
   }
   .inline-form.open { display: block; }
+  .inline-form select {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    margin-bottom: 8px;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .inline-form select:focus { border-color: var(--accent); }
+  .inline-form label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 3px;
+  }
+  .score-row { display: flex; gap: 6px; margin-bottom: 8px; }
+  .score-btn {
+    width: 36px; height: 36px; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .score-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .inline-form input, .inline-form textarea {
     width: 100%;
     padding: 10px 12px;
@@ -1166,7 +1196,6 @@ function personItemNotInCrm(c) {
   const parts = (c.name || '').trim().split(/\\s+/);
   const firstName = parts[0] || '';
   const lastName = parts.slice(1).join(' ') || '';
-  const crmUrl = 'https://crm-editor-frontend.netlify.app/new-crm/command-center?addContact=' + encodeURIComponent(c.email || '') + '&addName=' + encodeURIComponent(c.name || '');
   return \`
     <div class="item" id="notcrm-\${uid}">
       <div class="status-dot missing"></div>
@@ -1174,7 +1203,50 @@ function personItemNotInCrm(c) {
         <div class="item-title">\${esc(c.name)}</div>
         <div class="item-sub">\${esc(c.email || '')}</div>
         <div class="item-actions">
-          <a href="\${crmUrl}" target="_blank" class="btn btn-sm btn-primary" style="text-decoration:none;">➕ Smart Add to CRM</a>
+          <button class="btn btn-sm btn-primary" onclick="toggleForm('addcrm-\${uid}')">➕ Smart Add to CRM</button>
+        </div>
+        <div class="inline-form" id="addcrm-\${uid}">
+          <div class="form-row">
+            <div style="flex:1"><label>First Name *</label><input id="addcrm-fn-\${uid}" value="\${esc(firstName)}"></div>
+            <div style="flex:1"><label>Last Name</label><input id="addcrm-ln-\${uid}" value="\${esc(lastName)}"></div>
+          </div>
+          <label>Email *</label>
+          <input id="addcrm-em-\${uid}" value="\${esc(c.email || '')}">
+          <label>Category *</label>
+          <select id="addcrm-cat-\${uid}">
+            <option value="">Select category...</option>
+            <option>Professional Investor</option><option>Founder</option><option>Manager</option>
+            <option>Advisor</option><option>Friend and Family</option><option>Team</option>
+            <option>Supplier</option><option>Media</option><option>Student</option>
+            <option>Institution</option><option>Other</option>
+          </select>
+          <label>Score</label>
+          <div class="score-row" id="addcrm-score-\${uid}">
+            <button class="score-btn" onclick="setScore('\${uid}',1)">1</button>
+            <button class="score-btn" onclick="setScore('\${uid}',2)">2</button>
+            <button class="score-btn" onclick="setScore('\${uid}',3)">3</button>
+            <button class="score-btn" onclick="setScore('\${uid}',4)">4</button>
+            <button class="score-btn" onclick="setScore('\${uid}',5)">5</button>
+          </div>
+          <label>Keep in Touch</label>
+          <select id="addcrm-kit-\${uid}">
+            <option>Not Set</option><option>Weekly</option><option>Monthly</option>
+            <option>Quarterly</option><option>Twice per Year</option><option>Once per Year</option>
+            <option>Do not keep in touch</option>
+          </select>
+          <div class="form-row">
+            <div style="flex:1"><label>Christmas</label><select id="addcrm-xmas-\${uid}">
+              <option>no wishes set</option><option>whatsapp standard</option><option>email standard</option>
+              <option>email custom</option><option>whatsapp custom</option><option>call</option>
+              <option>present</option><option>no wishes</option>
+            </select></div>
+            <div style="flex:1"><label>Easter</label><select id="addcrm-easter-\${uid}">
+              <option>no wishes set</option><option>whatsapp standard</option><option>email standard</option>
+              <option>email custom</option><option>whatsapp custom</option><option>call</option>
+              <option>present</option><option>no wishes</option>
+            </select></div>
+          </div>
+          <button class="btn btn-primary" onclick="smartAddToCrm('\${uid}')" id="addcrm-submit-\${uid}">➕ Create & Enrich</button>
         </div>
       </div>
     </div>
@@ -1478,33 +1550,66 @@ function findSectionName(sectionId) {
   return 'section';
 }
 
-async function addToCrm(uid) {
+const scoreState = {};
+function setScore(uid, val) {
+  scoreState[uid] = scoreState[uid] === val ? null : val;
+  const row = document.getElementById('addcrm-score-' + uid);
+  if (row) row.querySelectorAll('.score-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i + 1 === scoreState[uid]);
+  });
+}
+
+async function smartAddToCrm(uid) {
   const fn = document.getElementById('addcrm-fn-' + uid)?.value?.trim();
   const ln = document.getElementById('addcrm-ln-' + uid)?.value?.trim();
   const em = document.getElementById('addcrm-em-' + uid)?.value?.trim();
+  const cat = document.getElementById('addcrm-cat-' + uid)?.value;
+  const kit = document.getElementById('addcrm-kit-' + uid)?.value || 'Not Set';
+  const xmas = document.getElementById('addcrm-xmas-' + uid)?.value || 'no wishes set';
+  const easter = document.getElementById('addcrm-easter-' + uid)?.value || 'no wishes set';
+  const score = scoreState[uid] || null;
 
-  if (!fn || !ln) {
-    toast('First and last name required', 'error');
-    return;
+  if (!fn) { toast('First name required', 'error'); return; }
+  if (!em) { toast('Email required', 'error'); return; }
+  if (!cat) { toast('Category required', 'error'); return; }
+
+  // Close form and show queued toast immediately
+  const contactName = (fn + ' ' + (ln || '')).trim();
+  toggleForm('addcrm-' + uid);
+  toast(contactName + ' queued — agent is enriching...');
+
+  // Move from notInCrm to inCrmIncomplete in UI
+  const idx = data.people.email.notInCrm.findIndex(c => {
+    const cuid = btoa(c.email || c.name).replace(/[^a-zA-Z0-9]/g, '');
+    return cuid === uid;
+  });
+  if (idx >= 0) {
+    const contact = data.people.email.notInCrm.splice(idx, 1)[0];
+    contact.name = contactName;
+    contact.in_crm = true;
+    data.people.email.inCrmIncomplete.push(contact);
   }
+  render();
 
+  // Fire and forget to smart-create
   try {
-    await api('/today/contacts', { method: 'POST', body: { first_name: fn, last_name: ln, email: em } });
-    toast(fn + ' ' + ln + ' added to CRM');
-    // Move from notInCrm to inCrmIncomplete
-    const idx = data.people.email.notInCrm.findIndex(c => {
-      const cuid = btoa(c.email || c.name).replace(/[^a-zA-Z0-9]/g, '');
-      return cuid === uid;
+    const res = await fetch(API + '/contact/smart-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        first_name: fn, last_name: ln || '', email: em.toLowerCase(),
+        category: cat, score, keep_in_touch: kit, christmas: xmas, easter,
+      }),
     });
-    if (idx >= 0) {
-      const contact = data.people.email.notInCrm.splice(idx, 1)[0];
-      contact.name = fn + ' ' + ln;
-      contact.in_crm = true;
-      data.people.email.inCrmIncomplete.push(contact);
+    const result = await res.json();
+    if (result.success) {
+      const dims = result.quality_report?.missing_dimensions || [];
+      toast(contactName + ' — ' + (5 - dims.length) + '/5 dimensions complete');
+    } else {
+      toast(contactName + ' failed: ' + result.error, 'error');
     }
-    render();
   } catch (e) {
-    toast('Failed to add contact: ' + e.message, 'error');
+    toast(contactName + ' failed: ' + e.message, 'error');
   }
 }
 
