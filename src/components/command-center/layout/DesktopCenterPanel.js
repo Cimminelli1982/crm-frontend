@@ -3589,6 +3589,23 @@ const DesktopCenterPanel = ({
                             }
                           }, true);
 
+                          // Add click listener for "Add to CRM" links in briefing emails
+                          iframe.contentDocument.addEventListener('click', (ev) => {
+                            const link = ev.target.closest('.crm-add');
+                            if (link) {
+                              ev.preventDefault();
+                              ev.stopPropagation();
+                              try {
+                                const url = new URL(link.href);
+                                const email = url.searchParams.get('addContact') || '';
+                                const name = url.searchParams.get('addName') || '';
+                                if (email) {
+                                  window.dispatchEvent(new CustomEvent('briefingAddContact', { detail: { email, name } }));
+                                }
+                              } catch (e) { /* ignore malformed URLs */ }
+                            }
+                          }, true);
+
                           // Add selection listener for date detection
                           iframe.contentDocument.addEventListener('mouseup', () => {
                             const selection = iframe.contentWindow.getSelection();

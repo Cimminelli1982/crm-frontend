@@ -25,6 +25,7 @@ const AgentChatTab = ({
   onOpenIntroCompose,
   calendarInboxId,
   onCalendarArchive,
+  onOpenSmartAddContact,
 }) => {
   const {
     agents,
@@ -297,6 +298,14 @@ const AgentChatTab = ({
     if (action.directAction) {
       if (action.directAction === 'free-slots') {
         onOpenFreeSlots?.();
+        return;
+      }
+
+      if (action.directAction === 'create-contact') {
+        onOpenSmartAddContact?.({
+          email: commandContext.emailContacts?.[0]?.email || '',
+          name: commandContext.contactName || '',
+        });
         return;
       }
 

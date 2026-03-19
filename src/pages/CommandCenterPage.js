@@ -1168,6 +1168,18 @@ const CommandCenterPage = ({ theme }) => {
   const [smartAddContactOpen, setSmartAddContactOpen] = useState(false);
   const [smartAddContactPrefill, setSmartAddContactPrefill] = useState({ email: '', name: '' });
 
+  // Check URL params for addContact (from briefing ➕ links in Fastmail/Today)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const addContact = params.get('addContact');
+    if (addContact) {
+      const addName = params.get('addName') || '';
+      setSmartAddContactPrefill({ email: addContact, name: addName });
+      setSmartAddContactOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   // State for Add Company Modal
   const [addCompanyModalOpen, setAddCompanyModalOpen] = useState(false);
 
@@ -1802,122 +1814,14 @@ const CommandCenterPage = ({ theme }) => {
     return participant?.contact || null;
   };
 
-  // Handle click on email address in email header
-  const handleEmailAddressClick = async (emailAddress, name, emailDate) => {
+  // Handle click on email address "+" button - open Smart Add Contact modal
+  const handleEmailAddressClick = async (emailAddress, name) => {
     const contact = findContactByEmail(emailAddress);
     if (contact) {
-      // Contact exists - navigate to their page (basename is /new-crm)
       navigate(`/contact/${contact.contact_id}`);
     } else {
-      // Contact doesn't exist - create new contact with full setup
-      // Parse name into first and last name
-      let firstName = '';
-      let lastName = '';
-      if (name && name !== emailAddress) {
-        const nameParts = name.trim().split(' ');
-        firstName = nameParts[0] || '';
-        lastName = nameParts.slice(1).join(' ') || '';
-      }
-
-      // If no name, use email prefix
-      if (!firstName) {
-        firstName = emailAddress.split('@')[0];
-      }
-
-      // Extract domain for company lookup
-      const emailDomain = emailAddress.split('@')[1]?.toLowerCase();
-      const commonDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'live.com', 'msn.com', 'aol.com'];
-      const isPersonalEmail = commonDomains.includes(emailDomain);
-
-      // Use the email date for last_interaction
-      const interactionDate = emailDate ? new Date(emailDate).toISOString() : new Date().toISOString();
-
-      try {
-        toast.loading('Creating contact...', { id: 'create-contact' });
-
-        // 1. Create the contact
-        const { data: newContact, error: contactError } = await supabase
-          .from('contacts')
-          .insert({
-            first_name: firstName,
-            last_name: lastName || null,
-            category: 'Inbox',
-            last_interaction_at: interactionDate
-          })
-          .select()
-          .single();
-
-        if (contactError) throw contactError;
-
-        // 2. Add the email to contact_emails
-        const { error: emailError } = await supabase
-          .from('contact_emails')
-          .insert({
-            contact_id: newContact.contact_id,
-            email: emailAddress.toLowerCase(),
-            is_primary: true,
-            type: isPersonalEmail ? 'personal' : 'work'
-          });
-
-        if (emailError) console.error('Email insert error:', emailError);
-
-        // 3. Find or create company based on domain (if not personal email)
-        if (!isPersonalEmail && emailDomain) {
-          // Check if company exists via domain
-          const { data: existingDomain } = await supabase
-            .from('company_domains')
-            .select('company_id, companies(company_id, name)')
-            .eq('domain', emailDomain)
-            .single();
-
-          let companyId = existingDomain?.company_id;
-
-          if (!companyId) {
-            // Create new company from domain
-            const companyName = emailDomain.split('.')[0].charAt(0).toUpperCase() + emailDomain.split('.')[0].slice(1);
-            const { data: newCompany, error: companyError } = await supabase
-              .from('companies')
-              .insert({
-                name: companyName,
-                website: `https://${emailDomain}`,
-                category: 'Inbox'
-              })
-              .select()
-              .single();
-
-            if (!companyError && newCompany) {
-              companyId = newCompany.company_id;
-
-              // Add domain to company_domains
-              await supabase
-                .from('company_domains')
-                .insert({
-                  company_id: companyId,
-                  domain: emailDomain
-                });
-            }
-          }
-
-          // 4. Link contact to company via contact_companies
-          if (companyId) {
-            await supabase
-              .from('contact_companies')
-              .insert({
-                contact_id: newContact.contact_id,
-                company_id: companyId,
-                is_primary: true
-              });
-          }
-        }
-
-        toast.success(`Created: ${firstName} ${lastName || ''}`.trim(), { id: 'create-contact' });
-
-        // Navigate to the new contact
-        navigate(`/contact/${newContact.contact_id}`);
-      } catch (error) {
-        console.error('Error creating contact:', error);
-        toast.error('Failed to create contact', { id: 'create-contact' });
-      }
+      setSmartAddContactPrefill({ email: emailAddress || '', name: name || '' });
+      setSmartAddContactOpen(true);
     }
   };
 
@@ -2006,9 +1910,20 @@ const CommandCenterPage = ({ theme }) => {
     };
     window.addEventListener('emailIframeShortcut', handleIframeShortcut);
 
+    // Listen for "Add to CRM" clicks from briefing emails
+    const handleBriefingAddContact = (e) => {
+      const { email, name } = e.detail || {};
+      if (email) {
+        setSmartAddContactPrefill({ email, name: name || '' });
+        setSmartAddContactOpen(true);
+      }
+    };
+    window.addEventListener('briefingAddContact', handleBriefingAddContact);
+
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown, true);
       window.removeEventListener('emailIframeShortcut', handleIframeShortcut);
+      window.removeEventListener('briefingAddContact', handleBriefingAddContact);
     };
   }, [activeTab, setActiveActionTab, updateItemStatus, handleDoneClick]);
 
@@ -2456,6 +2371,10 @@ const CommandCenterPage = ({ theme }) => {
     creatingDeal, setCreatingDeal,
     selectedDealContact, setSelectedDealContact,
     dealRelationship, setDealRelationship,
+    onOpenSmartAddContact: (prefill = {}) => {
+      setSmartAddContactPrefill({ email: prefill.email || '', name: prefill.name || '' });
+      setSmartAddContactOpen(true);
+    },
   }), [
     noteModalOpen, newNoteTitle, newNoteType, newNoteSummary, newNoteObsidianPath,
     creatingNote, editingNote,

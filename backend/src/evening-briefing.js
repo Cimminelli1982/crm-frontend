@@ -445,9 +445,13 @@ function buildHTML(dateStr, data) {
     html += `</ul>`;
   }
   if (notInCrm.length > 0) {
+    const CRM_BASE = 'https://crm-editor-frontend.netlify.app/new-crm/command-center';
     html += `<p style="margin-bottom:2px; color:#e74c3c; font-size:13px;">❌ Not in CRM:</p>`;
     html += `<ul style="list-style: none; padding-left: 0; margin-top:2px;">`;
-    for (const c of notInCrm) html += `<li>${c.name} — ${c.email}</li>`;
+    for (const c of notInCrm) {
+      const addUrl = `${CRM_BASE}?addContact=${encodeURIComponent(c.email || '')}&addName=${encodeURIComponent(c.name || '')}`;
+      html += `<li>${c.name} — ${c.email} <a class="crm-add" href="${addUrl}" style="text-decoration:none; font-size:16px; margin-left:6px;" title="Add to CRM">➕</a></li>`;
+    }
     html += `</ul>`;
   }
 
@@ -521,6 +525,42 @@ function buildHTML(dateStr, data) {
   return html;
 }
 
+// ============ DELETE OLD BRIEFINGS ============
+
+export async function deleteOldBriefings(jmap, newEmailId) {
+  try {
+    // Find all emails from briefing@cimminelli.com
+    const queryResponses = await jmap.request([
+      ['Email/query', {
+        accountId: jmap.accountId,
+        filter: { from: 'briefing@cimminelli.com' },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        limit: 50,
+      }, 'query'],
+    ]);
+
+    const allIds = queryResponses[0][1]?.ids || [];
+    // Destroy all except the one just created
+    const toDestroy = allIds.filter(id => id !== newEmailId);
+
+    if (toDestroy.length === 0) {
+      console.log('[Briefing] No old briefings to delete');
+      return;
+    }
+
+    await jmap.request([
+      ['Email/set', {
+        accountId: jmap.accountId,
+        destroy: toDestroy,
+      }, 'destroy'],
+    ]);
+
+    console.log(`[Briefing] Deleted ${toDestroy.length} old briefing(s)`);
+  } catch (e) {
+    console.error('[Briefing] Failed to delete old briefings:', e.message);
+  }
+}
+
 // ============ MAIN FUNCTION ============
 
 export async function generateAndSendBriefing(dateStr = null) {
@@ -583,6 +623,10 @@ export async function generateAndSendBriefing(dateStr = null) {
 
   const emailId = emailResult.created?.briefing?.id;
   console.log(`[Briefing] Evening briefing inserted in Inbox: ${emailId}`);
+
+  // Delete old morning + evening briefings
+  await deleteOldBriefings(jmap, emailId);
+
   return { success: true, emailId, date: dateStr };
 }
 

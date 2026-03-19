@@ -189,6 +189,7 @@ const DesktopRightPanel = ({
     setCreateContactModalOpen, setCreateContactEmail,
     setManageEmailsModalOpen,
     setManageMobilesModalOpen, setContactForManageModal,
+    onOpenSmartAddContact,
   } = modalState;
 
   // Drag-and-drop state for deals icon
@@ -1447,6 +1448,7 @@ const DesktopRightPanel = ({
                   onOpenIntroCompose={handleOpenIntroCompose}
                   calendarInboxId={activeTab === 'calendar' ? (selectedCalendarEvent?.id || null) : null}
                   onCalendarArchive={handleArchiveCalendarEvent}
+                  onOpenSmartAddContact={onOpenSmartAddContact}
                 />
               )}
 
@@ -1859,6 +1861,7 @@ const DesktopRightPanel = ({
               onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
               onOpenFreeSlots={handleOpenFreeSlots}
               onOpenIntroCompose={handleOpenIntroCompose}
+              onOpenSmartAddContact={onOpenSmartAddContact}
             />
           )}
             </div>

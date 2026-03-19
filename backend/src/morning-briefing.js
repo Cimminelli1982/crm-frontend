@@ -2,7 +2,7 @@
 // Forward-looking: what's ahead today
 
 import { supabase } from './supabase.js';
-import { fetchCalendarEvents, fetchTodoistFilter, formatTime, TODOIST_PROJECTS, LIVING_INTENTION_CALENDAR, PRIMARY_CALENDAR } from './evening-briefing.js';
+import { fetchCalendarEvents, fetchTodoistFilter, formatTime, TODOIST_PROJECTS, LIVING_INTENTION_CALENDAR, PRIMARY_CALENDAR, deleteOldBriefings } from './evening-briefing.js';
 import { JMAPClient } from './jmap.js';
 
 const RECIPIENT_EMAIL = 'simone@cimminelli.com';
@@ -209,6 +209,10 @@ export async function generateAndSendMorningBriefing(dateStr = null) {
 
   const emailId = emailResult.created?.briefing?.id;
   console.log(`[MorningBriefing] Morning briefing inserted in Inbox: ${emailId}`);
+
+  // Delete old morning + evening briefings
+  await deleteOldBriefings(jmap, emailId);
+
   return { success: true, emailId, date: dateStr };
 }
 

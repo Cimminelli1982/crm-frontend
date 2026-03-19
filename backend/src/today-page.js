@@ -1166,6 +1166,7 @@ function personItemNotInCrm(c) {
   const parts = (c.name || '').trim().split(/\\s+/);
   const firstName = parts[0] || '';
   const lastName = parts.slice(1).join(' ') || '';
+  const crmUrl = 'https://crm-editor-frontend.netlify.app/new-crm/command-center?addContact=' + encodeURIComponent(c.email || '') + '&addName=' + encodeURIComponent(c.name || '');
   return \`
     <div class="item" id="notcrm-\${uid}">
       <div class="status-dot missing"></div>
@@ -1173,15 +1174,7 @@ function personItemNotInCrm(c) {
         <div class="item-title">\${esc(c.name)}</div>
         <div class="item-sub">\${esc(c.email || '')}</div>
         <div class="item-actions">
-          <button class="btn btn-sm btn-primary" onclick="toggleForm('addcrm-\${uid}')">➕ Add to CRM</button>
-        </div>
-        <div class="inline-form" id="addcrm-\${uid}">
-          <div class="form-row">
-            <input placeholder="First name" id="addcrm-fn-\${uid}" value="\${esc(firstName)}">
-            <input placeholder="Last name" id="addcrm-ln-\${uid}" value="\${esc(lastName)}">
-          </div>
-          <input placeholder="Email" id="addcrm-em-\${uid}" value="\${esc(c.email || '')}">
-          <button class="btn btn-primary" onclick="addToCrm('\${uid}')">Save Contact</button>
+          <a href="\${crmUrl}" target="_blank" class="btn btn-sm btn-primary" style="text-decoration:none;">➕ Smart Add to CRM</a>
         </div>
       </div>
     </div>

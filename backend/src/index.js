@@ -5362,7 +5362,7 @@ app.post('/contact/smart-create', async (req, res) => {
             }
           } catch (e) { errors.push(`Gravatar lookup: ${e.message}`); }
 
-          return JSON.stringify({ error: `All photo sources failed: ${errors.join('; ')}. Use brave_image_search to find an alternative photo URL and call upload_contact_photo again with that URL.` });
+          return JSON.stringify({ error: `All photo sources failed: ${errors.join('; ')}. Do NOT search the web for photos — you cannot verify identity. Leave photo empty.` });
         }
 
         case 'upload_company_logo': {
@@ -5408,7 +5408,7 @@ app.post('/contact/smart-create', async (req, res) => {
             try { return JSON.stringify(await saveLogo(`https://cdn.brandfetch.io/${domain}/w/400/h/400?c=1id_MlnKYTT`, 'brandfetch')); } catch (e) { errors.push(e.message); }
           }
 
-          return JSON.stringify({ error: `All logo sources failed: ${errors.join('; ')}. Use brave_image_search to find a logo URL and call upload_company_logo again with that URL.` });
+          return JSON.stringify({ error: `All logo sources failed: ${errors.join('; ')}. Do NOT search the web for logos — results mix people's faces with logos. Leave logo empty.` });
         }
 
         case 'run_quality_check': {
@@ -5623,9 +5623,9 @@ You have 14 tools. USE THEM ALL as needed:
 - brave_image_search: search for profile photos or company logos by name
 - fetch_webpage: fetch and read any URL (company websites, team pages, about pages)
 - create_contact_record: create the contact in the CRM
-- upload_contact_photo: download a photo URL and re-upload to our storage. Tries Gravatar as fallback. If all fail, use brave_image_search to find a photo URL and call this tool again.
+- upload_contact_photo: download a photo URL and re-upload to our storage. Tries Gravatar as fallback. ONLY use the photo URL from Apollo enrichment or Gravatar. Do NOT use brave_image_search for profile photos — you cannot verify the person's identity and will upload the wrong person.
 - find_or_create_company: find or create company, link to contact. Always pass website, description, linkedin.
-- upload_company_logo: download logo and store. Tries Clearbit → Brandfetch → Google Favicon automatically. If all fail, use brave_image_search to find a logo and call again.
+- upload_company_logo: download logo and store. Tries Clearbit → Brandfetch automatically. If all fail, leave empty — do NOT use brave_image_search for logos because you will upload a person's face instead of a logo.
 - add_contact_details: add phones, city, tags to the contact
 - add_company_tags: add tags to the company (searches existing tags by name)
 - update_company: update any company field (description, website, linkedin, category, name)
@@ -5638,9 +5638,9 @@ WORKFLOW:
 3. brave_web_search — search for more info if Apollo is incomplete (e.g. "${first_name} ${last_name || ''} ${emailDomain}")
 4. fetch_webpage — read the company website for description, team info
 5. create_contact_record — create contact with ALL gathered fields
-6. upload_contact_photo — upload photo from Apollo. If it fails, use brave_image_search("${first_name} ${last_name || ''} photo") to find an alternative URL
+6. upload_contact_photo — ONLY use the photo URL from Apollo enrichment. If Apollo has no photo or it fails to download, skip. Do NOT search for photos on the web — you will get the wrong person.
 7. find_or_create_company — pass website, description, linkedin. Use info from web/Apollo.
-8. upload_company_logo — auto-tries Clearbit/Brandfetch/Favicon. If all fail, use brave_image_search("${emailDomain} logo") to find a logo URL
+8. upload_company_logo — auto-tries Clearbit/Brandfetch. If both fail, skip. Do NOT use brave_image_search for logos — web image results mix people's faces with logos and you will upload the wrong image.
 9. add_contact_details — phones, city, tags from Apollo/web
 10. add_company_tags — add relevant tags to the company (industry, sector, etc.)
 11. update_company — fill any remaining empty company fields
@@ -5656,17 +5656,19 @@ WORKFLOW:
     ## Communication History
     (summary of email exchanges, topics discussed)
 13. run_quality_check — check dimensions. If ANY are missing, FIX THEM:
-    - Missing photo? → brave_image_search + upload_contact_photo
-    - Missing logo? → brave_image_search + upload_company_logo
+    - Missing photo? → ONLY retry with Apollo URL. Do NOT search the web for photos.
+    - Missing logo? → ONLY retry Clearbit/Brandfetch. Do NOT search the web for logos.
     - Missing company tags? → add_company_tags
-    - Missing company fields? → update_company
+    - Missing company fields? → update_company / brave_web_search for info
     Then run_quality_check again.
 
 CRITICAL RULES:
 - Your goal is 5/5 dimensions. NEVER accept failures silently.
-- If a tool fails, try alternative approaches with other tools.
+- If a tool fails for company info (tags, description, etc.), try brave_web_search.
 - NEVER save external URLs directly as profile_image_url — always download and re-upload.
-- brave_web_search and brave_image_search are your secret weapons. Use them when other sources fail.
+- brave_web_search is great for finding TEXT information (descriptions, job titles, company details).
+- brave_image_search should ONLY be used for research, NEVER to get URLs for upload_contact_photo or upload_company_logo. You CANNOT verify identity from web image search and WILL upload the wrong person/image.
+- It is BETTER to leave photo/logo empty than to upload the wrong person's face or a random image.
 - The email domain "${emailDomain}" ${isFreeDomain ? 'is a free provider — company info may need to come from Apollo, web search, or communications context' : 'is a company domain — fetch the website for info'}.
 
 User-provided inputs (use these exactly, do not override):
