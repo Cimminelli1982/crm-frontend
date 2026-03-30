@@ -51,13 +51,6 @@ const NewNavigation = ({
       description: 'Find contacts by name, company, or details'
     },
     {
-      id: 'health',
-      label: 'Health',
-      icon: FiHeart,
-      path: '/health',
-      description: 'Weight, nutrition & training'
-    },
-    {
       id: 'planner',
       label: 'Planner',
       icon: FiCalendar,
