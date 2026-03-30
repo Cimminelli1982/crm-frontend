@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import { FaPaperPlane, FaRobot, FaStop, FaArchive } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import COMMAND_CATEGORIES from './commandDefinitions';
@@ -524,7 +526,7 @@ const AgentChatTab = ({
                     color: msg.role === 'user' ? '#fff' : textColor,
                     fontSize: 13,
                     lineHeight: 1.5,
-                    whiteSpace: 'pre-wrap',
+                    whiteSpace: msg.role === 'assistant' ? 'normal' : 'pre-wrap',
                     wordBreak: 'break-word',
                     ...(msg.isDraft ? { border: `1px dashed ${selectedAgent?.color || '#10B981'}` } : {}),
                   }}>
@@ -563,6 +565,21 @@ const AgentChatTab = ({
                           minHeight: 60,
                         }}
                       />
+                    ) : msg.role === 'assistant' ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkBreaks]}
+                        components={{
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#8B5CF6', textDecoration: 'underline' }}>
+                              {children}
+                            </a>
+                          ),
+                          p: ({ children }) => <span style={{ display: 'block', marginBottom: 4 }}>{children}</span>,
+                          hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${borderColor}`, margin: '8px 0' }} />,
+                        }}
+                      >
+                        {msgCleanText}
+                      </ReactMarkdown>
                     ) : (
                       msgCleanText
                     )}
@@ -799,7 +816,7 @@ const AgentChatTab = ({
                   color: textColor,
                   fontSize: 13,
                   lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
+                  whiteSpace: 'normal',
                   wordBreak: 'break-word',
                 }}>
                   <div style={{
@@ -810,7 +827,20 @@ const AgentChatTab = ({
                   }}>
                     {selectedAgent?.emoji} {selectedAgent?.name}
                   </div>
-                  {streamText}
+                  <ReactMarkdown
+                    remarkPlugins={[remarkBreaks]}
+                    components={{
+                      a: ({ href, children }) => (
+                        <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#8B5CF6', textDecoration: 'underline' }}>
+                          {children}
+                        </a>
+                      ),
+                      p: ({ children }) => <span style={{ display: 'block', marginBottom: 4 }}>{children}</span>,
+                      hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${borderColor}`, margin: '8px 0' }} />,
+                    }}
+                  >
+                    {streamText}
+                  </ReactMarkdown>
                   <span style={{ animation: 'blink 0.8s infinite', opacity: 0.6 }}>▊</span>
                 </div>
               </div>

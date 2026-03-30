@@ -1,20 +1,23 @@
 ---
 name: search-amazon
-description: "Search products on Amazon UK via Composio"
-version: 1.0.0
+description: "Search products on Amazon UK via Composio and present results with prices and links"
+version: 2.0.0
 category: search
 ---
 
 # /search-amazon
 
-Cerca prodotti su Amazon UK usando Composio.
-
 ## Flusso
 
-1. Parsa l'input dell'utente (es. "/search-amazon airpods pro case")
-2. Chiama Composio SEARCH_TOOLS per trovare il tool
-3. Esegui COMPOSIO_SEARCH_AMAZON
-4. Mostra risultati
+1. **Parsa il contesto** — l'utente specifica cosa cercare
+2. **Chiedi SOLO se manca la query** — "Cosa vuoi cercare su Amazon?"
+3. **Cerca il tool** su Composio (Step 1)
+4. **Esegui la ricerca** prodotti (Step 2)
+5. **Mostra risultati** formattati con prezzo, rating, link
+
+## Preferenze Simone
+- Amazon domain: **amazon.co.uk** (UK)
+- Valuta: **GBP (£)**
 
 ## Esecuzione
 
@@ -48,4 +51,33 @@ curl -sS -X POST "https://backend.composio.dev/api/v3/mcp/tools/execute" \
 ```
 
 ## Output
-Mostra per ogni prodotto: nome, prezzo (£), rating, link.
+
+IMPORTANTE: i link devono essere **cliccabili** — usa formato markdown `[testo](url)` invece di URL nude.
+
+### Formato libri
+Se il prodotto e' un libro (detecta da categoria o titolo), usa questo formato:
+```
+📖 **[Titolo]** — [Autore]
+£[prezzo] | ⭐ [rating]/5
+[Copertina: Hardcover/Paperback/Kindle] | [Editore, Anno se disponibile]
+[Compra su Amazon](url)
+```
+
+### Formato prodotti generici
+```
+**[Nome prodotto]** — £[prezzo]
+⭐ [rating]/5 ([num reviews] reviews)
+[Vedi su Amazon](url)
+```
+
+Mostra max 6-8 risultati piu' rilevanti. Ordina per rilevanza (come li restituisce Amazon).
+
+Dopo i risultati: se la query era generica, suggerisci di raffinare. Se specifica, chiedi "Vuoi che cerchi qualcos'altro?"
+
+## Regole
+- Sempre Amazon UK (amazon.co.uk), mai .com o .it
+- Prezzi in £ (GBP)
+- Link SEMPRE cliccabili con markdown `[testo](url)` — MAI url nude
+- Se il prodotto non ha prezzo, mostra "Prezzo non disponibile"
+- Non inventare link — usa solo quelli restituiti da Composio
+- Log in `ops-log.md`

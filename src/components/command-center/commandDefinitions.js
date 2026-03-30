@@ -381,12 +381,12 @@ const COMMAND_CATEGORIES = [
       {
         id: 'search-flights',
         label: 'Flights',
-        buildPrompt: () => 'Search flights via Composio. Preferences: prefer Gatwick (LGW), direct flights, GBP. Route: ',
+        buildPrompt: () => '/search-flights ',
       },
       {
         id: 'search-amazon',
         label: 'Amazon',
-        buildPrompt: () => 'Search on Amazon UK (amazon.co.uk) via Composio for: ',
+        buildPrompt: () => '/search-amazon ',
       },
     ],
   },

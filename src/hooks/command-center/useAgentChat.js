@@ -30,6 +30,8 @@ const SLASH_COMMANDS = {
   '/create-deal-from-input': 'create-deal-from-input',
   '/create-contact': 'create-contact',
   '/pay': 'pay',
+  '/search-flights': 'search-flights',
+  '/search-amazon': 'search-amazon',
 };
 
 function uuid() {
