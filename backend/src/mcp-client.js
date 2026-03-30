@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -48,6 +49,13 @@ class MCPClientManager {
       await this.connectMemory();
     } catch (error) {
       console.error('[MCP] Failed to connect Memory:', error.message);
+    }
+
+    // Connect to Composio MCP server
+    try {
+      await this.connectComposio();
+    } catch (error) {
+      console.error('[MCP] Failed to connect Composio:', error.message);
     }
 
     // Add CRM tools (direct Supabase access)
@@ -760,6 +768,51 @@ class MCPClientManager {
     console.log(`[MCP] Result:`, JSON.stringify(result).substring(0, 200));
 
     return result;
+  }
+
+  async connectComposio() {
+    const apiKey = process.env.COMPOSIO_API_KEY;
+    if (!apiKey) {
+      console.log('[MCP] Skipping Composio - COMPOSIO_API_KEY not set');
+      return;
+    }
+
+    console.log('[MCP] Connecting to Composio MCP server...');
+
+    const client = new Client({
+      name: 'crm-backend-composio',
+      version: '1.0.0',
+    }, {
+      capabilities: {}
+    });
+
+    const transport = new StreamableHTTPClientTransport(
+      new URL('https://connect.composio.dev/mcp'),
+      {
+        requestInit: {
+          headers: {
+            'x-api-key': apiKey,
+          },
+        },
+      }
+    );
+
+    await client.connect(transport);
+
+    const toolsResponse = await client.listTools();
+    const composioTools = toolsResponse.tools || [];
+
+    console.log(`[MCP] Composio connected with ${composioTools.length} tools`);
+
+    this.clients.set('composio', client);
+
+    for (const tool of composioTools) {
+      this.tools.push({
+        ...tool,
+        _server: 'composio',
+        name: `composio_${tool.name}`,
+      });
+    }
   }
 
   async close() {

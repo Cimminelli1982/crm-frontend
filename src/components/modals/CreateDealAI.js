@@ -352,7 +352,7 @@ const DEAL_CURRENCIES = ['EUR', 'USD', 'GBP', 'PLN'];
 const CONTACT_CATEGORIES = ['Founder', 'Professional Investor', 'Manager', 'Advisor', 'Other'];
 const COMPANY_CATEGORIES = ['Startup', 'Professional Investor', 'Corporation', 'SME', 'Advisory', 'Other'];
 
-const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'email', theme = 'light', onSuccess, droppedAttachment }) => {
+const CreateDealAI = ({ isOpen, onClose, email, threadEmails = [], whatsappChat, sourceType = 'email', theme = 'light', onSuccess, droppedAttachment }) => {
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [extracted, setExtracted] = useState(null);
@@ -417,6 +417,14 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
     );
   };
 
+  // Helper: build a download URL for the backend to fetch directly (avoids sending large base64)
+  const buildBlobUrl = (blobId, name, type) => {
+    const params = new URLSearchParams();
+    if (name) params.set('name', name);
+    if (type) params.set('type', type);
+    return `${BACKEND_URL}/attachment/${encodeURIComponent(blobId)}?${params.toString()}`;
+  };
+
   // Extract deal info from email or WhatsApp
   const extractDealInfo = useCallback(async () => {
     // Check if we have valid source data — allow droppedAttachment as standalone source
@@ -444,7 +452,7 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
           date: messages[messages.length - 1]?.timestamp || ''
         };
       } else if (email) {
-        // Email
+        // Email: send latest email + full thread context
         payload = {
           source_type: 'email',
           from_email: email.from_email,
@@ -453,6 +461,19 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
           body_text: email.body_text || email.snippet || '',
           date: email.date || ''
         };
+
+        // Include all thread emails (sorted oldest-first for chronological context)
+        if (threadEmails.length > 1) {
+          payload.thread_emails = [...threadEmails]
+            .sort((a, b) => new Date(a.date) - new Date(b.date))
+            .map(e => ({
+              from_name: e.from_name || '',
+              from_email: e.from_email || '',
+              subject: e.subject || '',
+              body_text: e.body_text || e.snippet || '',
+              date: e.date || ''
+            }));
+        }
       } else {
         // Fallback: only dropped attachment, no conversation context
         payload = {
@@ -465,7 +486,10 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
         };
       }
 
-      // Add attachment data if dropped
+      // Collect attachments to send for text extraction
+      const attachmentsToSend = [];
+
+      // 1. If user dropped an attachment, it's the priority one
       if (droppedAttachment) {
         const attachmentPayload = {
           file_name: droppedAttachment.file_name,
@@ -473,25 +497,56 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
         };
 
         if (droppedAttachment.source === 'whatsapp' && droppedAttachment.file_url) {
-          // WhatsApp: backend can download directly via URL
           attachmentPayload.file_url = droppedAttachment.file_url;
         } else if (droppedAttachment.source === 'email' && droppedAttachment.blobId) {
-          // Email: fetch blob from Node.js backend, convert to base64
-          try {
-            const blobResp = await fetch(`${BACKEND_URL}/attachment/${droppedAttachment.blobId}`);
-            if (blobResp.ok) {
-              const blob = await blobResp.blob();
-              const arrayBuffer = await blob.arrayBuffer();
-              const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-              attachmentPayload.file_content_base64 = base64;
+          // Send URL for backend to fetch directly (avoids 20MB base64 in request body)
+          attachmentPayload.file_url = buildBlobUrl(droppedAttachment.blobId, droppedAttachment.file_name, droppedAttachment.file_type);
+        }
+
+        attachmentsToSend.push(attachmentPayload);
+      }
+
+      // 2. Auto-detect PDF/document attachments from the thread emails
+      if (sourceType === 'email' && threadEmails.length > 0) {
+        const allThreadAttachments = [];
+        for (const threadEmail of threadEmails) {
+          const atts = threadEmail.attachments || [];
+          for (const att of atts) {
+            // Skip if this is the same as the dropped attachment
+            if (droppedAttachment?.blobId && att.blobId === droppedAttachment.blobId) continue;
+            // Only auto-fetch PDFs (most likely to contain deal info)
+            const isPdf = (att.type && att.type.includes('pdf')) || (att.name && att.name.toLowerCase().endsWith('.pdf'));
+            if (isPdf && att.blobId) {
+              allThreadAttachments.push(att);
             }
-          } catch (blobErr) {
-            console.error('Failed to fetch email attachment blob:', blobErr);
           }
         }
 
-        payload.attachment = attachmentPayload;
+        // Send up to 3 PDFs as URLs (backend fetches and extracts text, first 3 pages only)
+        const sorted = allThreadAttachments.sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, 3);
+        for (const att of sorted) {
+          attachmentsToSend.push({
+            file_name: att.name || 'attachment.pdf',
+            file_type: att.type || 'application/pdf',
+            file_url: buildBlobUrl(att.blobId, att.name, att.type)
+          });
+        }
       }
+
+      // Add attachments to payload
+      if (attachmentsToSend.length === 1) {
+        // Backward compat: single attachment as before
+        payload.attachment = attachmentsToSend[0];
+      } else if (attachmentsToSend.length > 1) {
+        payload.attachments = attachmentsToSend;
+      }
+
+      console.log('[CreateDealAI] Payload:', {
+        source_type: payload.source_type,
+        thread_emails_count: payload.thread_emails?.length || 0,
+        attachments_count: attachmentsToSend.length,
+        attachments: attachmentsToSend.map(a => ({ file_name: a.file_name, has_url: !!a.file_url }))
+      });
 
       const response = await fetch(`${AGENT_SERVICE_URL}/extract-deal-from-email`, {
         method: 'POST',
@@ -572,7 +627,7 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
     } finally {
       setExtracting(false);
     }
-  }, [email, whatsappChat, sourceType, droppedAttachment]);
+  }, [email, threadEmails, whatsappChat, sourceType, droppedAttachment]);
 
   // Save everything
   const handleSave = async () => {
@@ -853,7 +908,10 @@ const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'emai
             <LoadingOverlay theme={theme}>
               <SpinIcon><FaSpinner size={32} color="#8B5CF6" /></SpinIcon>
               <LoadingText theme={theme}>
-                {droppedAttachment ? 'Reading attachment & extracting deal info with AI...' : 'Extracting deal info with AI...'}
+                {droppedAttachment ? 'Reading attachment & extracting deal info with AI...'
+                  : (threadEmails.length > 1 || emailAttachments.length > 0)
+                    ? 'Reading thread & attachments, extracting deal info with AI...'
+                    : 'Extracting deal info with AI...'}
               </LoadingText>
             </LoadingOverlay>
           )}

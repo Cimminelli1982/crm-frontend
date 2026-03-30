@@ -25,7 +25,11 @@ Known pitfalls. Append new ones as you discover them.
 
 ## Backend Deploy
 
-- **`cd backend && railway up --detach`** — NOT GitHub push (doesn't auto-deploy).
+- **NEVER run `railway up` from the repo root** — it uploads the entire repo and breaks the deployed service (CORS errors, crash). This has happened multiple times.
+- **command-center-backend**: `cd backend && railway up --detach`
+- **crm-agent-service**: `cd crm-agent-service && railway up --detach`
+- ALWAYS `cd` into the correct service directory FIRST, then `railway up`.
+- NOT GitHub push (doesn't auto-deploy).
 - Health check on `/health` (30s timeout).
 
 ## Cross-cutting State

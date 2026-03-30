@@ -4675,6 +4675,7 @@ const CommandCenterPage = ({ theme }) => {
         isOpen={createDealAIOpen}
         onClose={() => { setCreateDealAIOpen(false); setDroppedAttachment(null); }}
         email={selectedThread?.[0] || null}
+        threadEmails={selectedThread || []}
         whatsappChat={selectedWhatsappChat}
         sourceType={activeTab}
         droppedAttachment={droppedAttachment}

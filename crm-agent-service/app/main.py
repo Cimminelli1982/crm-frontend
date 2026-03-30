@@ -1079,8 +1079,8 @@ async def audit_contact(contact_id: str):
 
 # ==================== ATTACHMENT TEXT EXTRACTION ====================
 
-async def extract_attachment_text(attachment: dict) -> str:
-    """Download and extract text from an attachment (PDF)."""
+async def extract_attachment_text(attachment: dict, max_pages: int = 3) -> str:
+    """Download and extract text from an attachment (PDF). Only reads first max_pages pages."""
     if not attachment:
         return ""
     file_url = attachment.get("file_url") or attachment.get("permanent_url")
@@ -1094,10 +1094,11 @@ async def extract_attachment_text(attachment: dict) -> str:
     if file_content_b64:
         content_bytes = base64.b64decode(file_content_b64)
     elif file_url:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(file_url)
             if resp.status_code == 200:
                 content_bytes = resp.content
+                logger.info("attachment_downloaded", file_name=file_name, size_bytes=len(content_bytes))
 
     if not content_bytes:
         return ""
@@ -1106,7 +1107,11 @@ async def extract_attachment_text(attachment: dict) -> str:
         try:
             import fitz  # pymupdf
             doc = fitz.open(stream=content_bytes, filetype="pdf")
-            text = "\n".join(page.get_text() for page in doc)
+            # Only read first N pages (pitch decks have key info upfront)
+            pages_to_read = min(len(doc), max_pages)
+            text = "\n".join(doc[i].get_text() for i in range(pages_to_read))
+            logger.info("pdf_text_extracted", file_name=file_name,
+                        total_pages=len(doc), pages_read=pages_to_read, text_length=len(text))
             doc.close()
             return text[:6000]
         except Exception as e:
@@ -1126,15 +1131,18 @@ async def extract_deal_from_email(request: dict):
     Uses Claude + Supabase queries to:
     1. Find existing contacts by email or phone
     2. Find existing companies by domain/name
-    3. Extract deal info from content
+    3. Extract deal info from content (full thread + attachments)
     4. Suggest associations
 
     Supports both email and WhatsApp sources via source_type field.
+    Accepts thread_emails[] for full thread context and attachments[] for multiple files.
     """
     source_type = request.get("source_type", "email")
     logger.info("extract_deal_request", source_type=source_type,
                 from_email=request.get("from_email"),
-                contact_phone=request.get("contact_phone"))
+                contact_phone=request.get("contact_phone"),
+                thread_emails_count=len(request.get("thread_emails", [])),
+                has_attachments=bool(request.get("attachments") or request.get("attachment")))
 
     try:
         import anthropic
@@ -1212,7 +1220,6 @@ async def extract_deal_from_email(request: dict):
                 ]
 
         # --- BUILD CONTEXT FOR CLAUDE ---
-        contact_identifier = contact_phone if source_type == "whatsapp" else from_email
         db_context = f"""
 DATABASE CONTEXT (from Supabase queries):
 
@@ -1226,21 +1233,61 @@ CONTACT'S LINKED COMPANIES:
 {json_lib.dumps(contact_companies, indent=2, default=str) if contact_companies else "None"}
 """
 
-        # --- EXTRACT ATTACHMENT TEXT (if provided) ---
-        attachment = request.get("attachment")
-        attachment_text = ""
-        if attachment:
-            logger.info("extracting_attachment_text", file_name=attachment.get("file_name"))
-            attachment_text = await extract_attachment_text(attachment)
-            if attachment_text:
-                logger.info("attachment_text_extracted", length=len(attachment_text))
+        # --- BUILD THREAD CONTEXT (for email with multiple messages) ---
+        thread_context = ""
+        thread_emails = request.get("thread_emails", [])
+        if thread_emails and len(thread_emails) > 1:
+            thread_parts = []
+            for i, te in enumerate(thread_emails):
+                thread_parts.append(
+                    f"--- Email {i+1} ({te.get('date', 'no date')}) ---\n"
+                    f"From: {te.get('from_name', '')} <{te.get('from_email', '')}>\n"
+                    f"Subject: {te.get('subject', '')}\n\n"
+                    f"{(te.get('body_text', '') or '')[:4000]}"
+                )
+            thread_context = f"""
+FULL EMAIL THREAD ({len(thread_emails)} emails, oldest first):
+
+{"".join(thread_parts)}
+"""
+            logger.info("thread_context_built", email_count=len(thread_emails),
+                        total_chars=len(thread_context))
+
+        # --- EXTRACT ATTACHMENT TEXT (supports single or multiple) ---
+        all_attachment_texts = []
+
+        # Support both legacy single "attachment" and new "attachments" array
+        attachments_list = request.get("attachments", [])
+        single_attachment = request.get("attachment")
+        if single_attachment and not attachments_list:
+            attachments_list = [single_attachment]
+
+        total_attachment_chars = 0
+        max_total_chars = 15000  # Cap total attachment text
+
+        for att in attachments_list:
+            if total_attachment_chars >= max_total_chars:
+                break
+            att_name = att.get("file_name", "attachment")
+            logger.info("extracting_attachment_text", file_name=att_name)
+            text = await extract_attachment_text(att)
+            if text:
+                # Trim to fit within budget
+                remaining = max_total_chars - total_attachment_chars
+                text = text[:remaining]
+                all_attachment_texts.append((att_name, text))
+                total_attachment_chars += len(text)
+                logger.info("attachment_text_extracted", file_name=att_name, length=len(text))
 
         attachment_context = ""
-        if attachment_text:
-            att_name = attachment.get("file_name", "attachment")
+        if all_attachment_texts:
+            parts = []
+            for att_name, att_text in all_attachment_texts:
+                parts.append(f"--- {att_name} ---\n{att_text}")
             attachment_context = f"""
-ATTACHMENT CONTENT ({att_name}):
-{attachment_text}
+ATTACHMENT CONTENT ({len(all_attachment_texts)} file(s)):
+
+{"".join(parts)}
 """
 
         # --- CLAUDE EXTRACTION ---
@@ -1312,17 +1359,25 @@ RULES:
         else:
             prompt = f"""You are extracting deal information from an email for a CRM system.
 
-EMAIL:
+LATEST EMAIL:
 From: {contact_name} <{from_email}>
 Subject: {subject}
 Date: {message_date}
 
 Body:
 {body_text}
+{thread_context}
 {attachment_context}
 {db_context}
 
 TASK: Extract information to create a DEAL record with proper associations.
+
+IMPORTANT CONTEXT RULES:
+- The LATEST EMAIL above is the most recent message. It may be brief (e.g. "see attached", "full deck attached").
+- If the email body is thin/short, look CAREFULLY at the FULL EMAIL THREAD and ATTACHMENT CONTENT for deal details.
+- ATTACHMENT CONTENT (PDFs, pitch decks) is often the RICHEST source of deal information — company name, description, investment amount, team info.
+- The thread may reference MULTIPLE deals over time. Focus on the MOST RECENT deal being discussed (the one the latest email refers to).
+- Cross-reference: if the latest email says "see attached" or "full deck", the attachment IS the deal info.
 
 Return JSON:
 {{
@@ -1332,27 +1387,27 @@ Return JSON:
     "first_name": "extracted from email",
     "last_name": "extracted from email",
     "email": "{from_email}",
-    "job_role": "extracted from signature",
+    "job_role": "extracted from signature or attachment",
     "linkedin": "extracted from signature or null",
     "category": "Founder|Professional Investor|Manager|Advisor|Other"
   }},
   "company": {{
     "use_existing": true/false,
     "existing_company_id": "uuid if use_existing=true, else null",
-    "name": "company name",
+    "name": "company name from email or attachment",
     "website": "https://... or null",
     "domain": "domain.com or null",
     "category": "Startup|Professional Investor|Corporation|SME|Advisory|Other",
-    "description": "brief description from email"
+    "description": "brief description — prefer attachment content if available"
   }},
   "deal": {{
-    "opportunity": "Deal name - usually company name",
+    "opportunity": "Deal name - the company/project being pitched",
     "total_investment": number or null,
     "deal_currency": "EUR|USD|GBP|PLN",
     "category": "Startup|Fund|Real Estate|Private Debt|Private Equity|Other",
     "stage": "Lead",
     "source_category": "Cold Contacting|Introduction",
-    "description": "Brief summary of what they're pitching"
+    "description": "Summary from attachment/thread — what is being pitched, key metrics, ask"
   }},
   "associations": {{
     "contact_is_proposer": true,
@@ -1368,7 +1423,8 @@ RULES:
 - Default currency EUR unless clearly stated otherwise
 - stage is always "Lead" for new inbound
 - source_category: "Cold Contacting" if unsolicited, "Introduction" if referred by someone
-- If ATTACHMENT CONTENT is provided, use it as the PRIMARY source of deal information (company name, investment details, descriptions)"""
+- If ATTACHMENT CONTENT is provided, use it as the PRIMARY source — it typically has the real deal name, company description, investment details
+- If the thread discusses MULTIPLE deals, focus on the one the latest email is about"""
 
         client = anthropic.Anthropic()
         response = client.messages.create(

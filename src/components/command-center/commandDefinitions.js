@@ -1,4 +1,4 @@
-import { FaUser, FaHandshake, FaDollarSign, FaCalendarAlt, FaTasks, FaStickyNote, FaEnvelope, FaWhatsapp, FaGavel } from 'react-icons/fa';
+import { FaUser, FaHandshake, FaDollarSign, FaCalendarAlt, FaTasks, FaStickyNote, FaEnvelope, FaWhatsapp, FaGavel, FaSearch } from 'react-icons/fa';
 
 // Parse calendar event details from email subject like:
 // "Invitation: Riunione Zoom di Marco Margotti @ Mon Mar 09, 2026 10:00 - 11:00 AM (PDT - America/Los_Angeles)"
@@ -373,6 +373,24 @@ const COMMAND_CATEGORIES = [
     ],
   },
   {
+    id: 'search',
+    label: 'Search',
+    color: '#FF6B00',
+    icon: FaSearch,
+    actions: [
+      {
+        id: 'search-flights',
+        label: 'Flights',
+        buildPrompt: () => 'Search flights via Composio. Preferences: prefer Gatwick (LGW), direct flights, GBP. Route: ',
+      },
+      {
+        id: 'search-amazon',
+        label: 'Amazon',
+        buildPrompt: () => 'Search on Amazon UK (amazon.co.uk) via Composio for: ',
+      },
+    ],
+  },
+  {
     id: 'contact',
     label: 'Contact',
     color: '#3B82F6',
@@ -418,7 +436,7 @@ function buildContextParts(ctx) {
 }
 
 // Only show enabled categories — re-enable one at a time as we rethink each
-const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'deal', 'decision', 'intro', 'contact'];
+const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'deal', 'decision', 'intro', 'search', 'contact'];
 const enabledSet = new Set(ENABLED_CATEGORIES);
 const filtered = COMMAND_CATEGORIES.filter(c => enabledSet.has(c.id));
 filtered.sort((a, b) => ENABLED_CATEGORIES.indexOf(a.id) - ENABLED_CATEGORIES.indexOf(b.id));
