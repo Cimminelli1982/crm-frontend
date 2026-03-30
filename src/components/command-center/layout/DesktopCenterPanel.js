@@ -24,6 +24,7 @@ import NotesCenterContent from '../center-panel/NotesCenterContent';
 import ListsTab from '../ListsTab';
 import TasksFullTab from '../TasksFullTab';
 import DataQualityCenterContent from '../center-panel/DataQualityCenterContent';
+import UnmatchedCenterContent from '../center-panel/UnmatchedCenterContent';
 
 const DesktopCenterPanel = ({
   theme,
@@ -44,6 +45,7 @@ const DesktopCenterPanel = ({
   modalState,
   notesHook,
   dataQualityHook,
+  unmatchedHook,
 }) => {
   // Destructure emailThreads
   const { emails, threads, selectedThread } = emailThreads;
@@ -3059,6 +3061,27 @@ const DesktopCenterPanel = ({
             <DataQualityCenterContent
               theme={theme}
               dataQualityHook={dataQualityHook}
+            />
+          ) : activeTab === 'unmatched' ? (
+            <UnmatchedCenterContent
+              theme={theme}
+              contact={unmatchedHook?.selectedContact}
+              onAddToCrm={(item) => {
+                // Use the LinkToExisting flow from dataIntegrity (search existing → create new)
+                if (dataIntegrityHook?.handleAddContactFromNotInCrm) {
+                  dataIntegrityHook.handleAddContactFromNotInCrm({
+                    email: item.email,
+                    mobile: item.mobile,
+                    name: item.name,
+                  });
+                }
+              }}
+              onRefresh={() => unmatchedHook?.fetchContacts()}
+              onMarkSpam={unmatchedHook?.handleMarkSpam}
+              onMarkNews={unmatchedHook?.handleMarkNews}
+              onPutOnHold={unmatchedHook?.handlePutOnHold}
+              onUndo={unmatchedHook?.handleUndo}
+              domainContacts={unmatchedHook?.contacts?.filter(c => c.domain && c.domain === unmatchedHook?.selectedContact?.domain)}
             />
           ) : activeTab === 'lists' ? (
             <ListsTab

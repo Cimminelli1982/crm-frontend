@@ -23,6 +23,7 @@ const DesktopLayout = ({
   contextContactsHook,
   notesHook,
   dataQualityHook,
+  unmatchedHook,
   agentChatHook,
   todoistHook,
   chatHook,
@@ -59,6 +60,7 @@ const DesktopLayout = ({
           rightPanelHook={rightPanelHook}
           notesHook={notesHook}
           dataQualityHook={dataQualityHook}
+          unmatchedHook={unmatchedHook}
         />
         <DesktopCenterPanel
           theme={theme}
@@ -79,6 +81,7 @@ const DesktopLayout = ({
           modalState={modalState}
           notesHook={notesHook}
           dataQualityHook={dataQualityHook}
+          unmatchedHook={unmatchedHook}
         />
         <DesktopRightPanel
           theme={theme}

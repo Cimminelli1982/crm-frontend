@@ -9,6 +9,7 @@ import KITLeftContent from '../left-panel/KITLeftContent';
 import IntroductionsLeftContent from '../left-panel/IntroductionsLeftContent';
 import NotesLeftContent from '../left-panel/NotesLeftContent';
 import DataQualityLeftContent from '../left-panel/DataQualityLeftContent';
+import UnmatchedLeftContent from '../left-panel/UnmatchedLeftContent';
 
 const DesktopLeftPanel = ({
   theme,
@@ -25,6 +26,7 @@ const DesktopLeftPanel = ({
   rightPanelHook,
   notesHook,
   dataQualityHook,
+  unmatchedHook,
 }) => {
   const { emails, threads, selectedThread, threadsLoading, refreshThreads } = emailThreads;
   const {
@@ -542,6 +544,9 @@ const DesktopLeftPanel = ({
     if (activeTab === 'dataquality' && dataQualityHook) {
       return `${dataQualityHook.dqContacts.length} pending`;
     }
+    if (activeTab === 'unmatched' && unmatchedHook) {
+      return `${unmatchedHook.contacts.length} contacts`;
+    }
     return null;
   })();
 
@@ -689,6 +694,22 @@ const DesktopLeftPanel = ({
           dqSections={dataQualityHook.dqSections}
           toggleDqSection={dataQualityHook.toggleDqSection}
           filterByBucket={dataQualityHook.filterByBucket}
+        />
+      );
+    }
+    if (activeTab === 'unmatched' && unmatchedHook) {
+      return (
+        <UnmatchedLeftContent
+          theme={theme}
+          contacts={unmatchedHook.contacts}
+          loading={unmatchedHook.loading}
+          selectedContact={unmatchedHook.selectedContact}
+          onSelectContact={unmatchedHook.setSelectedContact}
+          statusFilter={unmatchedHook.statusFilter}
+          setStatusFilter={unmatchedHook.setStatusFilter}
+          searchQuery={unmatchedHook.searchQuery}
+          setSearchQuery={unmatchedHook.setSearchQuery}
+          stats={unmatchedHook.stats}
         />
       );
     }

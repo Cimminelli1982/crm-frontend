@@ -1177,6 +1177,9 @@ const useEmailActions = ({
           return { ...t, emails: updatedEmails, latestEmail: updatedLatest, status: updatedLatest?.status || null };
         }));
 
+        // Sync with unmatched_contacts
+        await supabase.from('unmatched_contacts').update({ status: 'news', resolved_at: new Date().toISOString() }).eq('email', emailAddr);
+
         toast.success(`Marked ${emailAddr} as news`);
       } else {
         // Upsert into domains_news
@@ -1217,6 +1220,9 @@ const useEmailActions = ({
           const updatedLatest = updatedEmails[0];
           return { ...t, emails: updatedEmails, latestEmail: updatedLatest, status: updatedLatest?.status || null };
         }));
+
+        // Sync with unmatched_contacts — mark all from this domain as news
+        await supabase.from('unmatched_contacts').update({ status: 'news', resolved_at: new Date().toISOString() }).eq('domain', domain);
 
         toast.success(`Marked @${domain} as news`);
       }

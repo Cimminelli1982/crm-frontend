@@ -686,6 +686,9 @@ const useDataIntegrity = (
           .eq('mobile', mobile)
           .eq('status', 'pending');
 
+        // Sync with unmatched_contacts
+        await supabase.from('unmatched_contacts').update({ status: 'spam', resolved_at: new Date().toISOString() }).eq('mobile', mobile);
+
         // Remove from notInCrmEmails list
         setNotInCrmEmails(prev => prev.filter(i => i.mobile !== mobile));
 
@@ -764,6 +767,9 @@ const useDataIntegrity = (
         // Update threads state - remove emails from this sender
         if (removeEmailsBySender) removeEmailsBySender(emailOrMobile);
 
+        // Sync with unmatched_contacts
+        await supabase.from('unmatched_contacts').update({ status: 'spam', resolved_at: new Date().toISOString() }).eq('email', emailLower);
+
         // Remove from notInCrmEmails list
         setNotInCrmEmails(prev => prev.filter(i => i.email?.toLowerCase() !== emailLower));
 
@@ -828,6 +834,13 @@ const useDataIntegrity = (
           .eq('issue_type', 'not_in_crm')
           .eq('entity_type', 'contact')
           .eq('status', 'pending');
+      }
+
+      // Sync with unmatched_contacts
+      if (isWhatsApp && item.mobile) {
+        await supabase.from('unmatched_contacts').update({ status: 'hold' }).eq('mobile', item.mobile);
+      } else if (item.email) {
+        await supabase.from('unmatched_contacts').update({ status: 'hold' }).eq('email', item.email.toLowerCase());
       }
 
       // Remove from notInCrmEmails list

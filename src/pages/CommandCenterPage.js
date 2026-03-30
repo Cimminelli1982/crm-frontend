@@ -166,6 +166,7 @@ import useDataIntegrity from '../hooks/command-center/useDataIntegrity';
 import useEmailActions from '../hooks/command-center/useEmailActions';
 import useRightPanelState from '../hooks/command-center/useRightPanelState';
 import useDataQualityData from '../hooks/command-center/useDataQualityData';
+import useUnmatchedContacts from '../hooks/command-center/useUnmatchedContacts';
 import useNotesData from '../hooks/command-center/useNotesData';
 import useAgentChat from '../hooks/command-center/useAgentChat';
 import { CommandCenterMobile } from '../components/mobile/command-center';
@@ -681,6 +682,9 @@ const CommandCenterPage = ({ theme }) => {
 
   // Data Quality hook
   const dataQualityHook = useDataQualityData(activeTab);
+
+  // Unmatched Contacts hook
+  const unmatchedHook = useUnmatchedContacts(activeTab);
 
   // Right panel state hook (must be after useContextContacts so emailContacts is available)
   const rightPanelHook = useRightPanelState({
@@ -2399,8 +2403,13 @@ const CommandCenterPage = ({ theme }) => {
     { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
     { id: 'introductions', label: 'Introductions', icon: FaHandshake, count: filterIntroductionsBySection(introductionsList, 'inbox').length, hasUnread: filterIntroductionsBySection(introductionsList, 'inbox').length > 0 },
     { id: 'notes', label: 'Notes', icon: FaStickyNote, count: 0, hasUnread: false },
-    { id: 'lists', label: 'Lists', icon: FaList, count: 0, hasUnread: false },
-    { id: 'dataquality', label: 'Data Quality', icon: FaUserCog, count: dataQualityHook.dqContacts.length, hasUnread: dataQualityHook.dqContacts.length > 0 },
+    { id: 'data', label: 'Data', icon: FaDatabase, count: unmatchedHook.stats.unmatched + dataQualityHook.dqContacts.length, hasUnread: unmatchedHook.stats.unmatched > 0 || dataQualityHook.dqContacts.length > 0,
+      subTabs: [
+        { id: 'unmatched', label: 'Not in CRM', count: unmatchedHook.stats.unmatched },
+        { id: 'dataquality', label: 'Missing Info', count: dataQualityHook.dqContacts.length },
+        { id: 'lists', label: 'Lists', count: 0 },
+      ],
+    },
   ];
 
   // Mobile: Render mobile-optimized version (but continue to render modals below)
@@ -2550,6 +2559,7 @@ const CommandCenterPage = ({ theme }) => {
       contextContactsHook={contextContactsHook}
       notesHook={notesHook}
       dataQualityHook={dataQualityHook}
+      unmatchedHook={unmatchedHook}
       agentChatHook={agentChatHook}
       todoistHook={todoistHook}
       chatHook={chatHook}
