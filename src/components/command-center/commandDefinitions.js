@@ -388,6 +388,16 @@ const COMMAND_CATEGORIES = [
         label: 'Amazon',
         buildPrompt: () => '/search-amazon ',
       },
+      {
+        id: 'search-web',
+        label: 'Web',
+        buildPrompt: () => '/search-web ',
+      },
+      {
+        id: 'search-news',
+        label: 'News',
+        directAction: 'search-news',
+      },
     ],
   },
   {

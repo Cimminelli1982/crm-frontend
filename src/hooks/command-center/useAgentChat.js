@@ -32,6 +32,8 @@ const SLASH_COMMANDS = {
   '/pay': 'pay',
   '/search-flights': 'search-flights',
   '/search-amazon': 'search-amazon',
+  '/search-web': 'search-web',
+  '/search-news': 'search-news',
 };
 
 function uuid() {

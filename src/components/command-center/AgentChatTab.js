@@ -329,6 +329,7 @@ const AgentChatTab = ({
         'create-deal-from-input': '/create-deal-from-input',
         'create-contact': '/create-contact',
         'pay': '/pay',
+        'search-news': '/search-news',
       };
 
       if (slashActions[action.directAction]) {
