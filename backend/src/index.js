@@ -455,10 +455,20 @@ async function syncGoogleCalendar() {
     const EXCLUDED_COLOR_IDS = ['10', '11']; // colorId 10 = Basil (fitness), 11 = Tomato (family)
     let skippedFitness = 0, skippedCancelled = 0, skippedDismissed = 0;
 
+    // Build a map of recurring event parent colorIds
+    // Google doesn't include colorId on expanded instances, only on the parent
+    const recurringColorMap = new Map();
+    for (const event of events) {
+      if (event.colorId && event.id && !event.recurringEventId) {
+        recurringColorMap.set(event.id, event.colorId);
+      }
+    }
+
     for (const event of events) {
       // Skip personal events (fitness, family) by color
-      if (event.colorId && EXCLUDED_COLOR_IDS.includes(event.colorId)) {
-        skippedFitness++; // counter name kept for simplicity
+      const effectiveColorId = event.colorId || recurringColorMap.get(event.recurringEventId);
+      if (effectiveColorId && EXCLUDED_COLOR_IDS.includes(effectiveColorId)) {
+        skippedFitness++;
         continue;
       }
 
