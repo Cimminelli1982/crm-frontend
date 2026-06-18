@@ -55,7 +55,7 @@ const DesktopCenterPanel = ({
 
   // Destructure localHandlers
   const {
-    handleEmailAddressClick, emailHasContact,
+    handleEmailAddressClick, emailHasContact, handleWhatsAppAddressClick,
     sanitizeEmailHtml, parseDateFromText,
   } = localHandlers;
 
@@ -197,6 +197,7 @@ const DesktopCenterPanel = ({
               saving={saving}
               contacts={emailContacts}
               onNewWhatsApp={() => setNewWhatsAppModalOpen(true)}
+              onAddContact={handleWhatsAppAddressClick}
             />
           ) : activeTab === 'calendar' ? (
             selectedCalendarEvent ? (

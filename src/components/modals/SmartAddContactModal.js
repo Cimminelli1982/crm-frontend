@@ -171,10 +171,11 @@ const SubmitBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillName }) => {
+const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillName, prefillMobile }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [mobile, setMobile] = useState('');
   const [category, setCategory] = useState('');
   const [score, setScore] = useState(null);
   const [kit, setKit] = useState('Not Set');
@@ -186,6 +187,7 @@ const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillNam
   useEffect(() => {
     if (isOpen) {
       setExistingContact(null);
+      setMobile(prefillMobile || '');
       if (prefillEmail) {
         setEmail(prefillEmail);
         // Check if email already exists in CRM
@@ -212,7 +214,7 @@ const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillNam
         }
       }
     }
-  }, [isOpen, prefillEmail, prefillName]);
+  }, [isOpen, prefillEmail, prefillName, prefillMobile]);
 
   // Also check when email changes manually
   useEffect(() => {
@@ -233,6 +235,7 @@ const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillNam
     setFirstName('');
     setLastName('');
     setEmail('');
+    setMobile('');
     setCategory('');
     setScore(null);
     setKit('Not Set');
@@ -246,8 +249,8 @@ const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillNam
       toast.error('First name is required');
       return;
     }
-    if (!email.trim()) {
-      toast.error('Email is required');
+    if (!email.trim() && !mobile.trim()) {
+      toast.error('Email or mobile is required');
       return;
     }
     if (!category) {
@@ -270,6 +273,7 @@ const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillNam
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         email: email.trim().toLowerCase(),
+        mobile: mobile.trim() || null,
         category,
         score,
         keep_in_touch: kit,
@@ -348,13 +352,24 @@ const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillNam
           </Row>
 
           <Field>
-            <Label theme={theme}>Email *</Label>
+            <Label theme={theme}>Email{mobile.trim() ? '' : ' *'}</Label>
             <Input
               theme={theme}
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="email@example.com"
               type="email"
+            />
+          </Field>
+
+          <Field>
+            <Label theme={theme}>Mobile{email.trim() ? '' : ' *'}</Label>
+            <Input
+              theme={theme}
+              value={mobile}
+              onChange={e => setMobile(e.target.value)}
+              placeholder="+39 333 1234567"
+              type="tel"
             />
           </Field>
 
@@ -407,7 +422,7 @@ const SmartAddContactModal = ({ isOpen, onClose, theme, prefillEmail, prefillNam
 
         <Footer theme={theme}>
           <CancelBtn theme={theme} onClick={() => { onClose(); resetForm(); }}>Cancel</CancelBtn>
-          <SubmitBtn onClick={handleSubmit} disabled={!firstName.trim() || !email.trim() || !category}>
+          <SubmitBtn onClick={handleSubmit} disabled={!firstName.trim() || (!email.trim() && !mobile.trim()) || !category}>
             <FaUserPlus size={12} />
             Create & Enrich
           </SubmitBtn>

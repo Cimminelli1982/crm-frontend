@@ -1170,7 +1170,7 @@ const CommandCenterPage = ({ theme }) => {
 
   // State for Smart Add Contact Modal
   const [smartAddContactOpen, setSmartAddContactOpen] = useState(false);
-  const [smartAddContactPrefill, setSmartAddContactPrefill] = useState({ email: '', name: '' });
+  const [smartAddContactPrefill, setSmartAddContactPrefill] = useState({ email: '', name: '', mobile: '' });
 
   // Check URL params for addContact (from briefing ➕ links in Fastmail/Today)
   useEffect(() => {
@@ -1834,6 +1834,16 @@ const CommandCenterPage = ({ theme }) => {
     return !!findContactByEmail(emailAddress);
   };
 
+  // WhatsApp "+" click → open the same Smart Add Contact modal as email,
+  // seeded with the phone number instead of an email.
+  const handleWhatsAppAddressClick = (phone, name) => {
+    if (!phone) return;
+    // chat_name often equals the raw number for unsaved chats → treat as no name
+    const realName = (name && name !== phone) ? name : '';
+    setSmartAddContactPrefill({ email: '', name: realName, mobile: phone });
+    setSmartAddContactOpen(true);
+  };
+
   // Get the relevant person for email list (not me)
   const MY_EMAIL = 'simone@cimminelli.com';
   const getRelevantPerson = (email) => {
@@ -2321,6 +2331,7 @@ const CommandCenterPage = ({ theme }) => {
   const localHandlersBundle = useMemo(() => ({
     searchSavedEmails, handleSelectSearchResult, handleSelectThread,
     handleEmailAddressClick, emailHasContact, getRelevantPerson,
+    handleWhatsAppAddressClick,
     handleSelectCalendarSearchResult,
     handleDeleteDealContact, handleUpdateDealStage,
     handleCompleteContactTask,
@@ -2333,6 +2344,7 @@ const CommandCenterPage = ({ theme }) => {
   }), [
     searchSavedEmails, handleSelectSearchResult, handleSelectThread,
     handleEmailAddressClick, emailHasContact, getRelevantPerson,
+    handleWhatsAppAddressClick,
     handleSelectCalendarSearchResult,
     handleDeleteDealContact, handleUpdateDealStage,
     handleCompleteContactTask,
@@ -3878,6 +3890,7 @@ const CommandCenterPage = ({ theme }) => {
         theme={theme}
         prefillEmail={smartAddContactPrefill.email}
         prefillName={smartAddContactPrefill.name}
+        prefillMobile={smartAddContactPrefill.mobile}
       />
 
       {/* Add Company Modal (for CRM tab button) */}

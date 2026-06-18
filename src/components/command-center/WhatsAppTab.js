@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPaperclip, FaTimes, FaFile, FaImage, FaBolt, FaMagic } from 'react-icons/fa';
+import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPaperclip, FaTimes, FaFile, FaImage, FaBolt, FaMagic, FaPlus, FaUser } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
@@ -828,7 +828,8 @@ const WhatsAppTab = ({
   saving,
   onMessageSent,
   contacts = [], // CRM contacts to look up names
-  onNewWhatsApp // Open new WhatsApp message modal
+  onNewWhatsApp, // Open new WhatsApp message modal
+  onAddContact // (phone, name) => open Create Contact flow when number is not in CRM
 }) => {
   const [archivedMessages, setArchivedMessages] = useState([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
@@ -1457,11 +1458,26 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           <div>
             <ChatName theme={theme}>
               {displayName}
-              {selectedChat.is_group_chat && (
+              {selectedChat.is_group_chat ? (
                 <FaUsers
                   size={12}
                   style={{ marginLeft: '8px', opacity: 0.6 }}
                 />
+              ) : (
+                crmName ? (
+                  <FaUser
+                    size={11}
+                    style={{ marginLeft: '8px', color: theme === 'light' ? '#10B981' : '#34D399' }}
+                    title="Contact exists"
+                  />
+                ) : (
+                  <FaPlus
+                    size={11}
+                    onClick={() => onAddContact?.(selectedChat.contact_number, selectedChat.chat_name)}
+                    style={{ marginLeft: '8px', color: theme === 'light' ? '#F59E0B' : '#FBBF24', cursor: 'pointer' }}
+                    title="Add to CRM"
+                  />
+                )
               )}
             </ChatName>
             <ChatNumber theme={theme}>

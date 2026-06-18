@@ -2412,7 +2412,7 @@ app.post('/chat', async (req, res) => {
 
     // Build the request
     const requestParams = {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: systemPrompt || 'You are a helpful assistant for email management.',
       messages: [...messages],
@@ -2763,7 +2763,7 @@ ${context}`;
     console.log(`[KIT Chat] Calling Claude with ${apiMessages.length} messages`);
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: systemPrompt,
       messages: apiMessages,
@@ -3118,7 +3118,7 @@ Rules:
 - Set found_event to false if this doesn't appear to be about a meeting/event`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -4796,18 +4796,19 @@ app.post('/briefing/evening', async (req, res) => {
 // ===== Smart Add Contact — AI Agent Endpoint =====
 app.post('/contact/smart-create', async (req, res) => {
   try {
-    const { first_name, last_name, email, category, score, keep_in_touch, christmas, easter } = req.body;
+    const { first_name, last_name, email, mobile, category, score, keep_in_touch, christmas, easter } = req.body;
 
-    if (!first_name || !email || !category) {
-      return res.status(400).json({ success: false, error: 'Missing required fields: first_name, email, category' });
+    // Email OR mobile is required (WhatsApp contacts have a phone but no email)
+    if (!first_name || !category || (!email && !mobile)) {
+      return res.status(400).json({ success: false, error: 'Missing required fields: first_name, category, and email or mobile' });
     }
 
-    console.log(`[SmartCreate] Starting for ${first_name} ${last_name} <${email}>`);
+    console.log(`[SmartCreate] Starting for ${first_name} ${last_name} ${email ? `<${email}>` : `(WhatsApp ${mobile})`}`);
 
     // Respond early — we'll do the work and the frontend shows a toast
     // Actually, we need to return the quality report, so we wait.
 
-    const emailDomain = email.split('@')[1]?.toLowerCase();
+    const emailDomain = email ? email.split('@')[1]?.toLowerCase() : null;
     const isFreeDomain = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'live.com', 'me.com', 'protonmail.com', 'mail.com'].includes(emailDomain);
 
     // Define tools for the agent
@@ -4855,7 +4856,8 @@ app.post('/contact/smart-create', async (req, res) => {
           properties: {
             first_name: { type: 'string' },
             last_name: { type: 'string' },
-            email: { type: 'string' },
+            email: { type: 'string', description: 'Email address (may be empty for WhatsApp-only contacts)' },
+            mobile: { type: 'string', description: 'Mobile/phone number (for WhatsApp contacts without an email)' },
             category: { type: 'string' },
             score: { type: 'number', description: '1-5 or null' },
             job_role: { type: 'string' },
@@ -4866,7 +4868,7 @@ app.post('/contact/smart-create', async (req, res) => {
             christmas: { type: 'string' },
             easter: { type: 'string' },
           },
-          required: ['first_name', 'email', 'category']
+          required: ['first_name', 'category']
         }
       },
       {
@@ -5121,12 +5123,24 @@ app.post('/contact/smart-create', async (req, res) => {
 
           if (contactError) return JSON.stringify({ error: contactError.message });
 
-          // Add email
-          await supabase.from('contact_emails').insert({
-            contact_id: contact.contact_id,
-            email: input.email.toLowerCase(),
-            is_primary: true,
-          });
+          // Add email (optional — WhatsApp contacts may not have one)
+          if (input.email) {
+            await supabase.from('contact_emails').insert({
+              contact_id: contact.contact_id,
+              email: input.email.toLowerCase(),
+              is_primary: true,
+            });
+          }
+
+          // Add mobile (for WhatsApp contacts)
+          if (input.mobile) {
+            await supabase.from('contact_mobiles').insert({
+              contact_id: contact.contact_id,
+              mobile: input.mobile,
+              type: 'WhatsApp',
+              is_primary: true,
+            });
+          }
 
           // Add KIT
           await supabase.from('keep_in_touch').insert({
@@ -5645,7 +5659,7 @@ You have 14 tools. USE THEM ALL as needed:
 WORKFLOW:
 1. search_crm_communications — find all existing communications
 2. enrich_contact_apollo — get professional data
-3. brave_web_search — search for more info if Apollo is incomplete (e.g. "${first_name} ${last_name || ''} ${emailDomain}")
+3. brave_web_search — search for more info if Apollo is incomplete (e.g. "${first_name} ${last_name || ''} ${emailDomain || ''}")
 4. fetch_webpage — read the company website for description, team info
 5. create_contact_record — create contact with ALL gathered fields
 6. upload_contact_photo — ONLY use the photo URL from Apollo enrichment. If Apollo has no photo or it fails to download, skip. Do NOT search for photos on the web — you will get the wrong person.
@@ -5679,12 +5693,14 @@ CRITICAL RULES:
 - brave_web_search is great for finding TEXT information (descriptions, job titles, company details).
 - brave_image_search should ONLY be used for research, NEVER to get URLs for upload_contact_photo or upload_company_logo. You CANNOT verify identity from web image search and WILL upload the wrong person/image.
 - It is BETTER to leave photo/logo empty than to upload the wrong person's face or a random image.
-- The email domain "${emailDomain}" ${isFreeDomain ? 'is a free provider — company info may need to come from Apollo, web search, or communications context' : 'is a company domain — fetch the website for info'}.
+${emailDomain ? `- The email domain "${emailDomain}" ${isFreeDomain ? 'is a free provider — company info may need to come from Apollo, web search, or communications context' : 'is a company domain — fetch the website for info'}.` : '- No email/domain available — rely on web search for company info.'}
+
+${!email ? `IMPORTANT: This is a WhatsApp contact identified ONLY by a phone number (${mobile}) — there is NO email address. Skip enrich_contact_apollo (it requires an email). Use brave_web_search by name to find professional info. When calling create_contact_record, pass mobile: "${mobile}" and leave email empty.` : ''}
 
 User-provided inputs (use these exactly, do not override):
 - first_name: ${first_name}
 - last_name: ${last_name || '(not provided)'}
-- email: ${email}
+${email ? `- email: ${email}` : `- mobile (WhatsApp): ${mobile}\n- email: (none — WhatsApp contact)`}
 - category: ${category}
 - score: ${score || '(not set)'}
 - keep_in_touch: ${keep_in_touch || 'Not Set'}
@@ -5692,10 +5708,10 @@ User-provided inputs (use these exactly, do not override):
 - easter: ${easter || 'no wishes set'}`;
 
     // Run agentic loop
-    const messages = [{ role: 'user', content: `Create a complete profile for ${first_name} ${last_name || ''} <${email}>. Category: ${category}. Go.` }];
+    const messages = [{ role: 'user', content: `Create a complete profile for ${first_name} ${last_name || ''} ${email ? `<${email}>` : `(WhatsApp contact, phone ${mobile}, no email)`}. Category: ${category}. Go.` }];
 
     const requestParams = {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages,
@@ -6099,7 +6115,7 @@ CRITICAL RULES:
     const messages = [{ role: 'user', content: `Enrich contact ${first_name} ${last_name || ''} — fix dimensions: ${missingDimensions.join(', ')}. Go.` }];
 
     const requestParams = {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages,
