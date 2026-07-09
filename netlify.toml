@@ -7,7 +7,7 @@
   BROWSER = "none"
   PORT = "3002"
   CI = "false"
-  NODE_VERSION = "20.18.1"
+  NODE_VERSION = "22"
   # Environment variables should be set in the Netlify UI
   # Required variables: APOLLO_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, HUBSPOT_ACCESS_TOKEN, MIGRATION_SECRET_KEY
   # For Slack-Claude integration: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_APP_TOKEN, ANTHROPIC_API_KEY
