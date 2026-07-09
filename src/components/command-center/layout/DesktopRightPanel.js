@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabaseClient';
 import {
   ActionsPanel,
   ActionTabIcon,
@@ -10,6 +11,7 @@ import {
   FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane,
   FaHandshake, FaTasks, FaPaperclip, FaRobot, FaTag, FaLinkedin, FaRocket,
   FaGlobe, FaMapMarkerAlt, FaUsers, FaLink, FaExclamationTriangle, FaGavel,
+  FaAsterisk,
 } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import DataIntegrityWarningBar from '../DataIntegrityWarningBar';
@@ -31,6 +33,7 @@ import TasksTab from '../TasksTab';
 import DealsTab from '../DealsTab';
 import DataIntegrityTab from '../DataIntegrityTab';
 import AgentChatTab from '../AgentChatTab';
+import BarbaraTasksTab from '../BarbaraTasksTab';
 import DecisionsPanelTab from '../DecisionsPanelTab';
 import FreeSlotPickerModal from '../FreeSlotPickerModal';
 
@@ -238,6 +241,35 @@ const DesktopRightPanel = ({
     setFreeSlotsTrigger(prev => prev + 1);
   };
 
+  // Barbara tasks: context id of the currently open communication + whether it has pending tasks
+  const barbaraContextId =
+    activeTab === 'email' ? (selectedThread?.[0]?.thread_id || selectedThread?.[0]?.email_id || null)
+    : activeTab === 'whatsapp' ? (selectedWhatsappChat?.chat_id || null)
+    : activeTab === 'calendar' ? (selectedCalendarEvent?.event_id || selectedCalendarEvent?.id || null)
+    : activeTab === 'deals' ? (selectedPipelineDeal?.deal_id || null)
+    : null;
+  const barbaraContextLabel =
+    activeTab === 'email' ? (selectedThread?.[0]?.subject || null)
+    : activeTab === 'whatsapp' ? (selectedWhatsappChat?.contact_name || selectedWhatsappChat?.chat_name || null)
+    : activeTab === 'calendar' ? (selectedCalendarEvent?.summary || selectedCalendarEvent?.title || null)
+    : activeTab === 'deals' ? (selectedPipelineDeal?.deal_name || selectedPipelineDeal?.name || selectedPipelineDeal?.opportunity || null)
+    : null;
+  const [barbaraHasTasks, setBarbaraHasTasks] = useState(false);
+  const [barbaraRefresh, setBarbaraRefresh] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    if (!barbaraContextId) { setBarbaraHasTasks(false); return; }
+    (async () => {
+      const { count, error } = await supabase
+        .from('barbara_tasks')
+        .select('id', { count: 'exact', head: true })
+        .eq('context_id', barbaraContextId)
+        .eq('status', 'pending');
+      if (!cancelled && !error) setBarbaraHasTasks((count || 0) > 0);
+    })();
+    return () => { cancelled = true; };
+  }, [barbaraContextId, barbaraRefresh]);
+
   return (
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
           {/* Data Integrity Warning Bar - show only for email/whatsapp/calendar when not collapsed */}
@@ -319,11 +351,12 @@ const DesktopRightPanel = ({
               </CollapseButton>
               {!rightPanelCollapsed && (
                 <>
-                  <ActionTabIcon theme={theme} $active={activeActionTab === 'agentChat'} onClick={() => setActiveActionTab('agentChat')} title="PA Chat (⌥G)" style={{ color: activeActionTab === 'agentChat' ? '#8B5CF6' : undefined }}>
-                    <FaRobot /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>G</span>
-                  </ActionTabIcon>
+                  {/* Receptionist (PA Chat) tab hidden — Contact is now the first tab */}
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details (⌥P)">
                     <FaUser /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>P</span>
+                  </ActionTabIcon>
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'barbara'} onClick={() => setActiveActionTab('barbara')} title="Istruzioni per Barbara" style={{ color: activeActionTab === 'barbara' ? '#14B8A6' : (barbaraHasTasks ? '#EF4444' : undefined) }}>
+                    <FaAsterisk /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>B</span>
                   </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'company'} onClick={() => setActiveActionTab('company')} title="Company Details (⌥O)">
                     <FaBuilding /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>O</span>
@@ -1449,6 +1482,17 @@ const DesktopRightPanel = ({
                   calendarInboxId={activeTab === 'calendar' ? (selectedCalendarEvent?.id || null) : null}
                   onCalendarArchive={handleArchiveCalendarEvent}
                   onOpenSmartAddContact={onOpenSmartAddContact}
+                />
+              )}
+
+              {activeActionTab === 'barbara' && (
+                <BarbaraTasksTab
+                  theme={theme}
+                  contextType={activeTab}
+                  contextId={barbaraContextId}
+                  contextLabel={barbaraContextLabel}
+                  contactId={selectedRightPanelContactId}
+                  onTasksChanged={() => setBarbaraRefresh(prev => prev + 1)}
                 />
               )}
 

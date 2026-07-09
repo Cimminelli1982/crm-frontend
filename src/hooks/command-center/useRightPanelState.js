@@ -18,7 +18,7 @@ const useRightPanelState = ({
   selectedDqContact,
 }) => {
   // Active action tab (right panel tab)
-  const [activeActionTab, setActiveActionTab] = useState('agentChat');
+  const [activeActionTab, setActiveActionTab] = useState('crm');
 
   // Right panel contact selector state
   const [selectedRightPanelContactId, setSelectedRightPanelContactId] = useState(null);

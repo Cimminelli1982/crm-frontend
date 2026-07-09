@@ -790,6 +790,21 @@ export const WhatsAppChatList = ({
                 <ChatListName theme={theme}>
                   {displayName}
                 </ChatListName>
+                {!chat.is_group_chat && !crmName && (
+                  <span style={{
+                    flexShrink: 0,
+                    fontSize: '8px',
+                    fontWeight: 700,
+                    letterSpacing: '0.3px',
+                    padding: '1px 5px',
+                    borderRadius: '8px',
+                    background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                    color: theme === 'light' ? '#DC2626' : '#FCA5A5',
+                    textTransform: 'uppercase',
+                  }}>
+                    Not in CRM
+                  </span>
+                )}
                 <ChatListTime theme={theme} $hasUnread={hasUnread}>
                   {formatTime(chat.latestMessage?.date)}
                 </ChatListTime>
@@ -1471,12 +1486,32 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
                     title="Contact exists"
                   />
                 ) : (
-                  <FaPlus
-                    size={11}
-                    onClick={() => onAddContact?.(selectedChat.contact_number, selectedChat.chat_name)}
-                    style={{ marginLeft: '8px', color: theme === 'light' ? '#F59E0B' : '#FBBF24', cursor: 'pointer' }}
-                    title="Add to CRM"
-                  />
+                  <>
+                    <FaPlus
+                      size={11}
+                      onClick={() => onAddContact?.(selectedChat.contact_number, selectedChat.chat_name)}
+                      style={{ marginLeft: '8px', color: theme === 'light' ? '#F59E0B' : '#FBBF24', cursor: 'pointer' }}
+                      title="Add to CRM"
+                    />
+                    <span
+                      onClick={() => onAddContact?.(selectedChat.contact_number, selectedChat.chat_name)}
+                      style={{
+                        marginLeft: '8px',
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        letterSpacing: '0.3px',
+                        padding: '2px 7px',
+                        borderRadius: '10px',
+                        background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                        color: theme === 'light' ? '#DC2626' : '#FCA5A5',
+                        textTransform: 'uppercase',
+                        cursor: 'pointer',
+                      }}
+                      title="Add to CRM"
+                    >
+                      Not in CRM
+                    </span>
+                  </>
                 )
               )}
             </ChatName>

@@ -7,3 +7,6 @@ node_modules/
 build/
 backend/baileys_auth/
 logs.*.json
+
+# Claude Code worktrees
+.claude/worktrees/
