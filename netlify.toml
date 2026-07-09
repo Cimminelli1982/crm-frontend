@@ -7,9 +7,9 @@
   BROWSER = "none"
   PORT = "3002"
   CI = "false"
-  NODE_VERSION = "22"
-  # Force npm (uses the committed package-lock.json). Yarn 1.x ignores the
-  # lockfile and re-resolves to newer versions that break the engine check.
+  NODE_VERSION = "20.18.1"
+  # Use npm (see package.json "packageManager"). Corepack honours that field;
+  # npm installs from the committed package-lock.json deterministically.
   NETLIFY_USE_YARN = "false"
   # Environment variables should be set in the Netlify UI
   # Required variables: APOLLO_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, HUBSPOT_ACCESS_TOKEN, MIGRATION_SECRET_KEY
