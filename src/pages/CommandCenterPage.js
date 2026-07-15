@@ -146,6 +146,7 @@ import ListsTab from '../components/command-center/ListsTab';
 import TasksFullTab from '../components/command-center/TasksFullTab';
 import ComposeEmailModal from '../components/command-center/ComposeEmailModal';
 import SmartAddContactModal from '../components/modals/SmartAddContactModal';
+import LinkEmailToContactModal from '../components/modals/LinkEmailToContactModal';
 import WhatsAppTab, { WhatsAppChatList } from '../components/command-center/WhatsAppTab';
 import ContactSelector from '../components/command-center/ContactSelector';
 import DataIntegrityWarningBar from '../components/command-center/DataIntegrityWarningBar';
@@ -1171,6 +1172,8 @@ const CommandCenterPage = ({ theme }) => {
   // State for Smart Add Contact Modal
   const [smartAddContactOpen, setSmartAddContactOpen] = useState(false);
   const [smartAddContactPrefill, setSmartAddContactPrefill] = useState({ email: '', name: '', mobile: '' });
+  const [linkEmailOpen, setLinkEmailOpen] = useState(false);
+  const [linkEmailPrefill, setLinkEmailPrefill] = useState({ email: '', name: '' });
 
   // Check URL params for addContact (from briefing ➕ links in Fastmail/Today)
   useEffect(() => {
@@ -1844,6 +1847,14 @@ const CommandCenterPage = ({ theme }) => {
     setSmartAddContactOpen(true);
   };
 
+  // Handle "link" button next to an unknown email → associate it with an existing contact
+  const handleLinkEmailClick = (emailAddress, name) => {
+    if (!emailAddress) return;
+    const realName = (name && name !== emailAddress) ? name : '';
+    setLinkEmailPrefill({ email: emailAddress, name: realName });
+    setLinkEmailOpen(true);
+  };
+
   // Get the relevant person for email list (not me)
   const MY_EMAIL = 'simone@cimminelli.com';
   const getRelevantPerson = (email) => {
@@ -2331,7 +2342,7 @@ const CommandCenterPage = ({ theme }) => {
   const localHandlersBundle = useMemo(() => ({
     searchSavedEmails, handleSelectSearchResult, handleSelectThread,
     handleEmailAddressClick, emailHasContact, getRelevantPerson,
-    handleWhatsAppAddressClick,
+    handleWhatsAppAddressClick, handleLinkEmailClick,
     handleSelectCalendarSearchResult,
     handleDeleteDealContact, handleUpdateDealStage,
     handleCompleteContactTask,
@@ -2344,7 +2355,7 @@ const CommandCenterPage = ({ theme }) => {
   }), [
     searchSavedEmails, handleSelectSearchResult, handleSelectThread,
     handleEmailAddressClick, emailHasContact, getRelevantPerson,
-    handleWhatsAppAddressClick,
+    handleWhatsAppAddressClick, handleLinkEmailClick,
     handleSelectCalendarSearchResult,
     handleDeleteDealContact, handleUpdateDealStage,
     handleCompleteContactTask,
@@ -3891,6 +3902,16 @@ const CommandCenterPage = ({ theme }) => {
         prefillEmail={smartAddContactPrefill.email}
         prefillName={smartAddContactPrefill.name}
         prefillMobile={smartAddContactPrefill.mobile}
+      />
+
+      {/* Link Email to Existing Contact Modal */}
+      <LinkEmailToContactModal
+        isOpen={linkEmailOpen}
+        onClose={() => setLinkEmailOpen(false)}
+        theme={theme}
+        email={linkEmailPrefill.email}
+        prefillName={linkEmailPrefill.name}
+        onLinked={() => refetchContacts()}
       />
 
       {/* Add Company Modal (for CRM tab button) */}

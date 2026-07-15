@@ -15,7 +15,7 @@ import {
   FaEnvelope, FaCalendar, FaChevronDown, FaUser, FaBuilding,
   FaDollarSign, FaTimes, FaTrash, FaLightbulb, FaHandshake, FaArchive, FaCrown,
   FaPaperclip, FaCheck, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaUserCheck,
-  FaTag, FaUpload, FaFileAlt, FaMapMarkerAlt, FaVideo, FaNewspaper,
+  FaTag, FaUpload, FaFileAlt, FaMapMarkerAlt, FaVideo, FaNewspaper, FaLink,
 } from 'react-icons/fa';
 import { FiEye } from 'react-icons/fi';
 import FilePreviewModal, { isPreviewable } from '../../modals/FilePreviewModal';
@@ -56,6 +56,7 @@ const DesktopCenterPanel = ({
   // Destructure localHandlers
   const {
     handleEmailAddressClick, emailHasContact, handleWhatsAppAddressClick,
+    handleLinkEmailClick,
     sanitizeEmailHtml, parseDateFromText,
   } = localHandlers;
 
@@ -3450,7 +3451,15 @@ const DesktopCenterPanel = ({
                                 emailHasContact(email.from_email) ? (
                                   <FaUser size={10} style={{ color: theme === 'light' ? '#10B981' : '#34D399' }} title="Contact exists" />
                                 ) : (
-                                  <FaPlus size={10} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} title="Add contact" />
+                                  <>
+                                    <FaPlus size={10} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} title="Add as new contact" />
+                                    <FaLink
+                                      size={10}
+                                      onClick={(e) => { e.stopPropagation(); handleLinkEmailClick(email.from_email, email.from_name); }}
+                                      style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA', cursor: 'pointer' }}
+                                      title="Link to existing contact"
+                                    />
+                                  </>
                                 )
                               )}
                             </span>
@@ -3494,7 +3503,15 @@ const DesktopCenterPanel = ({
                                       emailHasContact(r.email) ? (
                                         <FaUser size={9} style={{ color: theme === 'light' ? '#10B981' : '#34D399' }} />
                                       ) : (
-                                        <FaPlus size={9} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} />
+                                        <>
+                                          <FaPlus size={9} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} title="Add as new contact" />
+                                          <FaLink
+                                            size={9}
+                                            onClick={(e) => { e.stopPropagation(); handleLinkEmailClick(r.email, r.name); }}
+                                            style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA', cursor: 'pointer' }}
+                                            title="Link to existing contact"
+                                          />
+                                        </>
                                       )
                                     )}
                                   </span>
@@ -3541,7 +3558,15 @@ const DesktopCenterPanel = ({
                                       emailHasContact(r.email) ? (
                                         <FaUser size={9} style={{ color: theme === 'light' ? '#10B981' : '#34D399' }} />
                                       ) : (
-                                        <FaPlus size={9} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} />
+                                        <>
+                                          <FaPlus size={9} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} title="Add as new contact" />
+                                          <FaLink
+                                            size={9}
+                                            onClick={(e) => { e.stopPropagation(); handleLinkEmailClick(r.email, r.name); }}
+                                            style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA', cursor: 'pointer' }}
+                                            title="Link to existing contact"
+                                          />
+                                        </>
                                       )
                                     )}
                                   </span>
