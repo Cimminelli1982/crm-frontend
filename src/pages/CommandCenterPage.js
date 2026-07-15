@@ -2420,19 +2420,20 @@ const CommandCenterPage = ({ theme }) => {
   const tabs = [
     { id: 'email', label: 'Email', icon: FaEnvelope, count: filterByStatus(threads, 'inbox').length + filterByStatus(threads, 'need_actions').length, hasUnread: hasInboxEmails },
     { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: filterByStatus(whatsappChats, 'inbox').length + filterByStatus(whatsappChats, 'need_actions').length, hasUnread: hasInboxWhatsapp },
-    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'needReview').length, hasUnread: hasInboxCalendar },
-    { id: 'tasks', label: 'Tasks', icon: FaTasks, count: 0, hasUnread: false },
+    // Hidden from top nav per request (Calendar, Tasks, Notes, Data):
+    // { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'needReview').length, hasUnread: hasInboxCalendar },
+    // { id: 'tasks', label: 'Tasks', icon: FaTasks, count: 0, hasUnread: false },
     { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
     { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
     { id: 'introductions', label: 'Introductions', icon: FaHandshake, count: filterIntroductionsBySection(introductionsList, 'inbox').length, hasUnread: filterIntroductionsBySection(introductionsList, 'inbox').length > 0 },
-    { id: 'notes', label: 'Notes', icon: FaStickyNote, count: 0, hasUnread: false },
-    { id: 'data', label: 'Data', icon: FaDatabase, count: unmatchedHook.stats.unmatched + dataQualityHook.dqContacts.length, hasUnread: unmatchedHook.stats.unmatched > 0 || dataQualityHook.dqContacts.length > 0,
-      subTabs: [
-        { id: 'unmatched', label: 'Not in CRM', count: unmatchedHook.stats.unmatched },
-        { id: 'dataquality', label: 'Missing Info', count: dataQualityHook.dqContacts.length },
-        { id: 'lists', label: 'Lists', count: 0 },
-      ],
-    },
+    // { id: 'notes', label: 'Notes', icon: FaStickyNote, count: 0, hasUnread: false },
+    // { id: 'data', label: 'Data', icon: FaDatabase, count: unmatchedHook.stats.unmatched + dataQualityHook.dqContacts.length, hasUnread: unmatchedHook.stats.unmatched > 0 || dataQualityHook.dqContacts.length > 0,
+    //   subTabs: [
+    //     { id: 'unmatched', label: 'Not in CRM', count: unmatchedHook.stats.unmatched },
+    //     { id: 'dataquality', label: 'Missing Info', count: dataQualityHook.dqContacts.length },
+    //     { id: 'lists', label: 'Lists', count: 0 },
+    //   ],
+    // },
   ];
 
   // Mobile: Render mobile-optimized version (but continue to render modals below)
