@@ -115,40 +115,65 @@ const useWhatsAppData = (activeTab) => {
         // Group by chat_id
         let grouped = groupWhatsAppByChat(data || []);
 
-        // Fetch contact profile images by matching phone numbers
+        // Attach CRM identity (name + profile image) to each chat by matching
+        // phone numbers. IMPORTANT: query is scoped to ONLY the phone numbers in
+        // the chat list — loading all contacts/mobiles hits Supabase's 1000-row
+        // cap (2851 contacts, 1542 mobiles) and silently drops rows, which caused
+        // false "Not in CRM" badges for contacts beyond the first 1000.
         const phoneNumbers = [...new Set(grouped.map(c => c.contact_number).filter(Boolean))];
         if (phoneNumbers.length > 0) {
-          // Normalize phone numbers for matching (remove non-digits except leading +)
-          const normalizePhone = (p) => p ? p.replace(/[^\d+]/g, '').replace(/^00/, '+') : '';
+          // Digits-only canonical form: strips +, spaces, and leading zeros so
+          // "+39 320...", "0039320...", "393204161662" all compare equal.
+          const canonicalPhone = (p) => p ? p.replace(/\D/g, '').replace(/^0+/, '') : '';
 
-          // Fetch contacts with their mobiles (increase limit to cover all records)
+          // Build DB filter variants (with and without leading +) so we match
+          // whichever way the mobile happens to be stored.
+          const filterVariants = new Set();
+          phoneNumbers.forEach(p => {
+            const digits = canonicalPhone(p);
+            if (digits) {
+              filterVariants.add('+' + digits);
+              filterVariants.add(digits);
+            }
+          });
+
           const { data: contactMobiles } = await supabase
             .from('contact_mobiles')
             .select('contact_id, mobile')
-            .limit(5000);
+            .in('mobile', [...filterVariants]);
 
-          const { data: contacts } = await supabase
-            .from('contacts')
-            .select('contact_id, profile_image_url')
-            .not('profile_image_url', 'is', null)
-            .limit(5000);
+          const contactIds = [...new Set((contactMobiles || []).map(cm => cm.contact_id).filter(Boolean))];
 
-          if (contactMobiles && contacts) {
-            // Create lookup: normalized phone -> profile_image_url
-            const phoneToImage = {};
-            contactMobiles.forEach(cm => {
-              const contact = contacts.find(c => c.contact_id === cm.contact_id);
-              if (contact?.profile_image_url) {
-                phoneToImage[normalizePhone(cm.mobile)] = contact.profile_image_url;
-              }
-            });
-
-            // Add profile_image_url to each chat
-            grouped = grouped.map(chat => ({
-              ...chat,
-              profile_image_url: phoneToImage[normalizePhone(chat.contact_number)] || null
-            }));
+          let contactsById = {};
+          if (contactIds.length > 0) {
+            const { data: contacts } = await supabase
+              .from('contacts')
+              .select('contact_id, first_name, last_name, profile_image_url')
+              .in('contact_id', contactIds);
+            (contacts || []).forEach(c => { contactsById[c.contact_id] = c; });
           }
+
+          // Lookup: canonical phone -> CRM contact
+          const phoneToContact = {};
+          (contactMobiles || []).forEach(cm => {
+            const contact = contactsById[cm.contact_id];
+            if (contact) {
+              phoneToContact[canonicalPhone(cm.mobile)] = contact;
+            }
+          });
+
+          grouped = grouped.map(chat => {
+            const match = phoneToContact[canonicalPhone(chat.contact_number)] || null;
+            const crmName = match
+              ? `${match.first_name || ''} ${match.last_name || ''}`.trim()
+              : null;
+            return {
+              ...chat,
+              profile_image_url: match?.profile_image_url || null,
+              crm_contact_id: match?.contact_id || null,
+              crm_name: crmName || null,
+            };
+          });
         }
 
         setWhatsappChats(grouped);

@@ -760,8 +760,12 @@ export const WhatsAppChatList = ({
       {chats.map(chat => {
         const hasUnread = chat.messages?.some(m => m.is_read === false);
         const unreadCount = chat.messages?.filter(m => m.is_read === false).length || 0;
-        // Get CRM contact name if available (only for 1-to-1 chats, not groups)
-        const crmName = chat.is_group_chat ? null : getCrmContactName(chat.contact_number, contacts);
+        // Get CRM contact name if available (only for 1-to-1 chats, not groups).
+        // Prefer the globally-precomputed crm_name (matched against ALL contact
+        // mobiles at load), falling back to the selected-chat context contacts.
+        const crmName = chat.is_group_chat
+          ? null
+          : (chat.crm_name || getCrmContactName(chat.contact_number, contacts));
         const displayName = chat.is_group_chat
           ? (chat.chat_name || 'Group Chat')
           : (crmName || chat.chat_name || chat.contact_number);
