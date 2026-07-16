@@ -351,7 +351,10 @@ const DesktopRightPanel = ({
               </CollapseButton>
               {!rightPanelCollapsed && (
                 <>
-                  {/* Receptionist (PA Chat) tab hidden — Contact is now the first tab */}
+                  {/* Receptionist (PA Chat) */}
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'agentChat'} onClick={() => setActiveActionTab('agentChat')} title="Receptionist (⌥R)" style={{ color: activeActionTab === 'agentChat' ? '#10B981' : undefined }}>
+                    <FaRobot /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>R</span>
+                  </ActionTabIcon>
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details (⌥P)">
                     <FaUser /><span style={{ position: 'absolute', bottom: 2, right: 2, fontSize: 8, fontWeight: 600, opacity: 0.6 }}>P</span>
                   </ActionTabIcon>

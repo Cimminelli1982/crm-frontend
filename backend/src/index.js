@@ -21,6 +21,7 @@ import { getGoogleCalendarClient } from './google-calendar.js';
 import { generateAndSendBriefing, startBriefingScheduler } from './evening-briefing.js';
 import { generateAndSendMorningBriefing, startMorningBriefingScheduler } from './morning-briefing.js';
 import { registerTodayRoutes } from './today-page.js';
+import { registerReceptionist } from './receptionist.js';
 import {
   initBaileys,
   getStatus as getBaileysStatus,
@@ -6226,6 +6227,9 @@ CRITICAL RULES:
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// Receptionist agent (SSE) — replaces the old OpenClaw gateway
+registerReceptionist(app, { anthropic, supabase, braveWebSearch, PORT });
 
 app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);

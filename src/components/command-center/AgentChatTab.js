@@ -501,7 +501,7 @@ const AgentChatTab = ({
               Chat with {selectedAgent?.name}
             </span>
             <span style={{ fontSize: 12, opacity: 0.7 }}>
-              {connected ? 'Connected via OpenClaw — send a message or pick a command' : 'Connecting to Gateway...'}
+              {connected ? 'Pronto — scrivi un messaggio o scegli un comando' : 'Connessione al backend...'}
             </span>
           </div>
         ) : (
