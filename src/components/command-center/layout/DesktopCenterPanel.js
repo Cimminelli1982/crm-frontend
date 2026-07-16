@@ -14,7 +14,7 @@ import {
 import {
   FaEnvelope, FaCalendar, FaChevronDown, FaUser, FaBuilding,
   FaDollarSign, FaTimes, FaTrash, FaLightbulb, FaHandshake, FaArchive, FaCrown,
-  FaPaperclip, FaCheck, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaUserCheck,
+  FaPaperclip, FaCheck, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload,
   FaTag, FaUpload, FaFileAlt, FaMapMarkerAlt, FaVideo, FaNewspaper, FaLink,
 } from 'react-icons/fa';
 import { FiEye } from 'react-icons/fi';
@@ -148,7 +148,7 @@ const DesktopCenterPanel = ({
   } = emailActionsHook;
 
   // Destructure emailCompose
-  const { openReply, openForward, openAssign, openNewCompose } = emailCompose;
+  const { openReply, openForward, openNewCompose } = emailCompose;
 
   // Destructure rightPanelHook
   const {
@@ -3768,10 +3768,6 @@ const DesktopCenterPanel = ({
                       <ActionBtn theme={theme} onClick={() => openReply(true)}>Reply All</ActionBtn>
                     )}
                     <ActionBtn theme={theme} onClick={openForward}>Forward</ActionBtn>
-                    <ActionBtn theme={theme} onClick={openAssign} style={{ background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD' }}>
-                      <FaUserCheck style={{ marginRight: '6px' }} />
-                      Assign
-                    </ActionBtn>
 
                     {/* Delete button */}
                     <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
