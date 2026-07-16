@@ -6231,9 +6231,11 @@ app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);
   startPolling();
 
-  // Start briefing schedulers
-  startBriefingScheduler();        // 19:15 UK
-  startMorningBriefingScheduler(); // 06:00 UK
+  // Briefing schedulers DISABILITATI (email brief mattina/sera non piu' desiderate).
+  // Gli endpoint manuali /briefing/morning e /briefing/evening restano attivi
+  // per generarle a richiesta. Ri-abilitare qui per farle tornare automatiche.
+  // startBriefingScheduler();        // 19:15 UK
+  // startMorningBriefingScheduler(); // 06:00 UK
 
   // Initialize Baileys after server starts
   setTimeout(() => {
