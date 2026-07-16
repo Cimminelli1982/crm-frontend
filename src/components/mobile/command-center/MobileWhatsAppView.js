@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import styled, { css } from 'styled-components';
-import { FaArrowLeft, FaEllipsisV, FaCheck, FaCheckDouble, FaPaperPlane, FaUsers, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaArrowLeft, FaEllipsisV, FaCheck, FaCheckDouble, FaPaperPlane, FaUsers, FaChevronDown, FaChevronUp, FaFileAlt } from 'react-icons/fa';
 import { format } from 'date-fns';
 import MobileContextPanel from './MobileContextPanel';
+import { supabase } from '../../../lib/supabaseClient';
 
 /**
  * MobileWhatsAppView - WhatsApp chat detail view for mobile
@@ -35,8 +36,40 @@ const MobileWhatsAppView = ({
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [showContext, setShowContext] = useState(false);
+  const [attachmentsMap, setAttachmentsMap] = useState({});
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  // Fetch media attachments for this chat's messages (mirrors desktop WhatsAppTab).
+  // Media lives in the `attachments` table (permanent_url on Supabase storage),
+  // keyed by external_reference = message_uid; media-only messages have empty body_text.
+  useEffect(() => {
+    const fetchAttachments = async () => {
+      const msgs = chat?.messages || [];
+      const messageUids = [...new Set(
+        msgs.filter(m => m.has_attachments).map(m => m.message_uid || m.id).filter(Boolean)
+      )];
+      if (messageUids.length === 0) {
+        setAttachmentsMap({});
+        return;
+      }
+      const { data, error } = await supabase
+        .from('attachments')
+        .select('external_reference, permanent_url, file_name, file_type, attachment_id')
+        .in('external_reference', messageUids);
+      if (error) {
+        console.error('[MobileWhatsApp] Error fetching attachments:', error);
+        return;
+      }
+      const map = {};
+      (data || []).forEach(att => {
+        if (!map[att.external_reference]) map[att.external_reference] = [];
+        map[att.external_reference].push(att);
+      });
+      setAttachmentsMap(map);
+    };
+    fetchAttachments();
+  }, [chat?.chat_id, chat?.messages]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -85,6 +118,19 @@ const MobileWhatsAppView = ({
 
   const getDisplayName = (chat) => {
     return chat.chat_name || chat.contact_number || 'Unknown';
+  };
+
+  // Label for a media message when the file isn't (yet) in the attachments table
+  const getAttachmentLabel = (msg) => {
+    let atts = msg.attachments;
+    if (typeof atts === 'string') {
+      try { atts = JSON.parse(atts); } catch { atts = null; }
+    }
+    const type = (Array.isArray(atts) && atts[0]?.type ? atts[0].type : '').toLowerCase();
+    if (type.startsWith('image')) return 'Photo';
+    if (type.startsWith('video')) return 'Video';
+    if (type.startsWith('audio')) return 'Voice message';
+    return 'Attachment';
   };
 
   const handleSend = async () => {
@@ -182,6 +228,61 @@ const MobileWhatsAppView = ({
                         <SenderName $name={msg.first_name}>
                           {msg.first_name}
                         </SenderName>
+                      )}
+                      {/* Media attachments (image / audio / video / document) */}
+                      {(() => {
+                        const uid = msg.message_uid || msg.id;
+                        const atts = (msg.has_attachments && attachmentsMap[uid]) || [];
+                        const hasText = !!(msg.body_text || msg.snippet);
+                        return atts.map((att, i) => {
+                          const fileType = att.file_type?.toLowerCase() || '';
+                          const fileName = att.file_name || 'attachment';
+                          const fileExt = fileName.split('.').pop()?.toLowerCase();
+                          if (fileType.startsWith('image/') || ['gif', 'jpg', 'jpeg', 'png', 'webp'].includes(fileExt)) {
+                            return (
+                              <AttachmentImage
+                                key={i}
+                                src={att.permanent_url}
+                                alt={fileName}
+                                $hasText={hasText}
+                                onClick={() => window.open(att.permanent_url, '_blank')}
+                              />
+                            );
+                          }
+                          if (fileType.startsWith('audio/') || ['ogg', 'opus', 'mp3', 'wav', 'm4a'].includes(fileExt)) {
+                            return (
+                              <AttachmentAudio key={i} controls $hasText={hasText}>
+                                <source src={att.permanent_url} type={fileType || 'audio/ogg'} />
+                              </AttachmentAudio>
+                            );
+                          }
+                          if (fileType.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(fileExt)) {
+                            return (
+                              <AttachmentVideo key={i} controls $hasText={hasText}>
+                                <source src={att.permanent_url} type={fileType || 'video/mp4'} />
+                              </AttachmentVideo>
+                            );
+                          }
+                          return (
+                            <DocumentLink
+                              key={i}
+                              theme={theme}
+                              href={att.permanent_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              $hasText={hasText}
+                            >
+                              <FaFileAlt size={16} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileName}</span>
+                            </DocumentLink>
+                          );
+                        });
+                      })()}
+                      {/* Media present but not yet persisted to storage → label */}
+                      {msg.has_attachments && !(attachmentsMap[msg.message_uid || msg.id]?.length) && (
+                        <AttachmentPlaceholder theme={theme}>
+                          📎 {getAttachmentLabel(msg)}
+                        </AttachmentPlaceholder>
                       )}
                       <MessageContent>
                         <MessageText>
@@ -479,6 +580,51 @@ const MessageText = styled.span`
   line-height: 1.35;
   word-break: break-word;
   white-space: pre-wrap;
+`;
+
+const AttachmentImage = styled.img`
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: 8px;
+  margin-bottom: ${p => p.$hasText ? '6px' : '2px'};
+  cursor: pointer;
+  display: block;
+`;
+
+const AttachmentAudio = styled.audio`
+  width: 220px;
+  max-width: 100%;
+  height: 40px;
+  margin-bottom: ${p => p.$hasText ? '6px' : '2px'};
+`;
+
+const AttachmentVideo = styled.video`
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: 8px;
+  margin-bottom: ${p => p.$hasText ? '6px' : '2px'};
+  display: block;
+`;
+
+const DocumentLink = styled.a`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: ${p => p.theme === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)'};
+  border-radius: 8px;
+  margin-bottom: ${p => p.$hasText ? '6px' : '2px'};
+  font-size: 13px;
+  text-decoration: none;
+  color: ${p => p.theme === 'light' ? '#111B21' : '#E9EDEF'};
+  max-width: 220px;
+`;
+
+const AttachmentPlaceholder = styled.div`
+  font-size: 13.5px;
+  font-style: italic;
+  padding: 2px 0 2px;
+  color: ${p => p.theme === 'light' ? '#54656F' : '#8696A0'};
 `;
 
 const MessageMeta = styled.span`
