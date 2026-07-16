@@ -526,9 +526,11 @@ const CommandCenterPage = ({ theme }) => {
     potential_spam: false,
     archiving: false,
     last_sent: false,
+    recently_archived: false,
   });
 
   const [lastSentThreads, setLastSentThreads] = useState([]);
+  const [recentlyArchivedThreads, setRecentlyArchivedThreads] = useState([]);
 
   // Toggle section expansion
   const toggleStatusSection = (section) => {
@@ -2060,6 +2062,76 @@ const CommandCenterPage = ({ theme }) => {
     if (activeTab === 'email') fetchLastSentThreads();
   }, [activeTab, fetchLastSentThreads]);
 
+  // Fetch emails archived TODAY (emails.created_at = archive time), grouped by thread.
+  // Gives a place to find something archived by mistake and move it back to inbox.
+  const fetchRecentlyArchived = useCallback(async () => {
+    try {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const { data, error } = await supabase
+        .from('emails')
+        .select('email_id, email_thread_id, thread_id, gmail_id, subject, body_plain, message_timestamp, created_at, sender_contact_id, contacts!emails_sender_id_fkey(first_name, last_name), email_threads(subject)')
+        .gte('created_at', start.toISOString())
+        .not('email_thread_id', 'is', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const groups = {};
+      for (const e of (data || [])) {
+        const tid = e.email_thread_id;
+        if (!groups[tid]) {
+          groups[tid] = {
+            email_thread_id: tid,
+            thread_id: e.thread_id,
+            subject: e.email_threads?.subject || e.subject || 'No Subject',
+            snippet: e.body_plain ? e.body_plain.substring(0, 100) : '',
+            archived_at: e.created_at,
+            sender_name: null,
+            gmailIds: [],
+            emailIds: [],
+          };
+        }
+        const g = groups[tid];
+        if (e.gmail_id) g.gmailIds.push(e.gmail_id);
+        g.emailIds.push(e.email_id);
+        if (!g.sender_name && e.contacts) {
+          const n = `${e.contacts.first_name || ''} ${e.contacts.last_name || ''}`.trim();
+          if (n) g.sender_name = n;
+        }
+      }
+      setRecentlyArchivedThreads(Object.values(groups));
+    } catch (err) {
+      console.error('Error fetching recently archived:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'email') fetchRecentlyArchived();
+  }, [activeTab, fetchRecentlyArchived]);
+
+  // Move an archived thread back into the CRM inbox (un-archive in Fastmail + re-insert).
+  const handleMoveArchivedToInbox = useCallback(async (item) => {
+    if (!item) return;
+    try {
+      const response = await fetch(`${BACKEND_URL}/email/unarchive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fastmailIds: item.gmailIds || [], emailIds: item.emailIds || [] }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setRecentlyArchivedThreads(prev => prev.filter(t => t.email_thread_id !== item.email_thread_id));
+        toast.success('Moved back to Inbox');
+        if (refreshThreads) refreshThreads();
+      } else {
+        toast.error(data.error || 'Failed to move to inbox');
+      }
+    } catch (err) {
+      console.error('Move to inbox error:', err);
+      toast.error('Failed to move to inbox');
+    }
+  }, [refreshThreads]);
+
   // Handle selecting a search result - loads the full thread and displays it
   const handleSelectSearchResult = async (searchResult) => {
     try {
@@ -2327,6 +2399,7 @@ const CommandCenterPage = ({ theme }) => {
     contactDeals, companyDeals, contactIntroductions, contactTasks,
     contactNotes, loadingNotes,
     lastSentThreads,
+    recentlyArchivedThreads,
     navigate,
   }), [
     activeTab, viewport, isMobile,
@@ -2336,6 +2409,7 @@ const CommandCenterPage = ({ theme }) => {
     contactDeals, companyDeals, contactIntroductions, contactTasks,
     contactNotes, loadingNotes,
     lastSentThreads,
+    recentlyArchivedThreads,
     navigate,
   ]);
 
@@ -2351,6 +2425,7 @@ const CommandCenterPage = ({ theme }) => {
     fetchContactNotes, handleSaveNote, openEditNote, resetNoteForm,
     findContactByEmail,
     setRefreshDealsCounter,
+    handleMoveArchivedToInbox,
     onAttachmentDrop: handleAttachmentDrop,
   }), [
     searchSavedEmails, handleSelectSearchResult, handleSelectThread,
@@ -2362,6 +2437,7 @@ const CommandCenterPage = ({ theme }) => {
     openInObsidian, getNoteTypeIcon,
     fetchContactNotes, handleSaveNote, openEditNote, resetNoteForm,
     findContactByEmail, setRefreshDealsCounter,
+    handleMoveArchivedToInbox,
     sanitizeEmailHtml, parseDateFromText,
     handleAttachmentDrop,
   ]);

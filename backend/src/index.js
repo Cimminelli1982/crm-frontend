@@ -1193,6 +1193,67 @@ app.post('/archive', async (req, res) => {
   }
 });
 
+// Un-archive: move an already-archived email/thread back into the CRM inbox.
+// Reverses a "Done"/archive so the user can act on something archived by mistake.
+app.post('/email/unarchive', async (req, res) => {
+  try {
+    const { fastmailIds, emailIds } = req.body;
+
+    if (!fastmailIds || fastmailIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'Missing fastmailIds' });
+    }
+
+    console.log(`Un-archiving ${fastmailIds.length} email(s)`);
+
+    const jmap = new JMAPClient(
+      process.env.FASTMAIL_USERNAME,
+      process.env.FASTMAIL_API_TOKEN
+    );
+    await jmap.init();
+
+    const myEmail = process.env.FASTMAIL_USERNAME?.toLowerCase();
+    const restored = [];
+
+    for (const fastmailId of fastmailIds) {
+      try {
+        // 1. Move back to Inbox + strip $crm_done in Fastmail
+        await jmap.unarchiveEmail(fastmailId);
+
+        // 2. Re-hydrate the command_center_inbox row from Fastmail's current state.
+        //    (Auto-sync won't re-pull it — its receivedAt is older than the sync cursor.)
+        const jmapEmail = await jmap.getEmailById(fastmailId);
+        if (jmapEmail) {
+          const row = transformEmail(jmapEmail);
+          row.direction = row.from_email?.toLowerCase() === myEmail ? 'sent' : 'received';
+          row.status = null;
+          row.type = 'email';
+
+          const { error: insertErr } = await supabase
+            .from('command_center_inbox')
+            .upsert(row, { onConflict: 'fastmail_id', ignoreDuplicates: false });
+          if (insertErr) console.error('[Unarchive] Re-insert error:', insertErr.message);
+        }
+        restored.push(fastmailId);
+      } catch (err) {
+        console.error(`[Unarchive] Failed for ${fastmailId}:`, err.message);
+      }
+    }
+
+    // 3. Remove the saved copies so the thread leaves "Recently Archived".
+    //    save-and-archive is idempotent (dedupes emails by gmail_id, interactions
+    //    by contact+thread), so re-archiving later re-creates them cleanly.
+    if (emailIds && emailIds.length > 0) {
+      await supabase.from('email_participants').delete().in('email_id', emailIds);
+      await supabase.from('emails').delete().in('email_id', emailIds);
+    }
+
+    res.json({ success: true, restored });
+  } catch (error) {
+    console.error('Unarchive error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Save & Archive email - full CRM processing and Fastmail archive (called by frontend saveAndArchiveAsync)
 app.post('/email/save-and-archive', async (req, res) => {
   const MY_EMAIL = 'simone@cimminelli.com';

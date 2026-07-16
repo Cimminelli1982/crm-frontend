@@ -9,7 +9,7 @@ import {
   SearchResultDate,
   EmptyState,
 } from '../../../pages/CommandCenterPage.styles';
-import { FaSpinner } from 'react-icons/fa';
+import { FaSpinner, FaInbox } from 'react-icons/fa';
 import { WhatsAppChatList } from '../WhatsAppTab';
 import CollapsibleSection from './CollapsibleSection';
 
@@ -48,6 +48,9 @@ const EmailLeftContent = ({
   filterByStatus,
   // Last Sent
   lastSentThreads,
+  // Recently Archived (today)
+  recentlyArchivedThreads,
+  handleMoveArchivedToInbox,
 }) => {
   const isEmail = activeTab === 'email';
 
@@ -237,6 +240,57 @@ const EmailLeftContent = ({
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {item.recipient_name || 'Me'}
                     </span>
+                  </EmailSender>
+                  <EmailSubject theme={theme}>{item.subject}</EmailSubject>
+                  <EmailSnippet theme={theme}>{item.snippet}</EmailSnippet>
+                </EmailItem>
+              ))}
+            </CollapsibleSection>
+          )}
+          {isEmail && recentlyArchivedThreads?.length > 0 && (
+            <CollapsibleSection
+              theme={theme}
+              title="Recently Archived"
+              count={recentlyArchivedThreads.length}
+              isOpen={statusSections.recently_archived}
+              onToggle={() => toggleStatusSection('recently_archived')}
+              variant="success"
+              titleColor="#10b981"
+            >
+              {recentlyArchivedThreads.map((item, idx) => (
+                <EmailItem
+                  key={item.email_thread_id || idx}
+                  theme={theme}
+                  $selected={item.email_thread_id && selectedThread?.[0]?._email_thread_id === item.email_thread_id}
+                  onClick={() => {
+                    if (item.email_thread_id) handleSelectSearchResult({ email_thread_id: item.email_thread_id });
+                  }}
+                >
+                  <EmailSender theme={theme}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.sender_name || 'Unknown'}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleMoveArchivedToInbox(item); }}
+                      title="Move back to Inbox"
+                      style={{
+                        marginLeft: 'auto',
+                        flexShrink: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        border: `1px solid ${theme === 'light' ? '#BFDBFE' : '#2563EB'}`,
+                        background: theme === 'light' ? '#EFF6FF' : '#1E3A5F',
+                        color: theme === 'light' ? '#1D4ED8' : '#93C5FD',
+                      }}
+                    >
+                      <FaInbox size={9} /> Inbox
+                    </button>
                   </EmailSender>
                   <EmailSubject theme={theme}>{item.subject}</EmailSubject>
                   <EmailSnippet theme={theme}>{item.snippet}</EmailSnippet>

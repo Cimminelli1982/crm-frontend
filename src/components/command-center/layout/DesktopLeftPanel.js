@@ -35,8 +35,9 @@ const DesktopLeftPanel = ({
     emailSearchLoading, isSearchingEmails, setIsSearchingEmails,
     statusSections, setStatusSections, toggleStatusSection, filterByStatus,
     lastSentThreads,
+    recentlyArchivedThreads,
   } = localState;
-  const { handleSelectSearchResult, handleSelectThread, handleSelectCalendarSearchResult, getRelevantPerson } = localHandlers;
+  const { handleSelectSearchResult, handleSelectThread, handleSelectCalendarSearchResult, getRelevantPerson, handleMoveArchivedToInbox } = localHandlers;
   const {
     whatsappChats, whatsappMessages,
     selectedWhatsappChat, setSelectedWhatsappChat,
@@ -583,6 +584,8 @@ const DesktopLeftPanel = ({
           toggleStatusSection={toggleStatusSection}
           filterByStatus={filterByStatus}
           lastSentThreads={lastSentThreads}
+          recentlyArchivedThreads={recentlyArchivedThreads}
+          handleMoveArchivedToInbox={handleMoveArchivedToInbox}
         />
       );
     }

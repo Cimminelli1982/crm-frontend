@@ -376,6 +376,34 @@ export class JMAPClient {
     return { archived: true, emailId };
   }
 
+  // Reverse of archiveEmail: move the message back to the Inbox and remove the
+  // $crm_done keyword so it is treated as an active inbox message again.
+  async unarchiveEmail(emailId) {
+    const inboxId = await this.getInboxId();
+    if (!inboxId) {
+      throw new Error('Inbox mailbox not found');
+    }
+
+    const responses = await this.request([
+      ['Email/set', {
+        accountId: this.accountId,
+        update: {
+          [emailId]: {
+            mailboxIds: { [inboxId]: true },
+            'keywords/$crm_done': null,
+          }
+        }
+      }, 'unarchive']
+    ]);
+
+    const result = responses[0][1];
+    if (result.notUpdated?.[emailId]) {
+      throw new Error(`Failed to unarchive email: ${JSON.stringify(result.notUpdated[emailId])}`);
+    }
+
+    return { unarchived: true, emailId };
+  }
+
   async markAsRead(emailIds) {
     if (!emailIds || emailIds.length === 0) return { updated: 0 };
 
