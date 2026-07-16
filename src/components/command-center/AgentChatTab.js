@@ -27,6 +27,7 @@ const AgentChatTab = ({
   onOpenIntroCompose,
   calendarInboxId,
   onCalendarArchive,
+  onWhatsAppArchive,
   onOpenSmartAddContact,
 }) => {
   const {
@@ -177,8 +178,9 @@ const AgentChatTab = ({
         dealId: contextType === 'deals' ? contextId : null,
       },
     };
-    const sendCmd = draftType === 'reply-to' ? '/reply-to-send' : '/reply-all-send';
-    sendMessage(`${sendCmd} ${text}`, context, `📧 Sending ${draftType === 'reply-to' ? 'reply' : 'reply all'}...`);
+    const sendCmd = draftType === 'whatsapp' ? '/send-whatsapp' : draftType === 'reply-to' ? '/reply-to-send' : '/reply-all-send';
+    const sendLabel = draftType === 'whatsapp' ? '💬 Invio WhatsApp...' : `📧 Sending ${draftType === 'reply-to' ? 'reply' : 'reply all'}...`;
+    sendMessage(`${sendCmd} ${text}`, context, sendLabel);
     setEditingDraftId(null);
   };
 
@@ -260,6 +262,11 @@ const AgentChatTab = ({
 
   // Direct email actions from command palette (no agent involved)
   const handleDirectEmailAction = async (action) => {
+    // WhatsApp archive uses its own Done flow (no email auto_archive_threads)
+    if (action === 'archive' && contextType === 'whatsapp') {
+      onWhatsAppArchive?.();
+      return;
+    }
     if (action === 'waiting' && onUpdateItemStatus) {
       onUpdateItemStatus('waiting_input');
       return;
@@ -1023,7 +1030,7 @@ const AgentChatTab = ({
           gap: 4,
           flexWrap: 'wrap',
         }}>
-          {COMMAND_CATEGORIES.map(cat => {
+          {COMMAND_CATEGORIES.filter(cat => !cat.tabs || cat.tabs.includes(contextType)).map(cat => {
             const Icon = cat.icon;
             const isActive = openCategory === cat.id;
             return (

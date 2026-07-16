@@ -272,6 +272,7 @@ const COMMAND_CATEGORIES = [
     label: 'Email',
     color: '#8B5CF6',
     icon: FaEnvelope,
+    tabs: ['email'],
     actions: [
       {
         id: 'email-archive',
@@ -312,30 +313,35 @@ const COMMAND_CATEGORIES = [
   },
   {
     id: 'whatsapp',
-    label: 'WA',
+    label: 'WhatsApp',
     color: '#25D366',
     icon: FaWhatsapp,
+    tabs: ['whatsapp'],
     actions: [
       {
-        id: 'send-whatsapp',
-        label: 'Invia messaggio',
-        buildPrompt: (ctx) => {
-          const lines = [
-            'Nuova richiesta da Simone', '',
-            'Richiesta: Inviare messaggio WhatsApp', '',
-            `A: ${ctx.contactName || '[nome contatto]'}`,
-          ];
-          if (ctx.contactPhone) lines.push(`Telefono: ${ctx.contactPhone}`);
-          lines.push('Messaggio: [specificare contenuto]');
-          const ctxParts = buildContextParts(ctx);
-          if (ctxParts.length) lines.push('', `Contesto CRM: ${ctxParts.join(' | ')}`);
-          lines.push('', 'ISTRUZIONI PER BARBARA:',
-            '1. Leggi skills/whatsapp.md',
-            '2. Trova il numero di telefono del contatto se non specificato',
-            '3. Invia il messaggio via WhatsApp',
-            '4. VERIFICA: conferma invio');
-          return lines.join('\n');
-        },
+        id: 'wa-archive',
+        label: '✅ Archive',
+        directAction: 'archive',
+      },
+      {
+        id: 'wa-waiting',
+        label: '👀 Waiting Input',
+        directAction: 'waiting',
+      },
+      {
+        id: 'wa-actions',
+        label: '❗ Need Actions',
+        directAction: 'actions',
+      },
+      {
+        id: 'wa-reply-draft',
+        label: 'Reply (bozza)',
+        buildPrompt: () => '/reply-whatsapp-draft ',
+      },
+      {
+        id: 'wa-reply-send',
+        label: 'Reply & invia',
+        buildPrompt: () => '/send-whatsapp ',
       },
       {
         id: 'find-phone',
@@ -446,7 +452,7 @@ function buildContextParts(ctx) {
 }
 
 // Only show enabled categories — re-enable one at a time as we rethink each
-const ENABLED_CATEGORIES = ['email', 'calendar', 'task', 'deal', 'decision', 'intro', 'search', 'contact'];
+const ENABLED_CATEGORIES = ['email', 'whatsapp', 'calendar', 'task', 'deal', 'decision', 'intro', 'search', 'contact'];
 const enabledSet = new Set(ENABLED_CATEGORIES);
 const filtered = COMMAND_CATEGORIES.filter(c => enabledSet.has(c.id));
 filtered.sort((a, b) => ENABLED_CATEGORIES.indexOf(a.id) - ENABLED_CATEGORIES.indexOf(b.id));

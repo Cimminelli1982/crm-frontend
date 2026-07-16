@@ -1478,12 +1478,13 @@ const DesktopRightPanel = ({
                   dealName={activeTab === 'deals' ? (selectedPipelineDeal?.deal_name || selectedPipelineDeal?.name || null) : null}
                   emailContacts={contextContactsHook?.emailContacts || []}
                   onDraftSent={activeTab === 'email' ? emailActionsHook?.saveAndArchiveAsync : null}
-                  onUpdateItemStatus={activeTab === 'email' ? emailActionsHook?.updateItemStatus : null}
+                  onUpdateItemStatus={(activeTab === 'email' || activeTab === 'whatsapp') ? emailActionsHook?.updateItemStatus : null}
                   onAddToCrm={(emailData) => { setCreateContactEmail(emailData); setCreateContactModalOpen(true); }}
                   onOpenFreeSlots={handleOpenFreeSlots}
                   onOpenIntroCompose={handleOpenIntroCompose}
                   calendarInboxId={activeTab === 'calendar' ? (selectedCalendarEvent?.id || null) : null}
                   onCalendarArchive={handleArchiveCalendarEvent}
+                  onWhatsAppArchive={activeTab === 'whatsapp' ? whatsAppHook?.handleWhatsAppDoneAsync : null}
                   onOpenSmartAddContact={onOpenSmartAddContact}
                 />
               )}

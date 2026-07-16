@@ -14,6 +14,8 @@ const SLASH_COMMANDS = {
   '/reply-to-draft': 'reply-to-draft',
   '/reply-all-send': 'reply-all-send',
   '/reply-to-send': 'reply-to-send',
+  '/reply-whatsapp-draft': 'reply-whatsapp-draft',
+  '/send-whatsapp': 'send-whatsapp',
   '/what-in-calendar': 'what-in-calendar',
   '/create-event': 'create-event',
   '/create-event-invite': 'create-event-invite',
@@ -320,6 +322,7 @@ const useAgentChat = (activeTab, contextId, contextLabel) => {
 
     if (requestType === 'reply-all-draft') draftModeRef.current = 'reply-all';
     else if (requestType === 'reply-to-draft') draftModeRef.current = 'reply-to';
+    else if (requestType === 'reply-whatsapp-draft') draftModeRef.current = 'whatsapp';
     else if (requestType === 'reply-all-send' || requestType === 'reply-to-send') draftModeRef.current = 'post-send';
     else if (requestType === 'accept-invitation') draftModeRef.current = 'post-accept';
     else draftModeRef.current = false;
@@ -333,6 +336,7 @@ const useAgentChat = (activeTab, contextId, contextLabel) => {
     if (context.metadata?.emailSubject) ctxParts.push(`Email: "${context.metadata.emailSubject}"`);
     if (context.metadata?.emailInboxId) ctxParts.push(`Email Inbox ID: ${context.metadata.emailInboxId}`);
     if (context.metadata?.whatsappChat) ctxParts.push(`WhatsApp: ${context.metadata.whatsappChat}`);
+    if (context.type === 'whatsapp' && context.id) ctxParts.push(`WhatsApp chat id: ${context.id}`);
     if (context.metadata?.calendarEvent) ctxParts.push(`Event: "${context.metadata.calendarEvent}"`);
     if (context.metadata?.dealName) ctxParts.push(`Deal: "${context.metadata.dealName}"`);
     if (context.metadata?.dealId) ctxParts.push(`Deal ID: ${context.metadata.dealId}`);
