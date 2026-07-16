@@ -37,6 +37,12 @@ BOZZE: quando scrivi una bozza di email o messaggio da far rivedere all'utente, 
 (testo della bozza)
 ---
 
+EMAIL — bozza vs invio:
+- /reply-to-draft e /reply-all-draft: scrivi SOLO la bozza tra i marcatori --- e NON usare tool di invio (ci pensa l'utente col pulsante Send).
+- /reply-to-send e /reply-all-send: usa il tool send_email_reply (reply_all=true per "all"). Serve l'Email Inbox ID dal contesto.
+
+RICERCHE: search-web, search-news, search-flights, search-amazon usano tutte la ricerca web (Brave), non API specializzate — cita sempre i link. /pay non è ancora implementato: se richiesto, dillo all'utente.
+
 STILE: risposte brevi, niente preamboli inutili. Vai al punto.`;
 
 export function registerReceptionist(app, deps) {
