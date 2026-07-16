@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import toast from 'react-hot-toast';
 import { FaWhatsapp, FaCalendar, FaTasks, FaDollarSign, FaUserCheck, FaHandshake, FaStickyNote, FaList } from 'react-icons/fa';
 
 import ScrollableTabBar from './ScrollableTabBar';
@@ -17,6 +18,8 @@ import MobileIntroductionsView from './MobileIntroductionsView';
 import MobileNotesView from './MobileNotesView';
 import MobileListsView from './MobileListsView';
 import ContactSelector from '../../../components/command-center/ContactSelector';
+
+const BAILEYS_API = 'https://command-center-backend-production.up.railway.app';
 
 /**
  * CommandCenterMobile - Mobile-first version of Command Center
@@ -151,6 +154,70 @@ const CommandCenterMobile = ({
     setLocalSelectedChat(chat);
     setViewMode('detail');
     onSelectChat?.(chat);
+  };
+
+  // Send a WhatsApp reply via Baileys (mirrors desktop WhatsAppTab text path).
+  // Throws on failure so the input keeps the text; appends optimistically on success.
+  const handleSendWhatsAppMessage = async (text) => {
+    const message = (text || '').trim();
+    const chat = localSelectedChat;
+    if (!message || !chat) return;
+
+    const hasTarget = chat.is_group_chat ? !!chat.chat_name : !!chat.contact_number;
+    if (!hasTarget) {
+      toast.error('No recipient for this chat');
+      throw new Error('No recipient');
+    }
+
+    // Check Baileys connection first
+    const statusRes = await fetch(`${BAILEYS_API}/whatsapp/status`);
+    const statusData = await statusRes.json();
+    if (statusData.status !== 'connected') {
+      toast.error('WhatsApp not connected. Scan the QR code first.');
+      throw new Error('WhatsApp not connected');
+    }
+
+    // For groups, resolve the real JID by name
+    let targetJid = null;
+    if (chat.is_group_chat) {
+      const findRes = await fetch(`${BAILEYS_API}/whatsapp/find-group?name=${encodeURIComponent(chat.chat_name)}`);
+      const findData = await findRes.json();
+      if (!findRes.ok || !findData.success) {
+        toast.error(`Group not found: ${chat.chat_name}`);
+        throw new Error('Group not found');
+      }
+      targetJid = findData.jid;
+    }
+
+    const payload = {
+      phone: chat.is_group_chat ? undefined : chat.contact_number,
+      chat_id: chat.is_group_chat ? targetJid : undefined,
+      message,
+    };
+
+    const response = await fetch(`${BAILEYS_API}/whatsapp/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      toast.error(data.error || 'Failed to send message');
+      throw new Error(data.error || 'Failed to send message');
+    }
+
+    // Optimistically append the sent message so it shows immediately
+    const sentMsg = {
+      id: `sent_${new Date().getTime()}`,
+      body_text: message,
+      snippet: message,
+      direction: 'sent',
+      date: new Date().toISOString(),
+      is_read: false,
+    };
+    setLocalSelectedChat(prev => (
+      prev ? { ...prev, messages: [...(prev.messages || []), sentMsg] } : prev
+    ));
   };
 
   // Get selected contact from availableContacts (uses ContactSelector selection)
@@ -315,9 +382,7 @@ const CommandCenterMobile = ({
               handleBack();
             }}
             onMoreActions={() => setActionSheetOpen(true)}
-            onSendMessage={(text) => {
-              // TODO: implement send whatsapp message
-            }}
+            onSendMessage={handleSendWhatsAppMessage}
             theme={theme}
             // Context panel props
             contact={chatContact}
